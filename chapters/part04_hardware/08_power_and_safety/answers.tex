@@ -1,0 +1,12 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $4\cdot3.6=14.4$\,V; $3\cdot3=9$\,Ah; $E=14.4\cdot9=129.6$\,Wh; full: $4\cdot4.2=16.8$\,V.
+  \item $25/8=3.1$\,C; $P=22.2\cdot25=555$\,W; $E_\text{usable}=0.8\cdot22.2\cdot8=142$\,Wh, $t=142/555=0.256$\,h $=15.4$\,min (equivalently $0.8\cdot8/25=0.256$\,h).
+  \item Sag $=0.06\cdot25=1.5$\,V; battery loss $0.06\cdot625=37.5$\,W; load voltage $23-1.5=21.5$\,V.
+  \item $P_\text{out}=60$\,W; $P_\text{in}=60/0.92=65.2$\,W, $I_\text{in}=2.72$\,A, loss $5.2$\,W. A linear regulator would have $I_\text{in}=5$\,A, $P_\text{in}=120$\,W and burn $60$\,W ($50\,\%$ efficiency).
+  \item $R=1.72\cdot10^{-8}\cdot2/(2.5\cdot10^{-6})=13.8$\,m$\Omega$; drop $0.41$\,V; loss $0.0138\cdot900=12.4$\,W.
+  \item (1) A short circuit \emph{in the wire between battery and fuse} is not protected if the fuse is further away; the battery can deliver hundreds of amperes; so the unprotected length must be as short as possible. (2) In the positive line, because then a short to the chassis/ground anywhere behind the fuse is interrupted; a fuse in the return line may leave the parts live at battery voltage.
+  \item With a normally closed loop any break (button pressed, wire cut, connector loose, contact failed) opens the circuit and stops the robot; with a normally open switch a broken wire looks exactly like ``not pressed'', so the E-stop would not work and nobody would notice. Fail-safe means: the failure of a part leads to the safe state.
+  \item $1\,\text{m/s}\cdot0.05\,\text{s}=5$\,cm; at $200$\,ms: $20$\,cm. Whether it is acceptable depends on the hazard; for pinch points $20$\,cm is too much, so the timeout must be short, and the speeds limited.
+  \item $E=mgh$: $20\cdot9.81\cdot0.5=98$\,J; at $1.0$\,m: $196$\,J. Ball: $\frac12\cdot0.5\cdot10^2=25$\,J; the robot has $4$ to $8$ times more energy.
+  \item[\textbf{\ansnum.10}] One possible answer. Motor path: peak $40$\,A, fuse e.g.\ $40$--$50$\,A slow-blow (the peaks are short), wire $\ge6$\,mm$^2$. PC: $60/0.9=66.7$\,W $\to$ $I=66.7/22.2=3.0$\,A; sensors: $10/0.9=11.1$\,W $\to$ $0.5$\,A. Total at the battery in the worst case $40+3.0+0.5=43.5$\,A: the main fuse (at the battery) $\approx50$\,A, with separate $5$\,A fuses for the PC and sensors branch. The E-stop opens the \emph{motor power} (contactor in the motor branch, or the enable lines of all drivers) and leaves the PC and the sensors powered so that the logs and the cause remain available.
+\end{enumerate}

@@ -1,0 +1,25 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Application (HTTP, SSH, DDS), transport (TCP, UDP), internet (IP), link (Ethernet, Wi-Fi); the physical layer is sometimes counted separately. The transport layer, through the \emph{port} number.
+  \item $2^8-2=254$ (without the network address \texttt{.0} and the broadcast address \texttt{.255}). \texttt{192.168.11.5} is in a different network (third byte $11\neq10$); traffic goes through the gateway.
+  \item A switch forwards frames inside one network by MAC address; a router connects different networks (by IP address) and forwards packets between them, usually with NAT and DHCP at home.
+  \item $50\cdot8=400$ Mbit; $400/90=4.4$ s; $400/940=0.43$ s.
+  \item Bandwidth: how much per second (a video stream needs $20$ Mbit/s); latency: how long one message takes (a stop command must arrive within a few ms). A link can have high bandwidth and high latency (satellite) or low bandwidth and low latency (a serial line).
+  \item Frame data: $14+20+8+12=54$ bytes (plus $4$ byte CRC); useful $12/54\approx22\,\%$. $500\cdot54\cdot8=216\,000$ bit/s $=0.22$ Mbit/s. Minimum Ethernet frames are padded to $64$ bytes, so a bit more in reality.
+  \item (a) TCP: must arrive complete. (b) UDP: a late pose is worthless and the next one is already on the way. (c) TCP: reliable, ordered stream. (d) Both aspects: the command must arrive but quickly: usually a small UDP message sent repeatedly (a ``heartbeat''), plus a watchdog on the receiver that stops when the messages stop.
+  \item All devices on a channel share the airtime; while one transmits, the others wait. More devices, more collisions and waiting; the real rate is far below the nominal, and neighbouring networks on the same channel add to it.
+  \item
+\begin{verbatim}
+# send.py
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.sendto(b"hello", ("127.0.0.1", 5005))
+
+# receive.py (start first)
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.bind(("127.0.0.1", 5005))
+data, addr = s.recvfrom(1024)
+print(data, addr)
+\end{verbatim}
+  \item[\textbf{\ansnum.10}] \emph{Measure:} run \texttt{ping -i 0.02} to the robot for several minutes (or log the arrival time of every command with time stamps on the robot) and look at the maximum and the $99$th percentile of the latency and at lost packets; correlate with the stumbles in the log; check the signal strength (\texttt{iw dev wlan0 link}) and use \texttt{iperf3} under load. \emph{Design changes:} (1) Let the robot control itself on board: the controller runs on the robot, and the laptop sends only slow, high-level goals. (2) Use a cable for the control link, or a dedicated, uncrowded Wi-Fi channel and a fixed router. (3) Add a watchdog: if no command arrives for $100$\,ms, hold position or sit down safely. (4) Send commands over UDP with sequence numbers and time stamps and ignore old ones.
+\end{enumerate}

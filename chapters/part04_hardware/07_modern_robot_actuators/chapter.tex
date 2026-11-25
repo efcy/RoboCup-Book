@@ -1,0 +1,96 @@
+\bookchapter{Modern Robot Actuators}\label{ch:hw7}
+
+\section*{Explanation}
+The motor of Chapter~\ref{ch:hw6} is the starting point; a humanoid joint is a motor, a gearbox, a position sensor, a driver and a communication bus assembled in one compact, strong module, the \textbf{actuator}. Over the last years a design philosophy has taken over legged robots: instead of a small fast motor behind a big gear ratio, use a \textbf{large-diameter, flat motor with a low gear ratio}. This chapter explains why, what the words \emph{quasi-direct drive}, \emph{backdrivability} and \emph{FOC} mean, and what you need to ask when you look at the data sheet of any joint of your robot. We stay with general principles; for the numbers of your own robot, always use the manufacturer's documentation.
+
+\section*{What a walking robot demands of a joint}
+Legs must (1) deliver high torque for short times (a jump, a kick), (2) be \textbf{fast} (a leg swings in about $0.3$\,s), (3) survive \textbf{impacts}: every step is a small collision, a fall a large one, (4) be \textbf{torque-controllable}: we want to command a force at the foot and feel the ground, and (5) be light, because the leg's own mass must also be accelerated. A classical position servo with a gear ratio of $100$ does badly on (3) and (4): it is stiff, and the controller cannot feel what happens at the output.
+
+\section*{Reflected inertia and backdrivability}
+From Chapter~\ref{ch:hw6}: the rotor inertia seen at the output is $J_\text{out}=N^2J_\text{rotor}$, and friction in the gearbox also grows with $N$. Compare two designs that produce the same joint torque of $18$\,Nm:
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcc}
+ & \textbf{High ratio} & \textbf{Quasi-direct drive}\\ \hline
+Gear ratio $N$ & $100$ & $9$\\
+Rotor inertia & $2\cdot10^{-5}$\,kg\,m$^2$ & $2\cdot10^{-4}$\,kg\,m$^2$ (bigger rotor)\\
+Reflected inertia $N^2J$ & $0.20$\,kg\,m$^2$ & $0.016$\,kg\,m$^2$\\
+Motor torque needed ($\eta=0.9$) & $0.2$\,Nm & $2.2$\,Nm\\
+\end{tabular}
+\end{center}
+The big-ratio design needs a tiny motor, but the output behaves like a flywheel $12$ times heavier and cannot be moved from the outside. The low-ratio design needs a strong, flat motor (a pancake with many poles and a big air gap radius, because torque grows with the \emph{square} of the diameter), but it is easy to move. The property is called \textbf{backdrivability}: how much force an outside push needs to turn the joint. A backdrivable joint is \textbf{transparent}: the motor current is a good measure of the output torque, since gearbox friction hardly disturbs it, so \emph{torque control by current} (Chapter~\ref{ch:hw6}) works without a force sensor.
+
+\begin{keyidea}[Quasi-direct drive (QDD)]
+A QDD actuator uses a large, high-torque brushless motor and a single-stage planetary gear with a low ratio, typically $N=5$ to $10$. The result: high torque \emph{bandwidth}, transparent torque control, robust against impact (the motor can yield by being back-driven), at the cost of more heat per Newton-metre, because a low ratio means a high motor current (the copper loss $(\tau/k_m)^2$ of Chapter~\ref{ch:hw6}), and so thermal limits dominate the design.
+\end{keyidea}
+
+\section*{Other gear solutions}
+\begin{itemize}[nosep]
+\item \textbf{Harmonic drive}: flexible steel cup, $N\approx50$--$160$, almost zero backlash, compact. Very precise arms and wrists, but with high reflected inertia, friction and fragility under shocks.
+\item \textbf{Cycloidal drive}: a wobbling disc with lobes, robust against shocks and without backlash; larger and heavier.
+\item \textbf{Series elastic actuator (SEA)}: a spring of known stiffness $k_s$ between the gearbox and the load. The deflection $\Delta\theta$ of the spring, measured by an encoder, gives the torque $\tau=k_s\Delta\theta$ and protects against shocks, but limits the bandwidth.
+\item \textbf{Linear actuators}: a ball screw or roller screw converts rotation to a push-pull force; used in knees and ankles of some humanoids.
+\end{itemize}
+
+\section*{Field-oriented control (FOC)}
+A brushless motor has three phase windings. Seen from the rotor, the interesting quantity is a current \emph{vector}: the component along the magnetic field of the rotor ($d$-axis) makes no torque, the component perpendicular to it ($q$-axis) makes all of it: $\tau=k_t\,I_q$. FOC does the following, thousands of times per second:
+\begin{enumerate}[nosep]
+\item Measure the phase currents (shunt resistors and ADC) and the rotor angle (encoder or Hall sensors).
+\item Transform the currents into the rotating $(d,q)$ frame (Clarke and Park transforms: a rotation matrix by the electrical angle, as you know from Chapter~\ref{ch:py8} and Part~\ref{part:math}).
+\item Two PI controllers drive $I_d\to0$ and $I_q\to I_q^\text{cmd}$.
+\item Transform back and produce the three PWM duty cycles.
+\end{enumerate}
+The loop runs at $10$ to $40$\,kHz inside the driver, so you never write it unless you design a driver; but you should know that the \textbf{torque command is a current command} $I_q^\text{cmd}=\tau^\text{cmd}/k_t$, and that the electrical angle is the mechanical angle times the number of \textbf{pole pairs} $p$: $\theta_e=p\,\theta_m$. A joint motor with $p=14$ completes $14$ electrical turns for each mechanical turn, which is why the encoder has to be calibrated (the \emph{electrical zero offset}) and a wrong offset means a motor that runs rough, hot, or wrong-way.
+
+\section*{The control stack of a joint}
+\begin{center}
+\begin{tikzpicture}[blk/.style={draw,thick,rounded corners=2pt,minimum width=2.6cm,minimum height=0.9cm,align=center,font=\footnotesize},>={Stealth[length=2.5mm]},node distance=0.9cm]
+ \node[blk,fill=green!10] (pol) {policy or\\ whole-body control};
+ \node[blk,fill=blue!10,right=of pol] (pd) {joint PD\\ (position loop)};
+ \node[blk,fill=orange!15,right=of pd] (foc) {driver\\ FOC current loop};
+ \node[blk,fill=gray!15,right=of foc] (mot) {motor\\ + gearbox};
+ \draw[->,thick] (pol)--(pd) node[midway,above,font=\scriptsize]{$q^\text{des}$};
+ \draw[->,thick] (pd)--(foc) node[midway,above,font=\scriptsize]{$\tau$};
+ \draw[->,thick] (foc)--(mot) node[midway,above,font=\scriptsize]{$I_q$};
+ \draw[->,thick,dashed] (mot.south) -- ++(0,-0.7) -| node[pos=0.25,below,font=\scriptsize]{encoder: $q$, $\dot q$} (pd.south);
+ \node[font=\scriptsize,gray] at (0,-1.4) {$\sim$50 Hz};
+ \node[font=\scriptsize,gray] at (3.5,-1.4) {$\sim$500--1000 Hz};
+ \node[font=\scriptsize,gray] at (7,-1.4) {$\sim$20 kHz};
+\end{tikzpicture}
+\captionof{figure}{A joint has several nested loops; each inner one runs faster than the outer one. Typical orders of magnitude, not the values of any specific robot.}\label{fig:hw7_stack}
+\end{center}
+A very common interface for a legged robot is a \textbf{PD law with feed-forward torque}:
+\[
+\tau^\text{cmd}=K_p\,(q^\text{des}-q)+K_d\,(\dot q^\text{des}-\dot q)+\tau_\text{ff}.
+\]
+The robot's control software (or the neural-network policy of Part~\ref{part:rl}) typically sends $q^\text{des}$ and the gains $K_p$, $K_d$; the loop then runs in the driver or in the real-time loop of the robot. High $K_p$ means a stiff joint (it tracks well but reacts hard to disturbances); low $K_p$ means a soft one. Gains that are too high make the joint vibrate (the loop with its delays becomes unstable, Chapter~\ref{ch:hw2}); the same applies to $K_d$ with noisy velocity measurements. Always start with low gains and the robot hanging.
+\begin{example}
+\textbf{PD torque.} $K_p=40$\,Nm/rad and $K_d=1$\,Nm\,s/rad. The target angle is $0.30$\,rad, the joint is at $0.25$\,rad and moving with $0.5$\,rad/s toward the target: $\tau=40\cdot0.05+1\cdot(0-0.5)=2.0-0.5=1.5$\,Nm. With QDD gear $N=9$, $\eta=0.9$, $k_t=0.1$\,Nm/A, the motor torque is $1.5/(9\cdot0.9)=0.185$\,Nm and the current $I_q=1.85$\,A.
+\end{example}
+
+\section*{Limits you must know}
+\begin{itemize}[nosep]
+\item \textbf{Torque limit}: peak (short) and continuous (thermal). A policy that asks for more is clipped; check that clipping happens in the driver as well as in your code.
+\item \textbf{Speed limit}: back-EMF reaches the supply voltage; above this speed the torque falls (field weakening is possible but rarely used). Low battery voltage lowers this limit, so a robot that walks fine with a full battery can fall over with an empty one.
+\item \textbf{Thermal limit}: winding temperature (often $\approx$\,$100$--$120\,^\circ$C); drivers reduce the current when hot (\emph{derating}). Squatting is the worst case (Chapter~\ref{ch:hw6}): the same joints that run a lap may overheat in a few minutes of standing in a crouch.
+\item \textbf{Position limits and calibration}: every joint has mechanical end stops, and the zero position must be calibrated in a defined pose after assembly or after a firmware update.
+\item \textbf{Communication}: joint modules usually sit on a \textbf{CAN} bus (up to $1$\,Mbit/s, shared) or \textbf{EtherCAT} (real-time Ethernet, $\ge100$\,Mbit/s, one packet runs through all modules), see Chapter~\ref{ch:hw3}. The bandwidth is a real limit: a CAN frame with $8$ data bytes takes about $110$\,\textmu s at $1$\,Mbit/s, so $20$ joints at $500$\,Hz need $20\cdot500=10\,000$ frames per second, about $110\,\%$ of the bus (!), ignoring replies. This is why humanoids use several CAN buses or EtherCAT.
+\end{itemize}
+
+\begin{aibox}[Actuators and learned policies]
+In sim-to-real reinforcement learning (Part~\ref{part:rl}) the simulation must contain a model of the actuator: the torque limit, the speed-dependent torque limit (the line of Figure~\ref{fig:hw6_ts}), the PD gains, the delay of the bus, the friction and the reflected inertia. Policies trained with a perfect torque source fail on real motors that saturate or are slower. \emph{Actuator networks} (a small neural network trained on real measurements of command and torque) are one way to capture what a formula cannot.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A rotor has $J=1.5\cdot10^{-4}$\,kg\,m$^2$. Compute the reflected inertia at the output for $N=6$ and for $N=60$.
+  \item Explain in two sentences why a high gear ratio makes a joint hard to back-drive, and why that is bad when the robot falls.
+  \item A QDD joint with $N=8$, $\eta=0.9$ and $k_t=0.12$\,Nm/A must deliver $24$\,Nm at the output. Find the motor torque and the current. With $R=0.15\,\Omega$ calculate the copper loss.
+  \item The joint of problem 3 has $k_m=k_t/\sqrt R$. Compute $k_m$ and check the loss with the formula $(\tau/k_m)^2$.
+  \item $K_p=60$\,Nm/rad, $K_d=2$\,Nm\,s/rad, $q^\text{des}=0.5$, $q=0.4$, $\dot q=-0.2$ (target velocity zero). Compute the torque command.
+  \item The torque limit of the joint is $\pm30$\,Nm. Which is the largest position error that a $K_p=100$ Nm/rad P-controller can correct without saturating?
+  \item A motor with $14$ pole pairs turns the mechanical angle by $30^\circ$. By how many degrees does the electrical angle change? What happens if the encoder offset is wrong by $90$ electrical degrees?
+  \item A CAN bus at $1$\,Mbit/s carries frames of about $110$\,\textmu s. How many joints can be commanded at $200$\,Hz if each needs a command frame and a reply frame, and the bus load may be at most $60\,\%$?
+  \item Name two disadvantages of a QDD joint compared with a high-ratio harmonic drive and two advantages.
+  \item[\textbf{\thechapter.10}$\star$] Write a small Python class \texttt{Actuator} for a simulation, with a torque limit that depends on the speed, $\tau_\text{max}(\omega)=\tau_s(1-|\omega|/\omega_0)$, a delay of $d$ control steps for the command, and the method \texttt{step(tau\_cmd, omega)} that returns the delivered torque. Test it with a constant command of $20$\,Nm and $\tau_s=30$\,Nm, $\omega_0=20$\,rad/s over $\omega=0\ldots20$\,rad/s.
+\end{enumerate}

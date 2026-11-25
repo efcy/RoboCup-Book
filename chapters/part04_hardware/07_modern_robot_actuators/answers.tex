@@ -1,0 +1,28 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $N=6$: $1.5\cdot10^{-4}\cdot36=5.4\cdot10^{-3}$\,kg\,m$^2$; $N=60$: $1.5\cdot10^{-4}\cdot3600=0.54$\,kg\,m$^2$, a factor $100$ more.
+  \item The friction of the gear teeth and the reflected inertia grow with $N$ and, in the other direction, the motor torque seen through the gear is amplified $N$ times, so an outside force has to overcome $N$ times larger resistance; in a fall the impact torque cannot be absorbed by turning the joint, it goes into the teeth, which can break.
+  \item $\tau_m=24/(8\cdot0.9)=3.33$\,Nm; $I=3.33/0.12=27.8$\,A; loss $RI^2=0.15\cdot27.8^2=116$\,W. (High: this joint can only be loaded briefly at this torque.)
+  \item $k_m=0.12/\sqrt{0.15}=0.310$\,Nm/$\sqrt{\text{W}}$; $(3.33/0.310)^2=115.6$\,W $\approx116$\,W. \checkmark
+  \item $\tau=60\cdot0.1+2\cdot(0-(-0.2))=6+0.4=6.4$\,Nm.
+  \item $e_\text{max}=30/100=0.30$\,rad $=17.2^\circ$.
+  \item $\Delta\theta_e=14\cdot30^\circ=420^\circ$ (more than one electrical turn). An offset of $90^\circ$ electrical turns the current vector so that it lies along the $d$-axis instead of the $q$-axis: the motor makes (almost) no torque and gets hot; with an offset of $180^\circ$ it would run in the opposite direction of the command.
+  \item $0.6\cdot1\,\text{s}/110\,\text{\textmu s}=5454$ frames per second; per joint $2\cdot200=400$; $5454/400\approx13$ joints.
+  \item Disadvantages: more heat per torque (higher current), a bigger and heavier motor; no self-holding of position (energy needed to hold). Advantages: backdrivable, torque from the current without a force sensor, robust against impacts, low friction and low reflected inertia, quiet.
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+from collections import deque
+class Actuator:
+    def __init__(self, tau_s, w0, delay=2):
+        self.tau_s, self.w0 = tau_s, w0
+        self.buf = deque([0.0] * delay)
+    def step(self, tau_cmd, omega):
+        self.buf.append(tau_cmd)
+        tau = self.buf.popleft()
+        lim = self.tau_s * max(0.0, 1 - abs(omega) / self.w0)
+        return max(-lim, min(lim, tau))
+a = Actuator(30, 20, delay=2)
+for w in (0, 5, 10, 15, 20):
+    print(w, [round(a.step(20, w), 1) for _ in range(3)][-1])
+\end{verbatim}
+  Output: $20$ Nm at $0$, $5$ ($\tau_\text{max}=22.5$) rad/s, then $15$ at $10$, $7.5$ at $15$ and $0$ at $20$\,rad/s: the limit curve clips the command; the first $d$ steps return $0$ because of the delay.
+\end{enumerate}

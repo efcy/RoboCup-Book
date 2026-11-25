@@ -1,0 +1,23 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $343/440=0.78$\,m; $343/3200=0.107$\,m; $343/20\,000=1.7$\,cm.
+  \item $-6$\,dB per doubling of the distance: $4$\,m is two doublings, $100-12=88$\,dB; $16$\,m four doublings: $76$\,dB. A factor $0.1$ is $20\log_{10}0.1=-20$\,dB.
+  \item More than $6.8$\,kHz; in practice $16$\,kHz. A $4$\,kHz tone at $f_s=5$\,kHz (Nyquist $2.5$\,kHz) appears as $|4-5|=1$\,kHz.
+  \item $16\,000\cdot2\,\text{B}=32$\,kB/s $=115$\,MB/h. $48\,000\cdot3\,\text{B}\cdot2=288$\,kB/s $=1037$\,MB/h $\approx1$\,GB/h.
+  \item $N=4000$ samples, spacing $f_s/N=4$\,Hz. For $5$\,Hz: $N=f_s/5=3200$ samples $=0.2$\,s.
+  \item The window tapers the ends of the block to zero. Without it, the abrupt cut produces ``leakage'': the energy of a tone smears over many bins and hides weak neighbours.
+  \item A single loud event (clap, knock) or a short burst of noise could look like a whistle. A real whistle lasts hundreds of milliseconds, so several consecutive blocks above the threshold reduce false positives; the loudness condition prevents the detector from reacting to silence where the energy ratio is dominated by noise.
+  \item $\sin\varphi=c\Delta t/d=343\cdot(-200\cdot10^{-6})/0.12=-0.572$, so $\varphi=-34.9^\circ$: on the side of the other microphone (sign convention: the negative delay means the source is on the opposite side). Maximum: $d/c=0.12/343=350\,\mu$s.
+  \item A source in front and its mirror image behind the line through the two microphones produce the same path difference. Three non-collinear microphones (a triangle) resolve it; arrays use $4$ to $8$.
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+import numpy as np, matplotlib.pyplot as plt
+fs = 8000; t = np.arange(0, 1, 1/fs)
+x = np.sin(2*np.pi*440*t) + 0.5*np.sin(2*np.pi*1000*t)
+x += np.random.default_rng(0).normal(0, 0.2, t.size)
+X = np.abs(np.fft.rfft(x*np.hanning(x.size))) * 2 / np.hanning(x.size).sum()
+f = np.fft.rfftfreq(x.size, 1/fs)
+peaks = f[(X > 0.2) & (X >= np.roll(X, 1)) & (X >= np.roll(X, -1))]
+print(peaks)        # about [440. 1000.]
+plt.semilogy(f, X); plt.xlabel("Hz"); plt.show()
+\end{verbatim}
+\end{enumerate}

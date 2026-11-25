@@ -1,0 +1,12 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $P=12\cdot2.5=30$\,W. Energy in one hour: $30$\,Wh $=30\cdot3600=108$\,kJ.
+  \item $5$\,V: $R=(5-2.2)/0.015=187\,\Omega$ (choose $180$ or $200\,\Omega$); $3.3$\,V: $(3.3-2.2)/0.015=73\,\Omega$. Power: $2.8\,\text{V}\cdot0.015\,\text{A}=42$\,mW.
+  \item $\left(\frac1{1000}+\frac1{3000}\right)^{-1}=750\,\Omega$. The total is smaller than the smallest single resistor.
+  \item Ratio $3.3/8.4=0.393$: for example $R_1=15\,\text{k}\Omega$, $R_2=10\,\text{k}\Omega$ gives $8.4\cdot\frac{10}{25}=3.36$\,V (slightly too high); $R_1=18\,\text{k}\Omega$, $R_2=10\,\text{k}\Omega$: $8.4\cdot\frac{10}{28}=3.0$\,V at full and $6.0\cdot\frac{10}{28}=2.14$\,V at $6$\,V. The software multiplies by $2.8$.
+  \item $U=2048\cdot0.000806=1.65$\,V (half scale); smallest step $3.3/4096=0.81$\,mV.
+  \item $\tau=RC=4700\cdot100\cdot10^{-6}=0.47$\,s; $5\tau=2.35$\,s.
+  \item Average $0.4\cdot24=9.6$\,V. With a series resistor dropping $14.4$\,V at $3$\,A the loss would be $14.4\cdot3=43$\,W of heat. The MOSFET is either fully on (tiny resistance, tiny voltage drop) or off (no current), so its loss is only a fraction of a watt.
+  \item $921\,600/10=92\,160$ bytes/s; $1000/92\,160=10.9$\,ms.
+  \item I2C devices pull the lines low; the pull-up resistors bring them high again when nobody pulls. Two devices with the same address answer at the same time and the data is garbled; use a different address (if the chip has an address pin), a second bus, or an I2C multiplexer.
+  \item[\textbf{\ansnum.10}] $A=\pi(0.5\,\text{mm})^2=7.85\cdot10^{-7}$\,m$^2$; $R=\rho L/A=1.68\cdot10^{-8}\cdot2/7.85\cdot10^{-7}=0.043\,\Omega$. Voltage drop $U=RI=0.43$\,V; heat $P=RI^2=4.3$\,W in a thin wire, enough to warm it noticeably. Robot battery cables must be thick for high currents (a short cable and a larger cross-section), and connectors must be rated for the current.
+\end{enumerate}

@@ -1,9 +1,180 @@
-\bookchapter{Networking}\label{ch:hw2}
-\begin{keyidea}[Planned content]
-This chapter is not written yet. It will cover:
-\begin{itemize}[nosep]
-  \item IP, UDP and TCP, Wi-Fi
-  \item Latency and bandwidth
-  \item How robots talk to each other and to the referee
-\end{itemize}
+\bookchapter{Networking: From Cable to Socket}\label{ch:hw2}
+
+\section*{Explanation}
+A robot is a small network of computers: the main computer, the motor controllers, the camera, your laptop that starts and watches it, and during a match the referee computer and the other robots. Chapter~\ref{ch:linux7} showed the \emph{commands} (\texttt{ip}, \texttt{ping}, \texttt{ss}) that you use to look at a network. This chapter explains \emph{what the network is and what limits it}: layers, addresses, the two ways to send data (TCP and UDP), the difference between bandwidth and latency, and why Wi-Fi is the weakest link of every robot. At the end you write a small program that sends data over a network.
+
+\section*{Layers}
+Sending a number from one program to another involves many tasks: moving signals through a wire or the air, finding the right computer, making sure that nothing is lost, and giving the data to the right program. Instead of one huge solution, the network is built from \textbf{layers}. Each layer uses the one below and knows nothing about the others.
+\begin{center}
+\begin{tikzpicture}[l/.style={draw,thick,minimum width=7.2cm,minimum height=0.85cm,font=\footnotesize,align=center},>={Stealth[length=2.5mm]}]
+  \node[l,fill=orange!25] at (0,0) {\textbf{Application}: HTTP, SSH, ROS 2 (DDS)};
+  \node[l,fill=yellow!30] at (0,-0.95) {\textbf{Transport}: TCP, UDP (ports)};
+  \node[l,fill=green!20] at (0,-1.9) {\textbf{Internet}: IP (addresses, routing)};
+  \node[l,fill=cyan!20] at (0,-2.85) {\textbf{Link}: Ethernet, Wi-Fi (MAC addresses)};
+  \node[l,fill=blue!15] at (0,-3.8) {\textbf{Physical}: cable, radio, light};
+  \begin{scope}[yshift=-5.2cm,xshift=-3.6cm,font=\scriptsize]
+    \node[draw,fill=cyan!20,minimum height=0.8cm,minimum width=1.9cm,anchor=west] (h1) at (0,0) {Eth. header};
+    \node[draw,fill=green!20,minimum height=0.8cm,minimum width=1.6cm,anchor=west] (h2) at (1.9,0) {IP header};
+    \node[draw,fill=yellow!30,minimum height=0.8cm,minimum width=1.7cm,anchor=west] (h3) at (3.5,0) {TCP header};
+    \node[draw,fill=orange!25,minimum height=0.8cm,minimum width=1.6cm,anchor=west] (h4) at (5.2,0) {your data};
+    \node[draw,fill=cyan!20,minimum height=0.8cm,minimum width=0.4cm,anchor=west] at (6.8,0) {};
+  \end{scope}
+  \node[font=\scriptsize,gray!60!black] at (0,-5.9) {a frame on the wire: every layer adds its own header (the last small box is the checksum)};
+\end{tikzpicture}
+\captionof{figure}{Top: the layers (the four-layer ``internet model'' plus the physical layer). Bottom: a frame on the wire. Each layer \emph{wraps} the data of the layer above with its own header (a label with addresses and counters).}\label{fig:hw2_layers}
+\end{center}
+A frame with data in TCP has $14+20+20=54$ bytes of headers; with UDP the transport header is only $8$ bytes ($42$ in total). A message of $12$ bytes (an integer and a time stamp) is thus carried in a packet that is five times larger than the message itself.
+
+\section*{Addresses}
+\begin{description}
+  \item[MAC address] ($6$ bytes, \texttt{a4:5e:60:12:34:56}): burned into the network card, identifies it on the \emph{local} network. Used by the link layer.
+  \item[IP address] (\texttt{192.168.10.7}, four bytes): identifies a computer in the network and says \emph{where} it is. IPv6 has $16$ bytes and is written in hexadecimal. Private ranges (\texttt{192.168.x.x}, \texttt{10.x.x.x}, \texttt{172.16--31.x.x}) are used inside a building and are not routed on the internet.
+  \item[Subnet mask] (\texttt{255.255.255.0}, or \texttt{/24}): which part of the address is the network and which the host (Chapter~\ref{ch:linux7}). In \texttt{192.168.10.0/24} the computers \texttt{192.168.10.1} to \texttt{.254} can talk directly; for any other address a computer sends the packet to the \textbf{gateway} (the router).
+  \item[Port] ($0\dots65535$): identifies the \emph{program} on a computer. SSH listens on port $22$, HTTPS on $443$. Address plus port, \texttt{192.168.10.7:22}, names a communication end point, a \textbf{socket}.
+  \item[Hostname and DNS:] humans use names (\texttt{k1-robot.local}, \texttt{github.com}); the \textbf{DNS} service translates names to addresses. In a small robot network, \textbf{mDNS} (the \texttt{.local} names) does this without a server.
+\end{description}
+\begin{verbatim}
+>>> import ipaddress
+>>> n = ipaddress.ip_network("192.168.10.0/24")
+>>> n.num_addresses - 2, n.netmask, n.broadcast_address
+(254, IPv4Address('255.255.255.0'), IPv4Address('192.168.10.255'))
+\end{verbatim}
+\textbf{DHCP} gives a computer its address automatically when it joins; for robots it is common to reserve a fixed address per MAC address in the router, so that the robot is always at the same place.
+
+\section*{Devices in the network}
+\begin{center}
+\begin{tikzpicture}[b/.style={draw,rounded corners,thick,align=center,font=\footnotesize,minimum height=0.9cm,minimum width=2.2cm},>={Stealth[length=2.5mm]}]
+  \node[b,fill=blue!10] (lap) at (0,1.2) {laptop\\192.168.10.2};
+  \node[b,fill=gray!15] (sw) at (4.4,0) {\textbf{switch}\\(or router with\\switch inside)};
+  \node[b,fill=green!12] (r1) at (8.8,1.2) {robot K1\\192.168.10.11};
+  \node[b,fill=green!12] (r2) at (8.8,-1.2) {robot K2\\192.168.10.12};
+  \node[b,fill=orange!15] (rt) at (4.4,-2.5) {\textbf{router}\\gateway .1};
+  \node[b,fill=red!10] (net) at (0,-2.5) {internet};
+  \draw[thick] (lap)--(sw); \draw[thick] (sw)--(r1); \draw[thick,dashed,blue!60!black] (sw)--node[above,sloped,font=\scriptsize]{Wi-Fi}(r2); \draw[thick] (sw)--(rt); \draw[thick] (rt)--(net);
+\end{tikzpicture}
+\captionof{figure}{A small robot network in star form. The \textbf{switch} forwards frames only to the port where the receiver sits (it learns the MAC addresses); the \textbf{router} connects this network to others and to the internet. A \textbf{hub} (rare today) repeats everything to everybody.}\label{fig:hw2_star}
+\end{center}
+At home and in the lab, one box (the ``Wi-Fi router'') is switch, router, DHCP server and wireless access point in one. For a competition or a lab with many robots, use a \emph{dedicated} router with a fixed configuration and a separate wired switch.
+
+\section*{Bandwidth and latency}
+Two numbers describe a connection, and they are independent.
+\begin{keyidea}[Bandwidth is not latency]
+\textbf{Bandwidth} (throughput) is how much data per second can flow: Mbit/s. \textbf{Latency} is how long one small message needs from sender to receiver (often measured as the round-trip time, RTT, by \texttt{ping}): milliseconds. A truck full of disks has huge bandwidth and terrible latency; a motor command needs low latency and almost no bandwidth, a video stream needs bandwidth. \textbf{Jitter} is the variation of the latency; for control loops it hurts as much as the mean.
 \end{keyidea}
+The time for a message of $L$ bits over a link of rate $R$ with the distance $d$ is
+\[
+t \;=\; \underbrace{\frac{L}{R}}_{\text{transmission}} \;+\; \underbrace{\frac{d}{c'}}_{\text{propagation}} \;+\; \text{queues and processing},\qquad c'\approx2\cdot10^8\,\text{m/s}\;(\text{in a cable}).
+\]
+A $1500$-byte frame needs $120\,\mu$s on a $100$ Mbit/s link and $12\,\mu$s on gigabit Ethernet; $1$ MB takes $80$ ms or $8$ ms. Propagation over $100$ m of cable takes $0.5\,\mu$s, over the Atlantic about $32$\,ms. In a robot lab, the \emph{queues} dominate: when too much traffic enters a switch or the Wi-Fi, packets wait.
+
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.5mm]}]
+  \draw[thick] (0,0)--(0,-3.4); \draw[thick] (5,0)--(5,-3.4);
+  \node[font=\footnotesize\bfseries] at (0,0.3) {sender}; \node[font=\footnotesize\bfseries] at (5,0.3) {receiver};
+  \draw[->,thick,blue!60!black] (0,-0.2)--(5,-1.0); \node[font=\scriptsize,blue!60!black,rotate=-9] at (2.5,-0.36) {data};
+  \draw[->,thick,green!50!black] (5,-1.2)--(0,-2.0); \node[font=\scriptsize,green!50!black,rotate=9] at (2.5,-1.85) {answer};
+  \draw[decorate,decoration={brace,amplitude=4pt}] (-0.4,-2.0)--(-0.4,-0.2) node[midway,left,font=\footnotesize]{RTT};
+\end{tikzpicture}
+\captionof{figure}{The round-trip time (RTT) that \texttt{ping} measures: the way to the receiver, its processing and the way back.}\label{fig:hw2_rtt}
+\end{center}
+
+\section*{TCP and UDP}
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{3.2cm}p{4.8cm}p{4.8cm}}
+ & \textbf{TCP} & \textbf{UDP}\\ \hline
+Connection & yes (handshake first) & none, just send\\
+Delivery & guaranteed, in order, lost packets are resent & may be lost, duplicated or reordered\\
+Flow control & slows down when the network is full & none\\
+Overhead & $20$ byte header, extra packets & $8$ byte header\\
+Typical use & SSH, web, file copy, \texttt{git} & sensor streams, video, voice, discovery, games, ROS~2 (DDS) data\\
+\end{tabular}
+\end{center}
+The question is: what is worse, a \emph{lost} value or a \emph{late} value? A file must arrive completely, so use TCP. A joint angle that is $0.5$\,s late is useless, and resending it only delays the newer ones (``head-of-line blocking'': TCP delivers in order, so one lost packet stops everything behind it). Then UDP is better, and the program tolerates loss. Robots use both: UDP-like transport for streams and TCP for commands that must arrive.
+
+\subsection*{Sockets in Python}
+A \textbf{socket} is the program's handle to the network. A small UDP echo server and client in one program, measuring the round-trip time on the same computer:
+\begin{verbatim}
+import socket, struct, threading, time
+
+srv = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)     # UDP
+srv.bind(("127.0.0.1", 0))              # port 0: any free port
+port = srv.getsockname()[1]
+
+def echo():
+    while True:
+        data, addr = srv.recvfrom(2048)
+        if data == b"quit":
+            break
+        srv.sendto(data, addr)                             # send it back
+threading.Thread(target=echo, daemon=True).start()
+
+c = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+c.settimeout(1.0)                       # never block forever
+rtts = []
+for i in range(200):
+    t0 = time.perf_counter()
+    c.sendto(struct.pack("!Id", i, t0), ("127.0.0.1", port))   # int + double
+    data, _ = c.recvfrom(2048)
+    rtts.append((time.perf_counter() - t0) * 1e6)
+print(f"mean {sum(rtts)/len(rtts):.0f} us, max {max(rtts):.0f} us")
+\end{verbatim}
+\begin{verbatim}
+mean 60 us, max 707 us
+\end{verbatim}
+On the loopback interface there is no cable, yet the mean is $60\,\mu$s and the maximum is ten times larger: the delay of the software stack and the scheduler (Chapter~\ref{ch:linux8}). \texttt{struct.pack("!Id", ...)} turns numbers into bytes: \texttt{!} means network byte order (big endian), \texttt{I} a $4$-byte integer, \texttt{d} an $8$-byte double, $12$ bytes in total. Binary messages must have a defined layout like this, or a text format such as JSON (Chapter~\ref{ch:py5}), which is larger but easy to read.
+
+The same with TCP needs a \texttt{listen}/\texttt{accept} on the server and \texttt{create\_connection} on the client; the data arrives as a \emph{stream} without message boundaries (one \texttt{recv} may return half a message), so you must add lengths or separators yourself. For robot data, the usual answer is to use a ready-made protocol: ROS~2 topics (Part~\ref{part:ros}), ZeroMQ, or HTTP/WebSocket for user interfaces.
+
+\section*{Wireless: Wi-Fi}
+Wi-Fi is wonderful for convenience and a danger for reliability. The radio channel is a \textbf{shared medium}: all devices on the same channel take turns, and they must wait while somebody else transmits. Consequences:
+\begin{itemize}[nosep]
+  \item The advertised ``$1200$ Mbit/s'' is a physical peak; real throughput is about half, and it is shared by all devices and halves again for each device that is far away and slow.
+  \item \textbf{Interference:} other Wi-Fi networks on the same channel, Bluetooth, microwave ovens and many hundred phones at a competition. The $2.4$\,GHz band has only three non-overlapping channels (1, 6, 11) and is crowded; the $5$\,GHz band ($6$\,GHz for Wi-Fi 6E) has more channels and less range. Tournament organisers often forbid private access points for this reason.
+  \item \textbf{Signal strength} is measured in dBm (a logarithmic scale; $-50$ dBm is excellent, $-70$ dBm marginal, $-80$ dBm unusable). Metal, bodies and distance reduce it. A robot that walks away from the access point or behind a metal fence can suddenly lose connection.
+  \item Latency and jitter are not guaranteed: a ping that is usually $3$\,ms can take $200$\,ms when the channel is busy or when the card scans for other access points.
+\end{itemize}
+\begin{verbatim}
+$ iw dev wlan0 link              # connected network, signal, bit rate
+$ nmcli dev wifi list            # networks and channels around you
+$ ping -i 0.2 -c 50 192.168.10.1 # latency and loss to the router
+$ iperf3 -s                      # on one side; on the other: iperf3 -c HOST
+\end{verbatim}
+\begin{keyidea}[Cable where it matters]
+Use \textbf{Ethernet} for everything that must be reliable: between the robot computer and its motor or camera modules, and for the connection of a laptop to the robot during development when possible. Use Wi-Fi for monitoring and non-critical commands, and design the robot so that a lost connection means a \textbf{safe stop} or autonomous behaviour (Chapters~\ref{ch:py12} and~\ref{ch:hw8}). A control loop that runs over Wi-Fi \emph{will} fail at the worst moment.
+\end{keyidea}
+
+\section*{Cables and standards}
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{p{3.8cm}p{9.2cm}}
+\textbf{Standard} & \textbf{Notes}\\ \hline
+Ethernet 100BASE-T / 1000BASE-T & $100$ Mbit/s / $1$ Gbit/s over twisted pairs (Cat\,5e or better), up to $100$ m; plug RJ45\\
+Ethernet 2.5G / 10G & faster, needs Cat\,6 or better\\
+PoE (power over Ethernet) & a camera or access point gets its power through the same cable\\
+USB 2.0 / 3.x & $480$ Mbit/s / $5$ Gbit/s and more; cameras, microphones, adapters\\
+Wi-Fi 5 / 6 / 7 & 802.11ac / ax / be; peak rates from $1$ to over $5$ Gbit/s, real rates much lower\\
+\end{tabular}
+\end{center}
+Cheap or damaged cables are a classic cause of strange network faults: a link that negotiates $100$ Mbit/s instead of $1$ Gbit/s, or with many errors (\texttt{ethtool eth0} shows speed and \texttt{ip -s link} the error counters). A cable that moves with a robot joint must be rated for flexing and secured with strain relief.
+
+\section*{Time}
+Several computers must agree on the time: for logs, for sensor fusion (``camera frame at $t$, IMU sample at $t$'') and for certificates. The protocol \textbf{NTP}, implemented by \texttt{chrony} on current Ubuntu (Chapter~\ref{ch:linux7}), keeps clocks within milliseconds of each other. For microsecond accuracy in a robot (synchronised camera and IMU) there is \textbf{PTP} (IEEE 1588) with hardware support. Check with \verb!chronyc tracking!.
+
+\begin{example}
+\textbf{Can the camera stream reach the laptop?} A $640\times480$ colour camera with $30$ fps and MJPEG compression of about $10\!:\!1$ produces $27.6/10\approx2.8$ MB/s $=22$ Mbit/s (Chapter~\ref{ch:hw1}). A Wi-Fi link with $70$ Mbit/s real throughput, shared by three robots, leaves about $23$ Mbit/s each: barely enough, with no reserve for jitter. Options: lower the resolution to $320\times240$ (a quarter of the data), the frame rate to $15$ fps, process the image on the robot and send only the results (a few bytes), or use a cable. The last two are what competition robots do.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Name the four layers of the internet model and one protocol of each. Which layer decides \emph{which program} gets a packet?
+  \item In the network \texttt{192.168.10.0/24}, how many computers can have an address? Is \texttt{192.168.11.5} in the same network?
+  \item What is the difference between a switch and a router?
+  \item A file of $50$ MB is copied over a $100$ Mbit/s link (real rate $90$ Mbit/s). How long does it take? And over gigabit Ethernet (real $940$ Mbit/s)?
+  \item Explain the difference between bandwidth and latency with an example from a robot.
+  \item A joint-angle message has $12$ bytes of data. Compute the size of the Ethernet frame with UDP ($14+20+8$ header bytes) and the share of useful data. At $500$ messages per second, what is the data rate in Mbit/s?
+  \item For each case choose TCP or UDP and justify: (a) copying a trained model to the robot, (b) streaming the pose of the robot at $100$ Hz, (c) logging in with \texttt{ssh}, (d) the emergency-stop command.
+  \item Why can several robots on one Wi-Fi channel disturb each other, even with enough nominal bandwidth?
+  \item Write a program that sends a UDP message \texttt{"hello"} to \texttt{127.0.0.1} port $5005$, and a second program that receives and prints it.
+  \item[\textbf{\thechapter.10}$\star$] The $50$ Hz controller of a robot gets its commands over Wi-Fi from a laptop. At random moments the robot stumbles. Describe how you measure whether the network is the cause, and give three design changes that make the robot robust against it.
+\end{enumerate}

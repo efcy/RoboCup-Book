@@ -1,0 +1,140 @@
+\bookchapter{Microphones and Sound}\label{ch:hw5}
+
+\section*{Explanation}
+In a RoboCup match the referee tells the robots by \emph{whistle} when to start, and a robot that hears the whistle must react within a second. A home robot should understand speech. Sound is the second big sensor channel after vision, and it is a good way to learn the basics of signals: sampling, frequency, the Fourier transform. This chapter follows the path of sound from the air to a number in your Python program: the physics, the microphone, the digital signal, the spectrum, and finally two applications: detecting a whistle and finding the direction of a sound. The Linux side (devices, PulseAudio/PipeWire, \texttt{arecord}) is in Chapter~\ref{ch:linux6}.
+
+\section*{Sound is a pressure wave}
+A sound is a small, fast variation of the air pressure that travels as a wave with the speed $c\approx343$\,m/s (at $20^\circ$C). The \textbf{frequency} $f$ (hertz, Hz) is the number of oscillations per second and determines the pitch; the \textbf{wavelength} is $\lambda=c/f$. Humans hear about $20$\,Hz to $20$\,kHz. A referee whistle has its main frequency near $2$ to $4$\,kHz ($\lambda\approx10$\,cm at $3.2$\,kHz), a motor hum is a few hundred hertz ($\lambda\approx2$\,m at $180$\,Hz), speech lies mainly between $100$\,Hz and $4$\,kHz.
+
+The loudness is expressed on a logarithmic scale, the \textbf{decibel}, because the ear (and the range of pressures) is logarithmic. For two amplitudes $A_1$ and $A_2$:
+\[
+\text{level difference}=20\log_{10}\frac{A_2}{A_1}\ \text{dB}.
+\]
+Doubling the amplitude is $+6$\,dB, ten times is $+20$\,dB, half is $-6$\,dB. Doubling the \emph{distance} to a sound source reduces the level by $6$\,dB (free field). Absolute levels are given as sound pressure level in dB SPL against the threshold of hearing: a quiet room has $30$\,dB, speech $60$\,dB, a whistle at $1$\,m about $100$ to $110$\,dB, and a noisy hall with a cheering crowd $90$\,dB or more, which is a problem for any microphone.
+
+\section*{The microphone}
+A microphone turns pressure into voltage. Almost all robots use \textbf{MEMS microphones}: tiny silicon membranes in a chip of $3\times4$\,mm that are cheap, robust and available with a digital output. The two common digital interfaces are \textbf{I2S} (a stream of samples with a clock; used by microcontrollers and single-board computers) and \textbf{PDM} (a $1$-bit stream at a high rate that needs a decimation filter). USB microphones and the ``microphone array'' products with $4$ to $8$ microphones contain this electronics and appear on the computer as a normal audio device (Chapter~\ref{ch:linux6}). Properties to compare in the data sheet:
+\begin{itemize}[nosep]
+  \item \textbf{Sensitivity} (output at $94$\,dB SPL) and \textbf{signal-to-noise ratio} (SNR, $60$ to $70$\,dB is typical): how quiet a sound can be.
+  \item \textbf{Acoustic overload point} (AOP, e.g.\ $120$\,dB SPL): the loudest sound before the signal is distorted. A whistle next to the microphone can exceed it.
+  \item \textbf{Directivity}: omnidirectional (most MEMS) or directional.
+  \item \textbf{Frequency response}: flat in the band of interest.
+\end{itemize}
+Mounting matters: a microphone inside a robot torso hears the motors, the gears and the fan louder than anything outside, because vibration travels through the structure. Mount it on rubber, away from motors and fans, with a clear opening to the outside.
+
+\section*{From pressure to numbers: sampling}
+An analog-to-digital converter takes $f_s$ measurements per second (the \textbf{sample rate}) and quantises each to $n$ bits (Chapter~\ref{ch:hw3}). Two numbers determine the quality:
+\begin{itemize}[nosep]
+  \item The \textbf{Nyquist theorem}: frequencies up to $f_s/2$ can be represented; higher ones appear as false lower ones (aliasing, Chapter~\ref{ch:hw4}). Therefore speech recognition uses $16$\,kHz (up to $8$\,kHz) and music $44.1$ or $48$\,kHz (up to $20$ or $24$\,kHz). To catch a $3.2$\,kHz whistle, $16$\,kHz is plenty.
+  \item The \textbf{bit depth}: $16$ bit gives $96$\,dB of dynamic range ($6$\,dB per bit); $24$ bit more. In Python the samples are usually \texttt{int16} ($-32768\dots32767$) or \texttt{float32} in $[-1,1]$.
+\end{itemize}
+The data rate is $f_s\cdot\text{bits}\cdot\text{channels}$: $16$\,kHz, $16$ bit, mono is $32$\,kB/s; $48$\,kHz stereo $192$\,kB/s. Audio is a stream with a hard deadline: if the program does not take the samples fast enough, the buffer overflows and samples are lost (``xrun'' in the logs). A process reads blocks of, say, $1024$ samples ($64$\,ms at $16$\,kHz): the block size is also the minimum latency.
+
+\section*{Frequencies: the Fourier transform}
+A recording over time (Figure~\ref{fig:hw5_spec}, left) hides what it contains. The \textbf{Fourier transform} writes any signal as a sum of sine waves of different frequencies and tells how strong each is. The \textbf{FFT} (fast Fourier transform) computes it efficiently, and NumPy provides it:
+\begin{verbatim}
+import numpy as np
+fs = 16000
+t = np.arange(0, 1.0, 1 / fs)
+x = 0.3 * np.sin(2 * np.pi * 3200 * t)              # a 3.2 kHz whistle
+x += 0.2 * np.sin(2 * np.pi * 180 * t)              # motor hum
+x += np.random.default_rng(5).normal(0, 0.05, t.size)   # noise
+
+w = np.hanning(x.size)                              # window: avoids leakage
+X = np.abs(np.fft.rfft(x * w)) * 2 / w.sum()        # magnitude spectrum
+f = np.fft.rfftfreq(x.size, 1 / fs)                 # frequency of each bin
+print(f[np.argmax(X)])                              # 3200.0
+\end{verbatim}
+\begin{center}
+\includegraphics[width=0.98\textwidth]{hw/spectrum.png}
+\captionof{figure}{Left: $0.1$\,s of a signal in the time domain, a mess. Right: its spectrum shows clearly the whistle at $3.2$\,kHz and the motor hum at $180$\,Hz; the noise forms a low floor (note the logarithmic vertical axis).}\label{fig:hw5_spec}
+\end{center}
+The bins of an FFT over $N$ samples are $f_s/N$ apart: $1$\,s at $16$\,kHz gives a resolution of $1$\,Hz, $64$\,ms gives $15.6$\,Hz. A short window gives quick reaction, a long window precise frequency: the \textbf{time--frequency trade-off}. The \textbf{spectrogram} (the FFT of consecutive short windows drawn as an image, \texttt{plt.specgram}) shows how the spectrum changes over time; it is also the input picture of many neural networks for speech and sound.
+
+\section*{Application 1: detect the whistle}
+A first detector for the referee whistle needs no neural network: compute the spectrum of every block ($64$\,ms) and compare the energy in the whistle band with the rest.
+\begin{verbatim}
+def whistle_score(block, fs, band=(2500, 4000)):
+    w = np.hanning(block.size)
+    X = np.abs(np.fft.rfft(block * w)) ** 2
+    f = np.fft.rfftfreq(block.size, 1 / fs)
+    in_band = X[(f >= band[0]) & (f <= band[1])].sum()
+    return in_band / (X.sum() + 1e-12)               # share of the energy
+
+# the decision: the score must stay high for several blocks in a row
+hits = 0
+for block in blocks:                                  # blocks of 1024 samples
+    loud = block.std() > 0.02
+    hits = hits + 1 if loud and whistle_score(block, fs) > 0.5 else 0
+    if hits >= 3:
+        print("WHISTLE")
+\end{verbatim}
+In the example of Figure~\ref{fig:hw5_spec} the spectral peak is $0.30$ during the whistle, whereas without whistle the energy above $2.5$\,kHz is below $0.005$: a factor of $60$. The additional conditions (loud enough, three blocks in a row) avoid false triggers by a clap or a screeching shoe. Real matches are harder: the crowd, other robots' speakers, and whistles with different pitch. The spectrum is the right starting point, and you tune the band and the thresholds with \emph{recordings from the real hall} (record them with \verb!arecord -f S16_LE -r 16000 -c 1 -d 10 hall.wav! and test the detector offline, Chapter~\ref{ch:py11}). If the rules are not enough, a small neural network that takes a spectrogram works better (Part~\ref{part:ai}).
+
+\section*{Application 2: which direction does the sound come from?}
+Two microphones at distance $d$ hear a sound from the angle $\varphi$ (measured from the straight-ahead direction) with a time difference (TDOA)
+\[
+\Delta t=\frac{d\,\sin\varphi}{c}.
+\]
+For $d=8$\,cm and $\varphi=40^\circ$: $\Delta t=0.08\cdot0.643/343=150\,\mu$s. The largest possible difference ($\varphi=90^\circ$) is $d/c=233\,\mu$s, only $3.7$ samples at $16$\,kHz, so the signals must be compared with sub-sample accuracy (interpolation). Solving for the angle: $\varphi=\arcsin(c\,\Delta t/d)$.
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.5mm]}]
+  \fill[blue!70!black] (-0.4,0) circle (0.12) node[below left,font=\footnotesize]{mic 1};
+  \fill[blue!70!black] (0.4,0) circle (0.12) node[below right,font=\footnotesize]{mic 2};
+  \draw[<->] (-0.4,-0.5)--(0.4,-0.5) node[midway,below,font=\footnotesize]{$d$};
+  \draw[->,thick,gray] (0,0)--(0,3.4) node[above,font=\footnotesize]{straight ahead};
+  \draw[orange!80!black,thick,->] (5.0,4.2)--(0.4,0.14);
+  \draw[orange!80!black,thick,->] (4.2,4.9)--(-0.4,0.8) ;
+  \foreach \k in {0.0,0.6,1.2}{\draw[orange!50!black,dashed] ({-0.4+\k*0.75+0.1},{0.8+\k*0.85+0.1})--({0.4+\k*0.75+0.1+0.8},{0.8+\k*0.85-0.8+0.1});}
+  \draw[thick,red!70!black] (-0.4,0)--(0.4+0.0,0) ;
+  \node[font=\footnotesize,orange!60!black] at (4.5,2.3) {sound wave};
+  \draw (0,1.0) arc (90:50:1.0) node[midway,above right,font=\footnotesize]{$\varphi$};
+  \draw[red!70!black,thick] (0.4,0)--(0.4+0.30,0.32);
+  \node[font=\footnotesize,red!70!black,anchor=west] at (1.1,0.3) {extra path $c\,\Delta t=d\sin\varphi$};
+\end{tikzpicture}
+\captionof{figure}{A plane wave reaches mic 2 first and mic 1 later by the extra path $d\sin\varphi$.}\label{fig:hw5_tdoa}
+\end{center}
+How to measure $\Delta t$? Shift one signal against the other and find the shift with the highest similarity: the \textbf{cross-correlation}. The standard method for rooms with echoes is \textbf{GCC-PHAT}: it normalises the spectrum so that only the \emph{phase} counts, which gives a sharp peak.
+\begin{verbatim}
+def gcc_phat(a, b, fs, d, c=343.0, interp=16):
+    n = a.size
+    A, B = np.fft.rfft(a, 2 * n), np.fft.rfft(b, 2 * n)
+    R = B * np.conj(A)
+    R /= np.abs(R) + 1e-12                              # PHAT weighting
+    cc = np.fft.irfft(R, n=interp * 2 * n)   # interpolated correlation
+    m = int(interp * fs * d / c) + 1                    # only physical delays
+    cc = np.concatenate((cc[-m:], cc[:m + 1]))
+    return (np.argmax(np.abs(cc)) - m) / (interp * fs)  # delay in seconds
+
+tau = gcc_phat(mic1, mic2, fs, d=0.08)
+angle = np.degrees(np.arcsin(np.clip(tau * 343 / 0.08, -1, 1)))
+\end{verbatim}
+In a simulation with noise (a source from $40^\circ$, noise level $0.3$ of the signal) the method found $\Delta t=152\,\mu$s (true $150\,\mu$s) and the angle $40.8^\circ$. With two microphones there is a front--back ambiguity (a mirror direction gives the same delay); three or more microphones in a plane, like the arrays that are sold for voice assistants, give the direction in the whole circle by combining several pairs. The same idea, run in reverse with the speakers of many robots, is how ultrasound and radio positioning systems work.
+
+\section*{Sound on the robot: practical issues}
+\begin{itemize}[nosep]
+  \item \textbf{Self-noise:} motors, gears and fans produce loud, narrow frequency lines (Figure~\ref{fig:hw5_spec}). Mount the microphone well, and remove the lines with a \emph{notch} or band-stop filter, or use a different frequency band for detection. A recording while the robot walks \emph{without} any outside sound tells you what to filter.
+  \item \textbf{Reverberation} in a big hall smears sound in time. A directional or array microphone helps.
+  \item \textbf{Clipping:} a signal beyond the range is cut off and has harmonics at all frequencies; reduce the gain.
+  \item \textbf{Latency:} audio buffers add $20$ to $100$\,ms. For a reaction to a whistle this is fine; for echo cancellation or control it is not.
+  \item \textbf{Speech} (wake word, recognition, translation) is a task for neural networks (Part~\ref{part:ai}); the front end described here (sampling, spectrogram, direction, noise reduction) is the same.
+  \item Playing sound: the speaker of the robot is also a source of noise for its own microphone; do not listen while you talk, or use echo cancellation (provided by PipeWire/PulseAudio modules).
+\end{itemize}
+
+\begin{keyidea}[Time and frequency are two views of one signal]
+The same sound can be described as pressure over \emph{time} or as strength over \emph{frequency}. The Fourier transform converts between them. Many problems that are hard in one view (finding a whistle in noise) are easy in the other. The same idea applies to the vibration of a motor, the signal of an IMU and the layers of image networks.
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Compute the wavelength of $440$\,Hz, $3.2$\,kHz and $20$\,kHz in air ($343$\,m/s).
+  \item A whistle is $100$\,dB at $1$\,m. How loud is it at $4$\,m, and at $16$\,m (free field)? An amplitude is multiplied by $0.1$: how many dB is that?
+  \item Which sample rate do you need to record a $3.4$\,kHz whistle without aliasing? What do you get at $5$\,kHz sample rate for a $4$\,kHz tone?
+  \item Compute the data rate in MB per hour for $16$\,kHz, $16$ bit, mono and for $48$\,kHz, $24$ bit, stereo.
+  \item A signal of $0.25$\,s is recorded at $16$\,kHz and analysed with an FFT. What is the spacing of the frequency bins? What window length do you need for a spacing of $5$\,Hz?
+  \item What does the Hann window in the code do, and what happens without it?
+  \item In the whistle detector, why do we require several blocks in a row and a minimum loudness?
+  \item Two microphones at $12$\,cm distance measure $\Delta t=-200\,\mu$s. Compute the angle and say on which side the source is. What is the maximum possible $|\Delta t|$?
+  \item Why can you not distinguish front and back with two microphones? How many do you need for a full circle?
+  \item[\textbf{\thechapter.10}$\star$] Generate a signal that consists of two tones, $440$ and $1000$\,Hz, with noise. Use the FFT to find both frequencies automatically (peaks above a threshold), and plot the spectrum with Matplotlib.
+\end{enumerate}

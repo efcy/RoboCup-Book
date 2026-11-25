@@ -1,3 +1,4 @@
+
 % ---------------- Title page texts ----------------
 \newcommand{\BookTitle}{Road to RoboCup}
 \newcommand{\BookSubtitle}{The Math Behind Neural Networks and\\ Soccer-Playing Robots\\[0.2em]--- Starting from the Basics}
@@ -22,8 +23,9 @@
 \usepackage[most]{tcolorbox}
 \usepackage{xcolor}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning,calc}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric,decorations.pathreplacing,fit}
 \usepackage{pgfplots}
+\usepackage[american]{circuitikz}
 \usepgfplotslibrary{groupplots}
 \pgfplotsset{compat=1.18}
 \usepackage{etoolbox}
@@ -192,3 +194,8 @@
 \title{\BookTitle}
 \author{\BookAuthor}
 \date{}
+
+\usepackage{listings}
+\lstset{basicstyle=\ttfamily,breaklines=true,columns=fullflexible,upquote=true,keepspaces=true,showstringspaces=false,postbreak={}}
+\let\verb\lstinline % inline code that can break across lines
+\setlength{\emergencystretch}{3em}

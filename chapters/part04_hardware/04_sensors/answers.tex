@@ -1,0 +1,26 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Accuracy: closeness of the \emph{mean} to the true value (small bias). Precision: closeness of repeated measurements to each other (small noise). Calibration removes a constant bias (improves accuracy), averaging reduces random noise (improves precision).
+  \item $4000$\,mg$/2^{14}=0.244$\,mg per count.
+  \item $4\cdot2048=8192$ counts per turn, $360/8192=0.044^\circ$ per count at the motor. With $1\!:\!10$ gear (motor turns $10$ times per joint turn): $0.0044^\circ$ per count at the joint. $90^\circ$ at the joint $=900^\circ$ at the motor, $900/0.044=20\,480$ counts.
+  \item Without aliasing for $f_s>120$\,Hz (more than twice $60$ Hz; in practice $300$\,Hz or more). At $80$\,Hz the Nyquist frequency is $40$\,Hz and the $60$\,Hz vibration appears as $|60-80|=20$\,Hz.
+  \item $0.5\cdot120=60^\circ$. Calibrate the bias while standing still and subtract it, and fuse with a drift-free sensor (accelerometer for tilt, magnetometer or vision for heading).
+  \item The accelerometer measures gravity \emph{plus} all accelerations of the robot, so steps look like tilt (large, high-frequency errors) and it is noisy. The gyro measures only rotation speed, integration accumulates the bias and noise, so the error grows without bound.
+  \item $\tau=\alpha\Delta t/(1-\alpha)=0.98\cdot0.01/0.02=0.49$\,s. For $\alpha=0.999$: $\tau=10$\,s, trusts the gyro much longer, slow correction, drift is removed too slowly. For $\alpha=0.5$: $\tau=0.01$\,s, follows the noisy accelerometer almost directly.
+  \item $f_\text{px}=640/\tan45^\circ=640$ pixels. Width: $640\cdot0.13/Z=41.6,\ 16.6,\ 8.3$ pixels at $2,5,10$\,m.
+  \item $Z=700\cdot0.12/14=6.0$\,m. $\Delta Z\approx Z^2\Delta d/(f_\text{px}B)=36\cdot0.5/84=0.21$\,m ($\approx3.6\,\%$).
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+import numpy as np
+rng = np.random.default_rng(3)
+dt = 0.01; t = np.arange(0, 10, dt)
+true = np.deg2rad(20) * np.sin(2*np.pi*0.3*t)
+gyro = np.gradient(true, dt) + 0.03 + rng.normal(0, 0.02, t.size)
+acc = true + rng.normal(0, 0.12, t.size)
+for alpha in (0.9, 0.98, 0.998):
+    est = np.zeros_like(t)
+    for k in range(1, t.size):
+        est[k] = alpha*(est[k-1] + gyro[k]*dt) + (1-alpha)*acc[k]
+    print(alpha, np.rad2deg(np.sqrt(np.mean((est - true)**2))))
+\end{verbatim}
+  Small $\alpha$ lets accelerometer noise through, large $\alpha$ lets the gyro drift grow before the correction acts; the best value lies in between (here around $0.98$). A Kalman filter chooses the weighting from the noise levels.
+\end{enumerate}

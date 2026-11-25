@@ -1,0 +1,24 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $I_s=24/1=24$\,A; $\tau_s=0.05\cdot24=1.2$\,Nm; $\omega_0=24/0.05=480$\,rad/s $=4584$\,rpm; $P_\text{max}=1.2\cdot480/4=144$\,W.
+  \item $I=0.2/0.05=4$\,A; $\omega=(24-1\cdot4)/0.05=400$\,rad/s; $P_\text{mech}=0.2\cdot400=80$\,W; $P_\text{el}=24\cdot4=96$\,W; efficiency $83\,\%$; heat $RI^2=16$\,W.
+  \item The current stays $4$\,A (same torque), the speed becomes $(12-4)/0.05=160$\,rad/s, less than half. The motor accelerates as long as $U>R I+k\omega$, i.e.\ as long as the net voltage drives more current than the load needs; it settles when the back-EMF has risen so far that the current equals $\tau/k$.
+  \item Copper loss $RI^2$ does not depend on motion: the current needed to produce the torque flows anyway. $P=(\tau/k_m)^2=(2/0.25)^2=64$\,W with zero mechanical output.
+  \item $\tau_\text{out}=0.5\cdot20\cdot0.85=8.5$\,Nm; $\omega_\text{out}=300/20=15$\,rad/s; $P_\text{out}=127.5$\,W against $P_\text{in}=150$\,W (efficiency $0.85$).
+  \item $J_\text{out}=J N^2=3\cdot10^{-5}\cdot2500=0.075$\,kg\,m$^2$. At a landing, the stopping of the joint must also decelerate this large reflected inertia, so a very high torque acts on the gear teeth (which can break), and the joint cannot yield.
+  \item Forward: S1+S4; reverse: S2+S3; brake: both lower switches S3+S4 (or both upper) closed, the motor is shorted and decelerates by its own back-EMF; coast: all open, free-wheeling. S1+S3 (or S2+S4) together short the supply (``shoot-through'') and must never happen; the driver inserts a dead time.
+  \item Average voltage $0.6\cdot12=7.2$\,V. The supply delivers $12\,\text{V}\cdot4\,\text{A}=48$\,W on average, and the (nearly lossless) switches pass it on to the motor, which sees $7.2$\,V at an average current of $4/0.6=6.7$\,A during on-time only if the supply current is pulsed; as a simple estimate, motor power $\approx48$\,W. A series resistor that dropped the same $4.8$\,V would burn $4.8\cdot I$ in heat; PWM switches are either fully on (no voltage across) or off (no current), so they lose almost nothing.
+  \item Needed motor torque with $\eta=0.9$: $\tau_m=30/(N\cdot0.9)\le0.8$ gives $N\ge41.7$, take $N=45$: $\tau_m=0.74$\,Nm. Speed: $3\cdot45=135$\,rad/s, below $400$\,rad/s, reachable (the torque at that speed is lower than at stall, check the torque--speed line).
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+import numpy as np, matplotlib.pyplot as plt
+def motor_point(tau, U, k, R):
+    I = tau / k
+    w = (U - R * I) / k
+    Pm, Pe = tau * w, U * I
+    return I, w, Pm, Pe, (Pm / Pe if Pe > 0 else 0.0)
+tau = np.linspace(0.01, 0.7, 200)
+eta = [motor_point(t, 12, 0.03, 0.5)[4] for t in tau]
+plt.plot(tau, eta); plt.xlabel("torque (Nm)"); plt.ylabel("efficiency")
+\end{verbatim}
+  Efficiency is $\eta=\tau\omega/(UI)=1-R\tau/(kU)$; numerically it is $98.6\,\%$ at $0.01$\,Nm, $86\,\%$ at $0.1$\,Nm, $50\,\%$ at $0.36$\,Nm (the maximum-power point) and $17\,\%$ at $0.6$\,Nm. It falls with the load, so the best efficiency is at light load and the point of maximum power is only $50\,\%$ efficient. (Real motors also have friction and iron losses, so at very light load the efficiency drops again.) A robot motor is operated at a moderate load, not at maximum power.
+\end{enumerate}
