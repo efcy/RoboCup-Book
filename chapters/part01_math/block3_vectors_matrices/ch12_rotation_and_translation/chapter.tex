@@ -21,7 +21,7 @@ Which matrix rotates every vector by the angle $\theta$ (counterclockwise) about
   \node[font=\small] at (105:0.42) {$\theta$};
 \end{tikzpicture}
 
-\small\textbf{Figure 8.} Rotating the basis vectors by $\theta=30^\circ$ gives the columns of $R(\theta)$.
+\captionof{figure}{Rotating the basis vectors by $\theta=30^\circ$ gives the columns of $R(\theta)$.}\label{fig:b3_8}
 \end{center}
 
 \begin{example}
@@ -45,7 +45,7 @@ The length is unchanged: $\sqrt{3^2+1^2}=\sqrt{10}$ and $\sqrt{2.098^2+2.366^2}=
   \node at (33:1.8) {$30^\circ$};
 \end{tikzpicture}
 
-\small\textbf{Figure 9.} A rotation moves the tip of a vector along a circle and keeps its length.
+\captionof{figure}{A rotation moves the tip of a vector along a circle and keeps its length.}\label{fig:b3_9}
 \end{center}
 
 \textbf{Properties of rotation matrices}
@@ -103,7 +103,7 @@ Matrix products are applied from the right. ``Rotate, then translate'' (matrix $
 \small Translate by $(3,0)$, then rotate by $90^\circ$.
 \end{minipage}
 
-\small\textbf{Figure 10.} The same two operations in a different order give a different result.
+\captionof{figure}{The same two operations in a different order give a different result.}\label{fig:b3_10}
 \end{center}
 
 \section*{Robot poses as matrices}
@@ -147,11 +147,11 @@ In matrix form: first compute the tip in the frame of the first link, $\left(l_1
   \node[red!70!black,font=\small,left] at (2.0,1.65) {$l_2=1.5$};
 \end{tikzpicture}
 
-\small\textbf{Figure 11.} A two-joint arm with $l_1=2$, $l_2=1.5$, $\theta_1=30^\circ$, $\theta_2=45^\circ$.
+\captionof{figure}{A two-joint arm with $l_1=2$, $l_2=1.5$, $\theta_1=30^\circ$, $\theta_2=45^\circ$.}\label{fig:b3_11}
 \end{center}
 
 \begin{example}
-For the arm of Figure~11: $x=2\cos30^\circ+1.5\cos75^\circ\approx1.732+0.388=2.120$ and $y=2\sin30^\circ+1.5\sin75^\circ\approx1+1.449=2.449$. Via matrices: $(2+1.5\cos45^\circ,\ 1.5\sin45^\circ)\approx(3.061,1.061)$, rotated by $30^\circ$ gives $(2.120,\,2.449)$.
+For the arm of Figure~\ref{fig:b3_11}: $x=2\cos30^\circ+1.5\cos75^\circ\approx1.732+0.388=2.120$ and $y=2\sin30^\circ+1.5\sin75^\circ\approx1+1.449=2.449$. Via matrices: $(2+1.5\cos45^\circ,\ 1.5\sin45^\circ)\approx(3.061,1.061)$, rotated by $30^\circ$ gives $(2.120,\,2.449)$.
 \end{example}
 
 \begin{aibox}
@@ -169,7 +169,7 @@ Computing the position of a robot's hand from its joint angles is called \emph{f
   \item Apply the following to the triangle with corners $(0,0)$, $(2,0)$, $(0,1)$: first rotate by $180^\circ$, then translate by $(1,1)$.
   \item A robot with pose $(x_0,y_0,\theta)=(2,1,90^\circ)$ sees a ball at $(3,-1)$ in its own frame. Where is the ball in the world frame?
   \item $\star$ A planar arm has $l_1=2$, $l_2=1$, $\theta_1=45^\circ$, $\theta_2=45^\circ$. Find the position of the tip.
-  \item $\star$ What is the smallest and the largest distance from the base that the tip of the arm in Problem 4.9 can reach if $\theta_2$ is changed?
+  \item $\star$ What is the smallest and the largest distance from the base that the tip of the arm in Problem \thechapter.9 can reach if $\theta_2$ is changed?
   \item \texttt{[code]} Write Python functions \texttt{rot(theta)} (a $2\times2$ matrix as nested lists) and \texttt{apply(M, v)}. Check the example $R(30^\circ)(3,1)$.
 \end{enumerate}
 

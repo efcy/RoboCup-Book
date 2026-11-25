@@ -31,7 +31,7 @@ To understand how a neural network learns we use the smallest network that still
   \node[layercap] at (8.4,2.75) {Output layer};
 \end{tikzpicture}
 
-\small\textbf{Figure 1.} The network. Each arrow carries a weight.
+\captionof{figure}{The network. Each arrow carries a weight.}\label{fig:b5_1}
 \end{center}
 
 \subsection*{Notation}
@@ -176,7 +176,7 @@ Big networks do exactly this, only with much larger matrices.
   \draw[->,thick] (h2) -- (o) node[pos=0.5,wt] {$-0.5$};
 \end{tikzpicture}
 
-\small\textbf{Figure 2.} The result of the forward pass for our example numbers.
+\captionof{figure}{The result of the forward pass for our example numbers.}\label{fig:b5_2}
 \end{center}
 
 \section{Backpropagation}
@@ -310,7 +310,7 @@ $\pder{L}{w_{ij}}$ & $\delta_j\,x_i$ & $-0.0183,\ -0.0092,\ 0.0141,\ 0.0070$
   \node[val,above=0.05cm of o] {$\delta_o=-0.1128$};
 \end{tikzpicture}
 
-\small\textbf{Figure 3.} Backpropagation: the error signals $\delta$ flow from right to left along the same arrows (red).
+\captionof{figure}{Backpropagation: the error signals $\delta$ flow from right to left along the same arrows (red).}\label{fig:b5_3}
 \end{center}
 
 \begin{keyidea}[Why is it efficient?]

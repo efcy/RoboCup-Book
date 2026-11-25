@@ -1,0 +1,28 @@
+# Normalize text and LaTeX source files to LF in Git
+*.tex text eol=lf
+*.bib text eol=lf
+*.cls text eol=lf
+*.sty text eol=lf
+*.bst text eol=lf
+*.dtx text eol=lf
+*.ins text eol=lf
+*.ltx text eol=lf
+*.mkiv text eol=lf
+*.mkxl text eol=lf
+
+# Treat compiled outputs and binary assets as binary
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.eps binary
+*.svg binary
+*.aux binary
+*.bbl binary
+*.blg binary
+*.fdb_latexmk binary
+*.fls binary
+*.log binary
+*.out binary
+*.synctex.gz binary
+*.toc binary

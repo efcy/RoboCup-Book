@@ -24,7 +24,7 @@ s=r\,\theta.
   \fill (0,0) circle (1.5pt);
 \end{tikzpicture}
 
-\small\textbf{Figure 3.} One radian: the arc is exactly as long as the radius ($\approx57.3^\circ$).
+\captionof{figure}{One radian: the arc is exactly as long as the radius ($\approx57.3^\circ$).}\label{fig:b2_3}
 \end{center}
 
 \begin{center}
@@ -62,7 +62,7 @@ In a right triangle with an angle $\theta$:
   \node[above left] at (2,1.5) {hypotenuse};
 \end{tikzpicture}
 
-\small\textbf{Figure 4.} The sides of a right triangle, seen from the angle $\theta$.
+\captionof{figure}{The sides of a right triangle, seen from the angle $\theta$.}\label{fig:b2_4}
 \end{center}
 
 \begin{example}
@@ -91,7 +91,7 @@ So $\cos\theta$ is the $x$-coordinate and $\sin\theta$ is the $y$-coordinate. Ne
   \node[font=\small] at (-1.5,-0.35) {radius $=1$};
 \end{tikzpicture}
 
-\small\textbf{Figure 5.} On the unit circle, $\cos\theta$ and $\sin\theta$ are the coordinates of $P$. The tangent is the length of the green segment at $x=1$.
+\captionof{figure}{On the unit circle, $\cos\theta$ and $\sin\theta$ are the coordinates of $P$. The tangent is the length of the green segment at $x=1$.}\label{fig:b2_5}
 \end{center}
 
 Because $P$ lies on the circle, Pythagoras (Chapter~\ref{ch:pythagoras}) gives the most important identity:
@@ -112,7 +112,7 @@ Because $P$ lies on the circle, Pythagoras (Chapter~\ref{ch:pythagoras}) gives t
   }
 \end{tikzpicture}
 
-\small\textbf{Figure 6.} Important angles on the unit circle in degrees (outside) and radians (inside).
+\captionof{figure}{Important angles on the unit circle in degrees (outside) and radians (inside).}\label{fig:b2_6}
 \end{center}
 
 \begin{center}
@@ -155,7 +155,7 @@ If we plot the height $\sin\theta$ against the angle $\theta$ we get a wave. Cos
 \end{axis}
 \end{tikzpicture}
 
-\small\textbf{Figure 7.} Top: sine and cosine. Bottom: tangent, with asymptotes at $\pm\frac\pi2$.
+\captionof{figure}{Top: sine and cosine. Bottom: tangent, with asymptotes at $\pm\frac\pi2$.}\label{fig:b2_7}
 \end{center}
 
 \section*{Inverse functions and polar coordinates}
@@ -180,7 +180,7 @@ r=\sqrt{x^2+y^2},\quad\theta=\operatorname{atan2}(y,x).
   \fill[red] (P) circle (2.5pt) node[above right]{$P$};
 \end{tikzpicture}
 
-\small\textbf{Figure 8.} Polar coordinates $(r,\theta)$ and Cartesian coordinates $(x,y)$ of the same point.
+\captionof{figure}{Polar coordinates $(r,\theta)$ and Cartesian coordinates $(x,y)$ of the same point.}\label{fig:b2_8}
 \end{center}
 
 \begin{example}[Robot arm]
@@ -207,7 +207,7 @@ Joint angles of robot arms, the orientation of a wheel and the heading of a robo
   \item A wheel with radius $5$ cm turns by $4$ rad. How far does it roll? How many full turns are needed to roll $1$ m?
   \item Convert to Cartesian coordinates: $(r,\theta)=(2,\frac\pi3)$. Convert to polar coordinates: $(x,y)=(-1,1)$.
   \item $\star$ Use the unit circle to explain why $\sin(-\theta)=-\sin\theta$ and $\cos(-\theta)=\cos\theta$.
-  \item $\star$ Why is $\tan90^\circ$ undefined? Use Figure~5.
+  \item $\star$ Why is $\tan90^\circ$ undefined? Use Figure~\ref{fig:b2_5}.
   \item \texttt{[code]} Use \texttt{math.atan2} to compute the angle in degrees of the vectors $(3,4)$, $(-3,4)$, $(-3,-4)$ and $(3,-4)$.
 \end{enumerate}
 

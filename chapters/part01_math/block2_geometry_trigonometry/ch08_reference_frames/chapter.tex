@@ -24,7 +24,7 @@ A robot at position $(x_0,y_0)$ in the world frame, facing in direction $\theta$
   \node[font=\small] at (4.75,2.3) {$\theta$};
 \end{tikzpicture}
 
-\small\textbf{Figure 14.} The world frame (black) and the frame of a robot at $(3,2)$ turned by $\theta=30^\circ$ (red). The ball has world coordinates $(4,5)$ and robot coordinates $\approx(2.37,2.10)$.
+\captionof{figure}{The world frame (black) and the frame of a robot at $(3,2)$ turned by $\theta=30^\circ$ (red). The ball has world coordinates $(4,5)$ and robot coordinates $\approx(2.37,2.10)$.}\label{fig:b2_14}
 \end{center}
 
 \textbf{Robot to world.} Rotate the robot-frame coordinates by $\theta$ and add the position of the robot:
@@ -72,7 +72,7 @@ Add or subtract $360^\circ$ so that the turn lies between $-180^\circ$ and $180^
   \node[gray,font=\small] at (45:1.0) {$135^\circ$};
 \end{tikzpicture}
 
-\small\textbf{Figure 15.} Bearing $135^\circ$ minus heading $90^\circ$ gives a turn of $45^\circ$ counterclockwise.
+\captionof{figure}{Bearing $135^\circ$ minus heading $90^\circ$ gives a turn of $45^\circ$ counterclockwise.}\label{fig:b2_15}
 \end{center}
 
 \begin{example}
@@ -89,7 +89,7 @@ Many RoboCup-style tasks need exactly this: a robot sees the ball in its own cam
   \item A robot at the origin faces $0^\circ$. The target is at $(4,4)$. Find the bearing, the turn angle and the distance.
   \item A robot at $(1,1)$ faces $180^\circ$. The target is at $(4,5)$. Find the bearing, the turn angle (say whether left or right), and the distance.
   \item A robot at $(4,1)$ faces $90^\circ$ and sees a ball at $(x_R,y_R)=(2,1)$. Where is the ball in world coordinates?
-  \item \texttt{[code]} Write a Python function \texttt{world\_to\_robot(xw, yw, x0, y0, theta)} that returns $(x_R,y_R)$, and test it with the example of Figure~14.
+  \item \texttt{[code]} Write a Python function \texttt{world\_to\_robot(xw, yw, x0, y0, theta)} that returns $(x_R,y_R)$, and test it with the example of Figure~\ref{fig:b2_14}.
   \item $\star$ For a robot at the origin, show that $x_R^2+y_R^2=x_W^2+y_W^2$, i.e.\ that changing the frame does not change distances.
 \end{enumerate}
 

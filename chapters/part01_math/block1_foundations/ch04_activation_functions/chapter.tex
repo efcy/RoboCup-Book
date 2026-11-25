@@ -1,4 +1,4 @@
-\bookchapter{Basic function shapes used in AI:\\activation functions}\label{ch:activation}
+\bookchapter{Basic function shapes used in AI: activation functions}\label{ch:activation}
 
 \section*{Explanation}
 A neuron first computes a weighted sum $z$ and then applies an \emph{activation function} $a(z)$. Why is this needed? If all functions were linear, the composition of two of them would be linear again:
@@ -28,7 +28,7 @@ A network made only of linear functions could therefore never be more than one s
 \end{groupplot}
 \end{tikzpicture}
 
-\small\textbf{Figure 10.} The four classic activation functions.
+\captionof{figure}{The four classic activation functions.}\label{fig:b1_10}
 \end{center}
 
 \begin{center}
@@ -62,7 +62,7 @@ The slopes of these curves are needed in training: in Chapter~\ref{ch:keyfunctio
   \item Which of the four activation functions can output a negative number? Which can output a number larger than $1$?
   \item A neuron has inputs $x=(1,2,-1)$, weights $w=(0.5,-0.25,0.2)$ and bias $b=0.1$. Compute $z$ and the output for the step, sigmoid, ReLU and tanh activation.
   \item Show that the composition of two linear functions $f(x)=a_1x+b_1$ and $g(x)=a_2x+b_2$ is again linear. What are its slope and intercept?
-  \item Looking at Figure~10, for which $z$ is the sigmoid almost flat? What does that mean for the neuron's output when $z=10$?
+  \item Looking at Figure~\ref{fig:b1_10}, for which $z$ is the sigmoid almost flat? What does that mean for the neuron's output when $z=10$?
   \item $\star$ Show that $\tanh(z)=2\sigma(2z)-1$.
   \item \texttt{[code]} Plot all four activation functions with Python (matplotlib) for $z\in[-5,5]$.
 \end{enumerate}

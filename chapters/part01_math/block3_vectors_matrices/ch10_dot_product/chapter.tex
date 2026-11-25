@@ -29,7 +29,7 @@ The quantity $\norm{\vv b}\cos\theta$ is the length of the shadow (the \emph{pro
   \node at (1.1,0.28) {$\theta$};
 \end{tikzpicture}
 
-\small\textbf{Figure 4.} The projection of $\vv b$ on $\vv a$ has length $3$, so $\vv a\cdot\vv b=\norm{\vv a}\cdot3=4\cdot3=12$.
+\captionof{figure}{The projection of $\vv b$ on $\vv a$ has length $3$, so $\vv a\cdot\vv b=\norm{\vv a}\cdot3=4\cdot3=12$.}\label{fig:b3_4}
 \end{center}
 
 \begin{example}
@@ -65,7 +65,7 @@ The sign of the dot product tells us about the angle:
   \end{scope}
 \end{tikzpicture}
 
-\small\textbf{Figure 5.} The sign of the dot product depends on the angle between the vectors.
+\captionof{figure}{The sign of the dot product depends on the angle between the vectors.}\label{fig:b3_5}
 \end{center}
 
 \begin{example}
@@ -103,7 +103,7 @@ For two inputs the equation $z=0$ describes a \emph{line}, the decision boundary
   \node[red!70!black,font=\small,right] at (2.25,-0.4) {$z=0$};
 \end{tikzpicture}
 
-\small\textbf{Figure 6.} A neuron with $\vv w=(2,1)$ and $b=-4$. The red line is $2x_1+x_2-4=0$. At $A=(3,2)$ we get $z=4>0$, at $B=(0,1)$ we get $z=-3<0$.
+\captionof{figure}{A neuron with $\vv w=(2,1)$ and $b=-4$. The red line is $2x_1+x_2-4=0$. At $A=(3,2)$ we get $z=4>0$, at $B=(0,1)$ we get $z=-3<0$.}\label{fig:b3_6}
 \end{center}
 
 \begin{aibox}
@@ -121,7 +121,7 @@ Every neuron in a network computes a dot product followed by an activation funct
   \item Compute the scalar projection of $\vv b=(2,1)$ onto $\vv a=(3,4)$, i.e.\ $\dfrac{\vv a\cdot\vv b}{\norm{\vv a}}$.
   \item $\star$ Compute the cosine similarity of $(1,2,3)$ and $(2,4,6)$, of $(1,0)$ and $(0,1)$, and of $(1,2)$ and $(-1,-2)$. What do the three results mean?
   \item $\star$ Use $\vv a\cdot\vv a=\norm{\vv a}^2$ to show that $\norm{\vv a+\vv b}^2=\norm{\vv a}^2+2\,\vv a\cdot\vv b+\norm{\vv b}^2$.
-  \item \texttt{[code]} Write a Python function \texttt{dot(a, b)} using a loop (no libraries) and test it on Problem 2.1.
+  \item \texttt{[code]} Write a Python function \texttt{dot(a, b)} using a loop (no libraries) and test it on Problem \thechapter.1.
 \end{enumerate}
 
 % =====================================================
