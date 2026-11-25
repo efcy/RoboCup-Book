@@ -1,0 +1,20 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Mean $\frac{1+3+3+5+8}{5}=4$. Median $3$ (the middle value). Mode $3$.
+  \item Deviations: $-3,-1,-1,1,4$. Squares: $9,1,1,1,16$, sum $28$. $s^2=\frac{28}{4}=7$, $s=2.65$.
+  \item With the last value: mean $\frac{64.0}{5}=12.8$, median $12.1$. Without: mean $\frac{48.2}{4}=12.05$, median $\frac{12.0+12.1}{2}=12.05$. The mean changes by $0.75$\,s, the median by only $0.05$\,s.
+  \item Lower half $2,3,5,7$: $Q_1=\frac{3+5}{2}=4$. Upper half $8,10,12,15$: $Q_3=\frac{10+12}{2}=11$. $\mathrm{IQR}=11-4=7$.
+  \item (a) $\frac{0.5}{2}=0.25$\,cm. (b) $\frac{0.5}{5}=0.1$\,cm. (c) $\frac{0.5}{10}=0.05$\,cm.
+  \item $\frac{0.5}{\sqrt n}=0.05\Rightarrow\sqrt n=10\Rightarrow n=100$.
+  \item $\mathrm{SE}=\frac{0.3}{6}=0.05$. Interval: $5.10\pm1.96\cdot0.05=5.10\pm0.098$, i.e.\ $[5.00,\,5.20]$ m.
+  \item First pair: $y=2x$, a perfect rising line, $r=1$. Second pair: $y=8-2x$, a perfect falling line, $r=-1$. (Check the first: deviations $-1,0,1$ and $-2,0,2$, products $2,0,2$, sum $4$; $\sqrt{2}\sqrt{8}=4$; $r=1$.)
+  \item Example:
+\begin{verbatim}
+import numpy as np
+rng = np.random.default_rng()
+rolls = rng.integers(1, 7, size=(1000, 30))
+means = rolls.mean(axis=1)
+print(means.mean(), means.std(ddof=1))
+\end{verbatim}
+  Expected: mean about $3.5$ and standard deviation about $0.31$.
+  \item[\textbf{\ansnum.10}] Robot A: deviations $-2,2,-2,2$, squares sum $16$, $s^2=\frac{16}{3}=5.33$, $s=2.31$. Robot B: $s=0$. B is much more reliable. The mean says nothing about the spread: A sometimes scores nothing at all.
+\end{enumerate}

@@ -1,0 +1,161 @@
+\bookchapter{Likelihood, Entropy and Softmax}\label{ch:xent}
+
+\section*{Explanation}
+This chapter connects probability to \emph{training}. Three ideas are needed to understand why neural networks are trained the way they are:
+\begin{itemize}[nosep]
+  \item the \textbf{likelihood}: ``how well does a model explain the data?''
+  \item the \textbf{cross-entropy}: the loss function for classification,
+  \item the \textbf{softmax}: the function that turns the scores of a network into probabilities.
+\end{itemize}
+
+\section*{Likelihood: which model explains the data best?}
+A robot kicks $10$ penalties and scores $7$ times. Which goal probability $p$ is the most plausible? If the kicks are independent, the probability of getting \emph{exactly this} data (a particular order of $7$ goals and $3$ misses) is
+\[
+L(p)=p^7(1-p)^3.
+\]
+This is the \textbf{likelihood} of the value $p$: the probability of the observed data if the parameter is $p$. Compare a few values:
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{c|cccc}
+$p$ & 0.5 & 0.6 & 0.7 & 0.8\\ \hline
+$L(p)$ & 0.00098 & 0.00179 & 0.00222 & 0.00168
+\end{tabular}
+\end{center}
+The largest value is at $p=0.7$, which is exactly the observed share of goals. Choosing the parameter with the highest likelihood is called \textbf{maximum likelihood estimation} (MLE), and it is the principle behind most machine learning.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[gr, width=9.5cm,height=5.2cm, xmin=0,xmax=1, ymin=0,ymax=0.0026, xlabel={$p$}, ylabel={$L(p)$}, axis lines=left, xlabel near ticks, ylabel near ticks, ytick={0,0.001,0.002}, scaled y ticks=false, samples=100]
+  \addplot[very thick,blue!60!black,domain=0:1]{x^7*(1-x)^3};
+  \draw[dashed,red!70!black] (axis cs:0.7,0) -- (axis cs:0.7,0.00222);
+  \node[font=\small,red!70!black,anchor=south west] at (axis cs:0.72,0.0022) {maximum at $p=0.7$};
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{The likelihood of the goal probability $p$ after $7$ goals in $10$ kicks. The maximum lies at $p=0.7$.}\label{fig:pr6_like}
+\end{center}
+
+\textbf{The logarithm trick.} Products of many small probabilities become tiny numbers (a computer rounds them to $0$), and products are awkward to differentiate. The logarithm turns the product into a sum and keeps the position of the maximum, because $\ln$ is increasing:
+\[
+\ln L(p)=7\ln p+3\ln(1-p).
+\]
+Setting the derivative to zero (Chapter~\ref{ch:minmax}): $\frac7p-\frac3{1-p}=0$ gives $7(1-p)=3p$, so $p=\frac7{10}$. In general the maximum likelihood estimate is the share of successes $\frac kn$. A neural network is trained by maximising the log-likelihood of the training data, or equivalently by \emph{minimising the negative log-likelihood} as a loss.
+
+\subsection*{Why the mean squared error?}
+Suppose a sensor measures a constant true value $c$ with Gaussian noise. The likelihood of a measurement $x_i$ is the normal density, and for independent measurements we multiply. The logarithm of the product is
+\[
+\ln L(c)=\sum_{i=1}^n\Bigl(-\tfrac{(x_i-c)^2}{2\sigma^2}-\ln\bigl(\sigma\sqrt{2\pi}\bigr)\Bigr)=-\frac1{2\sigma^2}\sum_{i=1}^n(x_i-c)^2+\text{constant}.
+\]
+Maximising it means \emph{minimising the sum of squared errors} $\sum(x_i-c)^2$ (the method of \textbf{least squares}). The derivative $-2\sum(x_i-c)=0$ gives $c=\bar x$: the best estimate is the mean.
+
+\begin{example}
+The data $2,3,7$ has the mean $4$. The sum of squared errors is $14$ for $c=4$, but $(2-3)^2+0+(7-3)^2=17$ for $c=3$ and $(2-5)^2+(3-5)^2+(7-5)^2=17$ for $c=5$. No other $c$ gives less than $14$.
+\end{example}
+
+This is why the loss $\frac12(o-t)^2$ of the tiny network in Chapter~\ref{ch:nn} is natural: it is the negative log-likelihood if the target $t$ is the true value plus Gaussian noise. For \emph{regression} (predicting a number) one uses the squared error. For \emph{classification} (predicting a class) the noise is not Gaussian, and one uses the cross-entropy.
+
+\section*{Entropy: measuring uncertainty}
+How uncertain is a random outcome? The \textbf{surprise} of an event with probability $p$ is $-\log_2p$ bits: a rare event is surprising, a certain event ($p=1$) has $0$ bits. The average surprise of a distribution is its \textbf{entropy}:
+\[
+H(p)=-\sum_i p_i\log_2p_i\quad\text{(in bits)}.
+\]
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lc}
+distribution & entropy\\ \hline
+certain outcome $(1)$ & $0$ bits\\
+fair coin $(0.5,\,0.5)$ & $1$ bit\\
+unfair coin $(0.9,\,0.1)$ & $0.469$ bits\\
+four equal outcomes $(0.25,\,0.25,\,0.25,\,0.25)$ & $2$ bits\\
+$(0.5,\,0.25,\,0.25)$ & $1.5$ bits\\
+\end{tabular}
+\end{center}
+The entropy is largest when all outcomes are equally likely (maximum uncertainty) and $0$ when the outcome is certain. Figure~\ref{fig:pr6_entropy} shows it for a coin. Entropy is also the minimum average number of bits needed to encode the outcomes, which links it to data compression.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[gr, width=9cm,height=5cm, xmin=0,xmax=1, ymin=0,ymax=1.1, xlabel={probability $p$ of heads}, ylabel={entropy (bits)}, axis lines=left, xlabel near ticks, ylabel near ticks, samples=100]
+  \addplot[very thick,blue!60!black,domain=0.0001:0.9999]{-(x*ln(x)+(1-x)*ln(1-x))/ln(2)};
+  \fill[red!70!black] (axis cs:0.5,1) circle (2.5pt);
+  \node[font=\small,anchor=south] at (axis cs:0.5,1.02) {fair coin: $1$ bit};
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{Entropy of a coin as a function of the probability of heads. The uncertainty is maximal for a fair coin and $0$ for a certain outcome.}\label{fig:pr6_entropy}
+\end{center}
+
+\section*{Cross-entropy: the loss for classification}
+A classifier outputs a probability distribution $q=(q_1,\dots,q_C)$ over $C$ classes. The truth is a distribution $p$, usually \textbf{one-hot}: $p=1$ for the correct class and $0$ for all others. The \textbf{cross-entropy} measures how well $q$ matches $p$:
+\[
+H(p,q)=-\sum_ip_i\ln q_i.
+\]
+Because $p$ is one-hot, only the correct class $c$ survives:
+\[
+\text{loss}=-\ln q_c.
+\]
+The loss is the negative logarithm of the probability the network gave to the \emph{correct} answer. (Machine-learning libraries use the natural logarithm $\ln$; with $\log_2$ the unit would be bits, with $\ln$ it is called nats.)
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[gr, width=9cm,height=5cm, xmin=0,xmax=1, ymin=0,ymax=5, xlabel={probability $q_c$ given to the correct class}, ylabel={loss $-\ln q_c$}, axis lines=left, xlabel near ticks, ylabel near ticks, samples=100]
+  \addplot[very thick,red!70!black,domain=0.0067:1]{-ln(x)};
+  \addplot[only marks,mark=*,mark size=2.4pt,blue!60!black] coordinates {(0.9,0.105)(0.5,0.693)(0.1,2.303)};
+  \node[font=\scriptsize,anchor=south west] at (axis cs:0.9,0.15) {$0.105$};
+  \node[font=\scriptsize,anchor=south west] at (axis cs:0.5,0.75) {$0.693$};
+  \node[font=\scriptsize,anchor=south west] at (axis cs:0.1,2.35) {$2.303$};
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{The cross-entropy loss for one sample. A confident correct answer costs almost nothing, a confident wrong answer ($q_c$ near $0$) is punished heavily.}\label{fig:pr6_xent}
+\end{center}
+
+The loss of a whole data set is the average over all samples. Minimising it is the same as maximising the log-likelihood of the correct labels. For three samples with $q_c=0.9$, $0.5$ and $0.1$ the losses are $0.105$, $0.693$ and $2.303$ and the average is $1.034$.
+
+\section*{Softmax: from scores to probabilities}
+The last layer of a classification network produces $C$ arbitrary real numbers $z_1,\dots,z_C$, the \textbf{logits} (scores). They can be negative and do not add up to $1$. The \textbf{softmax} function converts them into a probability distribution:
+\[
+q_i=\operatorname{softmax}(z)_i=\frac{e^{z_i}}{\sum_{j=1}^Ce^{z_j}}.
+\]
+The exponential makes every number positive, and dividing by the sum makes them add up to $1$. A larger score always gives a larger probability.
+
+\begin{example}
+The scores of a vision network for the classes \emph{ball}, \emph{robot}, \emph{other} are $z=(2.0,\ 1.0,\ 0.1)$. Then $e^{2.0}=7.389$, $e^{1.0}=2.718$, $e^{0.1}=1.105$, with the sum $11.212$. The probabilities are
+\[
+q=\Bigl(\tfrac{7.389}{11.212},\ \tfrac{2.718}{11.212},\ \tfrac{1.105}{11.212}\Bigr)=(0.659,\ 0.242,\ 0.099).
+\]
+If the correct class is \emph{ball}, the loss is $-\ln0.659=0.417$. If the correct class were \emph{robot}, it would be $-\ln0.242=1.417$.
+\end{example}
+
+\textbf{Properties.}
+\begin{itemize}[nosep]
+  \item Adding the same number to all scores changes nothing (the factor $e^{a}$ cancels). Programs therefore subtract the largest score first, so that $e^{z}$ does not overflow: for $z=(1000,1001)$ the result is $(0.269,\,0.731)$.
+  \item For two classes the softmax reduces to the \textbf{sigmoid} function $\sigma(z)=\frac1{1+e^{-z}}$ of Chapter~\ref{ch:activation}.
+  \item \textbf{Temperature.} Dividing the scores by a number $T$ before the softmax controls how sharp the result is. A small $T$ makes the largest score dominate, a large $T$ makes the distribution flatter (Figure~\ref{fig:pr6_temp}).
+\end{itemize}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[grn, width=11cm,height=5.4cm, ybar, bar width=9pt, symbolic x coords={ball,robot,other}, xtick=data, ymin=0,ymax=1, enlarge x limits=0.3, ylabel={probability}, legend style={font=\scriptsize,at={(0.98,0.98)},anchor=north east}, axis lines=left, ylabel near ticks]
+  \addplot[fill=blue!60,draw=none] coordinates {(ball,0.864)(robot,0.117)(other,0.019)};
+  \addplot[fill=orange!70,draw=none] coordinates {(ball,0.659)(robot,0.242)(other,0.099)};
+  \addplot[fill=green!55!black,draw=none] coordinates {(ball,0.502)(robot,0.304)(other,0.194)};
+  \legend{$T=0.5$,$T=1$,$T=2$}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{The softmax of the scores $(2.0,\,1.0,\,0.1)$ with different temperatures $T$. A low temperature gives a decisive distribution, a high one an uncertain one.}\label{fig:pr6_temp}
+\end{center}
+
+\begin{aibox}
+Softmax and cross-entropy appear everywhere. An image classifier ends with softmax and is trained with cross-entropy (Part~VI). The \textbf{softmax policy} of reinforcement learning turns action scores into action probabilities (Chapter~\ref{ch:rl3}), and the temperature controls how much the robot explores. A language model computes a softmax over its whole vocabulary to predict the next token, and the ``temperature'' setting of a chatbot is exactly the $T$ above (Chapter~\ref{ch:ai7}). The combination of softmax and cross-entropy also has a very simple gradient, $q_i-p_i$, which is one reason for its popularity.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A robot scores $6$ goals in $8$ penalties. What is the maximum likelihood estimate of $p$? Compute $L(p)=p^6(1-p)^2$ for it.
+  \item For the data of Problem~\thechapter.1 compute $L(0.5)$. How many times more likely is the data under $p=0.75$ than under $p=0.5$?
+  \item Write a Python function \texttt{softmax(z)} that works for large scores such as $z=(1000,1001)$ and returns $(0.269,0.731)$. Test it with $(2,1,0.1)$.
+  \item The data are $1,2,6$. Compute the sum of squared errors for the candidate values $c=2$, $c=3$ and $c=4$. Which is the best, and how is it related to the data?
+  \item Compute the entropy in bits of (a) $(0.25,0.25,0.25,0.25)$, (b) $(0.7,0.3)$, (c) $8$ equally likely outcomes.
+  \item Compute the softmax of (a) $(1,1,1)$, (b) $(0,0)$, (c) $(3,0)$.
+  \item Compute the softmax of the scores $(1,2,3)$. (You need $e^1=2.718$, $e^2=7.389$, $e^3=20.086$.)
+  \item The correct class is the second. Network A outputs $(0.1,0.7,0.2)$, network B outputs $(0.1,0.2,0.7)$. Compute the cross-entropy loss ($\ln$) of both. Which one is better?
+  \item Three samples are classified with the probabilities $0.9$, $0.5$ and $0.1$ for the correct class. Compute the average cross-entropy loss. Which sample contributes most?
+  \item[\textbf{\thechapter.10}$\star$] Show that the softmax of the two scores $(z,0)$ has the first component $\frac{1}{1+e^{-z}}$ (the sigmoid). Compute it for $z=3$.
+\end{enumerate}

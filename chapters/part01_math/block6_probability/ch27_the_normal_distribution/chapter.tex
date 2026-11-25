@@ -1,0 +1,139 @@
+\bookchapter{The Normal Distribution}\label{ch:normal}
+
+\section*{Explanation}
+Measure the distance to the ball $100$ times and you will get $100$ slightly different numbers. Most are close to the true value, a few are further away, and the histogram looks like a bell. This bell shape, the \textbf{normal} or \textbf{Gaussian distribution}, is the most important distribution in statistics and in robotics. This chapter shows what it is, how to calculate with it, and why it appears everywhere.
+
+\subsection*{Continuous random variables and densities}
+A distance, a time or an angle can take \emph{any} value in an interval. Such a variable is \textbf{continuous}. For a continuous variable the probability of one exact value is $0$ (nobody measures $3.000000\ldots$ exactly), so we ask for the probability of an \emph{interval}. This is described by a \textbf{probability density function} $f(x)$:
+\[
+P(a\le X\le b)=\int_a^b f(x)\,\dd x.
+\]
+The probability is the \textbf{area under the curve} between $a$ and $b$ (integrals, Chapter~\ref{ch:integrals}). The total area is $1$. A high curve means ``many values around here'', but the density itself is not a probability and may be larger than $1$.
+
+\begin{example}[Uniform distribution]
+A sensor reading is equally likely anywhere between $0$ and $10$. The density is the constant $f(x)=\frac1{10}$ on $[0,10]$ (a rectangle of area $10\cdot\frac1{10}=1$). Then $P(2\le X\le5)=3\cdot\frac1{10}=0.3$. The mean is $5$, and the variance of a uniform distribution on $[a,b]$ is $\frac{(b-a)^2}{12}=\frac{100}{12}=8.33$, so $\sigma=2.89$.
+\end{example}
+
+Mean and variance of continuous variables are defined like before with integrals instead of sums: $\mu=\int x f(x)\,\dd x$, $\sigma^2=\int(x-\mu)^2f(x)\,\dd x$.
+
+\subsection*{The normal distribution}
+The normal distribution has two parameters, the mean $\mu$ (the centre) and the standard deviation $\sigma$ (the width). Its density is
+\[
+f(x)=\frac{1}{\sigma\sqrt{2\pi}}\;e^{-\frac{(x-\mu)^2}{2\sigma^2}}.
+\]
+We write $X\sim\mathcal N(\mu,\sigma^2)$. The graph is a symmetric bell with its peak at $x=\mu$ (Figure~\ref{fig:pr4_bells}).
+\begin{itemize}[nosep]
+  \item Changing $\mu$ \emph{shifts} the curve left or right.
+  \item Changing $\sigma$ makes it wider (large $\sigma$) or narrower (small $\sigma$). The area stays $1$, so a narrow curve is higher: the peak has the height $\frac{1}{\sigma\sqrt{2\pi}}=\frac{0.399}{\sigma}$. For $\sigma=0.5$ it is $0.80$, for $\sigma=1$ it is $0.40$, for $\sigma=2$ it is $0.20$.
+\end{itemize}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=2 by 1,horizontal sep=1.5cm}, gr, width=6.8cm,height=5cm, axis lines=left, xlabel={$x$}, xlabel near ticks, ylabel near ticks, ymin=0, ymax=0.9, samples=80, legend style={font=\scriptsize}]
+  \nextgroupplot[title={\small different $\sigma$ ($\mu=0$)}, xmin=-5,xmax=5, ylabel={$f(x)$}, legend pos=north east]
+  \addplot[thick,blue!70!black,domain=-5:5]{1/(0.5*sqrt(2*pi))*exp(-x^2/(2*0.25))};
+  \addlegendentry{$\sigma=0.5$}
+  \addplot[thick,red!70!black,domain=-5:5]{1/(1*sqrt(2*pi))*exp(-x^2/(2*1))};
+  \addlegendentry{$\sigma=1$}
+  \addplot[thick,green!50!black,domain=-5:5]{1/(2*sqrt(2*pi))*exp(-x^2/(2*4))};
+  \addlegendentry{$\sigma=2$}
+  \nextgroupplot[title={\small different $\mu$ ($\sigma=1$)}, xmin=-5,xmax=6, ylabel={}, legend pos=north east]
+  \addplot[thick,blue!70!black,domain=-5:6]{1/sqrt(2*pi)*exp(-(x+1)^2/2)};
+  \addlegendentry{$\mu=-1$}
+  \addplot[thick,red!70!black,domain=-5:6]{1/sqrt(2*pi)*exp(-(x-2)^2/2)};
+  \addlegendentry{$\mu=2$}
+\end{groupplot}
+\end{tikzpicture}
+\captionof{figure}{Normal densities. Left: the standard deviation controls the width, and a narrow bell is higher so that the area stays $1$. Right: the mean shifts the bell.}\label{fig:pr4_bells}
+\end{center}
+
+\subsection*{The 68--95--99.7 rule}
+For \emph{every} normal distribution, the share of values within a few standard deviations of the mean is the same:
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lc}
+range & probability\\ \hline
+$\mu\pm1\sigma$ & $68.3\,\%$\\
+$\mu\pm2\sigma$ & $95.4\,\%$\\
+$\mu\pm3\sigma$ & $99.7\,\%$\\
+\end{tabular}
+\end{center}
+(For exactly $95\,\%$ one uses $\mu\pm1.96\sigma$.) A value more than three $\sigma$ from the mean happens in only $0.3\,\%$ of the cases. This is why $\sigma$ is the natural measure of ``how big is the noise''.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[grn, width=11cm,height=5.4cm, xmin=-3.6,xmax=3.6, ymin=0,ymax=0.46, axis lines=left, xtick={-3,-2,-1,0,1,2,3}, xticklabels={$\mu{-}3\sigma$,$\mu{-}2\sigma$,$\mu{-}\sigma$,$\mu$,$\mu{+}\sigma$,$\mu{+}2\sigma$,$\mu{+}3\sigma$}, ytick=\empty, samples=100]
+  \addplot[draw=none,fill=blue!12,domain=-3:3]{exp(-x^2/2)/sqrt(2*pi)} \closedcycle;
+  \addplot[draw=none,fill=blue!28,domain=-2:2]{exp(-x^2/2)/sqrt(2*pi)} \closedcycle;
+  \addplot[draw=none,fill=blue!55,domain=-1:1]{exp(-x^2/2)/sqrt(2*pi)} \closedcycle;
+  \addplot[thick,blue!60!black,domain=-3.6:3.6]{exp(-x^2/2)/sqrt(2*pi)};
+  \node[font=\small] at (axis cs:0,0.17) {$68.3\,\%$};
+  \node[font=\scriptsize] at (axis cs:-1.5,0.05) {$95.4\,\%$};
+  \node[font=\scriptsize] at (axis cs:1.5,0.05) {$95.4\,\%$};
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{The 68--95--99.7 rule. The dark area (within one $\sigma$) holds $68.3\,\%$ of the probability, the two lighter areas together reach $95.4\,\%$ and $99.7\,\%$.}\label{fig:pr4_rule}
+\end{center}
+
+\subsection*{z-scores and the standard normal table}
+Any normal variable can be converted to the \textbf{standard normal} $Z\sim\mathcal N(0,1)$ with the \textbf{z-score}
+\[
+z=\frac{x-\mu}{\sigma}.
+\]
+The z-score says how many standard deviations a value is away from the mean. The probability $\Phi(z)=P(Z\le z)$ is tabulated (or computed by a program). Because of the symmetry, $\Phi(-z)=1-\Phi(z)$.
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{c|ccccccc}
+$z$ & 0 & 0.5 & 1 & 1.5 & 2 & 2.5 & 3\\ \hline
+$\Phi(z)$ & 0.5000 & 0.6915 & 0.8413 & 0.9332 & 0.9772 & 0.9938 & 0.9987
+\end{tabular}
+\end{center}
+
+\begin{example}[Distance measurement]
+The camera measures the distance to the ball with $\mu=3.0$\,m and $\sigma=0.2$\,m (true distance plus noise). What is the probability that a reading is
+\begin{itemize}[nosep]
+  \item between $2.8$ and $3.2$\,m? These are $z=\mp1$, so the probability is $0.683$.
+  \item larger than $3.4$\,m? $z=\frac{3.4-3.0}{0.2}=2$, so $P=1-\Phi(2)=1-0.9772=0.0228$.
+  \item smaller than $2.7$\,m? $z=\frac{2.7-3.0}{0.2}=-1.5$, so $P=\Phi(-1.5)=1-0.9332=0.0668$.
+\end{itemize}
+\end{example}
+
+\begin{example}[Walking speed]
+A walking controller reaches $\mu=0.40$\,m/s with $\sigma=0.05$\,m/s. Then $95\,\%$ of the speeds lie between $0.40\mp1.96\cdot0.05$, i.e.\ between $0.30$ and $0.50$\,m/s, and $P(0.30<v<0.50)=P(-2<z<2)=0.954$.
+\end{example}
+
+\subsection*{Sums of normal variables}
+If $X\sim\mathcal N(\mu_1,\sigma_1^2)$ and $Y\sim\mathcal N(\mu_2,\sigma_2^2)$ are independent, then $X+Y$ is again normal, with mean $\mu_1+\mu_2$ and variance $\sigma_1^2+\sigma_2^2$ (the variances add, Chapter~\ref{ch:rv}). Two independent errors with $\sigma=3$\,cm and $\sigma=4$\,cm give a total error with $\sigma=\sqrt{9+16}=5$\,cm.
+
+\textbf{Why does the bell shape appear so often?} A measurement error is usually the sum of many small independent effects: vibration, electrical noise, rounding, light changes. A famous theorem (the \textbf{central limit theorem}, Chapter~\ref{ch:stats}) says that such a sum is approximately normal, whatever the single effects look like.
+
+\subsection*{Normal numbers in Python}
+\begin{verbatim}
+import numpy as np
+from scipy.stats import norm
+
+rng = np.random.default_rng(0)
+readings = rng.normal(loc=3.0, scale=0.2, size=100000)   # mu, sigma
+inside = np.mean((readings > 2.8) & (readings < 3.2))
+print(inside)                                  # about 0.683
+print(norm.cdf(2.0))                           # 0.9772
+print(norm.cdf(3.2, 3.0, 0.2) - norm.cdf(2.8, 3.0, 0.2))
+\end{verbatim}
+
+\begin{aibox}
+You will meet the normal distribution again and again. \textbf{Weight initialisation:} the weights of a network start as random numbers from $\mathcal N(0,\sigma^2)$ with a carefully chosen $\sigma$. \textbf{Exploration:} a policy that outputs a mean joint target and adds Gaussian noise to try slightly different movements (Chapter~\ref{ch:rl3}). \textbf{Domain randomisation:} the simulation draws friction or mass from a normal or uniform distribution (Chapter~\ref{ch:rl5}). \textbf{State estimation:} the Kalman filter assumes Gaussian noise (Part~X).
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A reading is uniform on $[0,10]$. Find $P(X<3)$, $P(4\le X\le9)$, the mean and the standard deviation.
+  \item Compute the peak height $\frac{1}{\sigma\sqrt{2\pi}}$ of a normal density for $\sigma=0.5$ and for $\sigma=2$. Which curve is wider?
+  \item The distance reading has $\mu=3$\,m and $\sigma=0.2$\,m. Compute the z-scores of the readings $3.5$\,m, $2.6$\,m and $3.0$\,m.
+  \item With the same distribution use the table to find $P(X\le3.3)$, $P(X>3.3)$ and $P(2.7\le X\le3.3)$.
+  \item Walking speed $\mathcal N(0.40,\,0.05^2)$ in m/s. Find (a) $P(v>0.50)$ and (b) $P(0.35<v<0.45)$.
+  \item Between which two speeds do $95\,\%$ of the walking speeds of Problem~\thechapter.5 lie?
+  \item A joint angle error is normal with mean $0^\circ$ and $\sigma=1.5^\circ$. How likely is an error larger than $3^\circ$ in size (positive or negative)?
+  \item Two independent position errors are $\mathcal N(0,\,3^2)$ and $\mathcal N(0,\,4^2)$ in cm. What are the mean and standard deviation of their sum? What is the probability that the sum is between $-5$ and $+5$\,cm?
+  \item Write a Python program that draws $100\,000$ numbers from $\mathcal N(3,\,0.2^2)$ and prints the share between $2.8$ and $3.2$. What do you expect?
+  \item[\textbf{\thechapter.10}$\star$] At $x=\mu+\sigma$ the normal density has the value $\frac{1}{\sigma\sqrt{2\pi}}e^{-1/2}$. By which factor is this smaller than the peak? Compute it for $\sigma=1$.
+\end{enumerate}

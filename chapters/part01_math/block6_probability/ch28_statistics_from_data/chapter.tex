@@ -1,0 +1,159 @@
+\bookchapter{Statistics: Learning from Data}\label{ch:stats}
+
+\section*{Explanation}
+Probability starts with a known model (``the coin is fair'') and predicts data. \textbf{Statistics} goes the other way: it starts with measured data and draws conclusions about the model behind it. Every experiment with a robot, every test of a neural network and every training curve is a statistics problem, so this chapter gives you the tools to describe data, to say how reliable an estimate is, and to measure relationships.
+
+\subsection*{Describing data: centre}
+Take eight measurements of the distance to a ball (in metres):
+\[
+2.9,\ 3.1,\ 3.0,\ 3.2,\ 2.8,\ 3.0,\ 3.1,\ 4.5.
+\]
+The \textbf{mean} (average) is the sum divided by the number $n$ of values:
+\[
+\bar x=\frac1n\sum_{i=1}^n x_i=\frac{25.6}{8}=3.20.
+\]
+The \textbf{median} is the middle value after sorting ($2.8,\,2.9,\,3.0,\,3.0,\,3.1,\,3.1,\,3.2,\,4.5$): for an even number of values it is the average of the two middle ones, $\frac{3.0+3.1}{2}=3.05$. The \textbf{mode} is the most frequent value (here $3.0$ and $3.1$, both twice).
+
+Look at the last measurement, $4.5$\,m. It is probably an \textbf{outlier}, for example a wrong detection. Without it the mean is $3.01$ and the median $3.0$. The single outlier moved the mean by $0.19$\,m but the median only by $0.05$\,m (Figure~\ref{fig:pr5_outlier}). The median is \textbf{robust}, the mean is not.
+
+\begin{center}
+\begin{tikzpicture}
+  \draw[-{Stealth},thick] (0.7,0) -- (8.9,0) node[right,font=\small]{m};
+  \foreach \xv in {2.8,3.0,3.2,3.4,3.6,3.8,4.0,4.2,4.4,4.6}{
+    \pgfmathsetmacro{\px}{(\xv-2.5)*4}
+    \draw (\px,0.07) -- (\px,-0.07) node[below,font=\scriptsize]{\xv};
+  }
+  \foreach \xv in {2.8,2.9,3.0,3.1,3.2}{
+    \pgfmathsetmacro{\px}{(\xv-2.5)*4}
+    \fill[blue!60!black] (\px,0.28) circle (3pt);
+  }
+  \fill[blue!60!black] ({(3.0-2.5)*4},0.62) circle (3pt);
+  \fill[blue!60!black] ({(3.1-2.5)*4},0.62) circle (3pt);
+  \fill[red!80!black] ({(4.5-2.5)*4},0.28) circle (3pt);
+  \draw[orange!80!black,very thick] ({(3.05-2.5)*4},0) -- ++(0,1.0);
+  \node[orange!70!black,font=\small,anchor=south] at ({(3.05-2.5)*4},1.0) {median $3.05$};
+  \fill[green!50!black] ({(3.2-2.5)*4},-0.62) -- ++(-0.13,-0.25) -- ++(0.26,0) -- cycle;
+  \node[green!40!black,font=\small,anchor=north] at ({(3.2-2.5)*4},-0.9) {mean $3.20$};
+\end{tikzpicture}
+\captionof{figure}{The eight distance readings on a number line (the dots stack when values repeat). The outlier at $4.5$ pulls the mean to the right, the median stays in the middle of the main group.}\label{fig:pr5_outlier}
+\end{center}
+
+\subsection*{Describing data: spread}
+The \textbf{sample variance} measures how far the values are from the mean on average (squared):
+\[
+s^2=\frac{1}{n-1}\sum_{i=1}^n(x_i-\bar x)^2,\qquad s=\sqrt{s^2}.
+\]
+The standard deviation $s$ has the same unit as the data. Notice the $n-1$ instead of $n$. The reason: the deviations are measured from $\bar x$, which was computed from the same data and lies a bit closer to the values than the true mean. This makes the deviations slightly too small, and dividing by $n-1$ corrects it. (Many programs divide by $n$ by default, e.g.\ \texttt{np.std}; use \texttt{ddof=1} for the sample version.)
+
+\begin{example}
+Data: $2,4,4,4,5,5,7,9$. Mean: $\bar x=\frac{40}{8}=5$. The deviations $x_i-\bar x$ are
+\[-3,\ -1,\ -1,\ -1,\ 0,\ 0,\ 2,\ 4,\]
+and their squares are
+\[9,\ 1,\ 1,\ 1,\ 0,\ 0,\ 4,\ 16,\]
+with the sum $32$. Then $s^2=\frac{32}{7}=4.57$ and $s=2.14$. (Dividing by $n=8$ would give $4$ and $2$.)
+\end{example}
+
+For the distance readings (with the outlier) $s=0.54$\,m, without it only $s=0.13$\,m. Again one outlier changes the result a lot.
+
+\textbf{Quartiles.} The median splits the sorted data in two halves, the \textbf{quartiles} $Q_1$ and $Q_3$ are the medians of the lower and upper half. The distance $Q_3-Q_1$ is the \textbf{interquartile range} and also robust. A \textbf{percentile} generalises this: the $90$th percentile is the value below which $90\,\%$ of the data lie. Percentiles are used for latency requirements (``the camera pipeline needs less than $30$\,ms in $99\,\%$ of the frames'').
+
+\subsection*{Histograms}
+To see the shape of many values, we count how many fall into each interval (bin) and draw bars. Figure~\ref{fig:pr5_hist} shows $200$ simulated distance readings. The bars follow the bell curve of the normal distribution with $\mu=3$ and $\sigma=0.2$ that was used to simulate them. The sample has $\bar x=2.985$ and $s=0.185$, close to but not exactly equal to the true $3$ and $0.2$.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[gr, width=11cm,height=5.4cm, ybar, bar width=17pt, xmin=2.3,xmax=3.7, ymin=0,ymax=52, xtick={2.4,2.6,2.8,3.0,3.2,3.4,3.6}, xlabel={distance (m)}, ylabel={count per $0.1$\,m bin}, axis lines=left, xlabel near ticks, ylabel near ticks]
+  \addplot[fill=blue!35,draw=blue!60!black] coordinates {(2.45,2)(2.55,3)(2.65,9)(2.75,20)(2.85,27)(2.95,39)(3.05,47)(3.15,36)(3.25,9)(3.35,4)(3.45,2)(3.55,2)};
+  \addplot[very thick,red!70!black,domain=2.3:3.7,samples=80]{39.89*exp(-(x-3)^2/0.08)};
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{Histogram of $200$ distance readings and the normal density with $\mu=3$, $\sigma=0.2$ (scaled to the bar height).}\label{fig:pr5_hist}
+\end{center}
+
+\section*{Samples and estimates}
+We can never measure everything. We measure a \textbf{sample} of $n$ values and want to learn about the \textbf{population}: the true mean $\mu$ and standard deviation $\sigma$ of the distance noise. The sample mean $\bar x$ is our \textbf{estimate} of $\mu$. Another sample would give a slightly different $\bar x$, so $\bar x$ itself is a random variable. How much does it vary?
+
+\begin{keyidea}[Standard error]
+If single measurements have the standard deviation $\sigma$, then the mean of $n$ independent measurements has the standard deviation
+\[
+\mathrm{SE}=\frac{\sigma}{\sqrt n}.
+\]
+Averaging helps, but slowly: for half the error you need \emph{four times} as many measurements.
+\end{keyidea}
+
+This follows from the rules of Chapter~\ref{ch:rv}: the sum of $n$ independent values has the variance $n\sigma^2$, and dividing by $n$ divides the variance by $n^2$, giving $\sigma^2/n$.
+
+\begin{example}
+A sensor has $\sigma=0.2$\,m. The mean of $n=25$ readings has $\mathrm{SE}=\frac{0.2}{5}=0.04$\,m. With the $95\,\%$ rule of Chapter~\ref{ch:normal}, the true value lies in $\bar x\pm1.96\cdot0.04=\bar x\pm0.08$\,m with $95\,\%$ confidence (a \textbf{confidence interval}). If the mean of the $25$ readings is $3.02$\,m, the interval is $[2.94,\,3.10]$ m. For a half as wide interval we need $100$ readings.
+\end{example}
+
+\subsection*{The central limit theorem}
+Why can we use the normal distribution here? The \textbf{central limit theorem} says: the mean (or sum) of many independent values is approximately normally distributed, \emph{whatever} the distribution of the single values, if there are enough of them. Figure~\ref{fig:pr5_clt} shows the mean of $n$ dice rolls. A single die is flat (every face has the probability $\frac16$). Already for $n=5$ the shape is bell-like, and for $n=30$ the exact distribution (computed, not simulated) is almost indistinguishable from a normal curve with the mean $3.5$ and $\sigma=\frac{1.71}{\sqrt{30}}=0.31$. This is the reason why noise is so often normal, and why one can use normal-based formulas for averages.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=2 by 2,horizontal sep=1.1cm,vertical sep=2.3cm}, grn, width=6.2cm,height=3.9cm, xmin=0.7,xmax=6.3, ymin=0,ymax=1.45, axis lines=left, xtick={1,2,3,4,5,6}, ytick={0,0.5,1}, xlabel={mean of $n$ dice}, xlabel near ticks, ylabel near ticks]
+  \nextgroupplot[title={\small $n=1$}, ylabel={density}, ybar, bar width=18pt]
+  \addplot[fill=blue!40,draw=none] table[x=x,y=y]{images/prob/clt1.dat};
+  \nextgroupplot[title={\small $n=2$}, ybar, bar width=10pt]
+  \addplot[fill=blue!40,draw=none] table[x=x,y=y]{images/prob/clt2.dat};
+  \nextgroupplot[title={\small $n=5$}, ylabel={density}, ybar, bar width=4pt]
+  \addplot[fill=blue!40,draw=none] table[x=x,y=y]{images/prob/clt5.dat};
+  \nextgroupplot[title={\small $n=30$}]
+  \addplot[ycomb,blue!45,line width=0.8pt,mark=none] table[x=x,y=y]{images/prob/clt30.dat};
+  \addplot[very thick,red!70!black,domain=0.7:6.3,samples=100]{exp(-(x-3.5)^2/(2*0.0972))/(0.3118*sqrt(2*pi))};
+\end{groupplot}
+\end{tikzpicture}
+\captionof{figure}{The exact distribution of the mean of $n$ dice rolls. The distribution gets narrower (the vertical axis is a density, so the peak grows) and approaches the red normal curve.}\label{fig:pr5_clt}
+\end{center}
+
+\section*{Relationships between two variables}
+Often we have \emph{pairs}: the commanded walking speed and the measured speed, the battery voltage and the time until shutdown. The \textbf{covariance} and the \textbf{correlation coefficient} measure whether the two quantities change together:
+\[
+r=\frac{\sum(x_i-\bar x)(y_i-\bar y)}{\sqrt{\sum(x_i-\bar x)^2}\;\sqrt{\sum(y_i-\bar y)^2}},\qquad-1\le r\le1.
+\]
+Here $r=1$ means a perfect rising line, $r=-1$ a perfect falling line, and $r=0$ no linear relationship.
+
+\begin{example}
+Five pairs: $x=1,2,3,4,5$ and $y=2,4,5,4,5$. The means are $\bar x=3$ and $\bar y=4$. Deviations of $x$: $-2,-1,0,1,2$; of $y$: $-2,0,1,0,1$. Products: $4,0,0,0,2$, sum $6$. Sums of squares: $\sum(x_i-\bar x)^2=10$ and $\sum(y_i-\bar y)^2=6$. So
+\[
+r=\frac{6}{\sqrt{10}\sqrt{6}}=0.775.
+\]
+The best straight line through the points (least squares, see Chapter~\ref{ch:xent}) has the slope $\frac{6}{10}=0.6$ and the intercept $\bar y-0.6\bar x=2.2$: $y=0.6x+2.2$.
+\end{example}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=3 by 1,horizontal sep=0.9cm}, gr, width=4.9cm,height=4.5cm, xmin=-3,xmax=3, ymin=-3,ymax=3, hide axis]
+  \nextgroupplot[title={\small $r=1$}]
+  \addplot[only marks,mark=*,mark size=2.4pt,blue!60!black] coordinates {(-2,-2)(-1,-1)(0,0)(1,1)(2,2)};
+  \nextgroupplot[title={\small $r=0$ (but a pattern!)}]
+  \addplot[only marks,mark=*,mark size=2.4pt,blue!60!black] coordinates {(-2,2)(-1,-1)(0,-2)(1,-1)(2,2)};
+  \nextgroupplot[title={\small $r=-1$}]
+  \addplot[only marks,mark=*,mark size=2.4pt,blue!60!black] coordinates {(-2,2)(-1,1)(0,0)(1,-1)(2,-2)};
+\end{groupplot}
+\end{tikzpicture}
+\captionof{figure}{Three data sets. In the middle one the points lie on a parabola, so $y$ clearly depends on $x$, but the correlation is $0$ because the relation is not a straight line.}\label{fig:pr5_corr}
+\end{center}
+
+\begin{keyidea}[Correlation is not causation]
+If two quantities are correlated, one may cause the other, or a third one causes both, or it may be chance. Correlation measures only \emph{straight-line} relationships.
+\end{keyidea}
+
+\begin{aibox}
+Statistics decides whether your robot really got better. If the average number of goals rises from $2.1$ to $2.4$, but the standard deviation between matches is $1.5$, the difference may be noise. Always report a mean \emph{and} a spread over several runs (different random seeds), and never compare a single run. Data for a neural network is also split in \textbf{training} and \textbf{test} data: the test data is a sample the network has never seen, so that its error is an honest estimate (Part~VI).
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item For the data $1,\,3,\,3,\,5,\,8$ find the mean, the median and the mode.
+  \item Compute the sample variance and standard deviation of $1,3,3,5,8$.
+  \item A robot's lap times in seconds: $12.1,\ 11.9,\ 12.0,\ 12.2,\ 15.8$. Compute the mean and the median with and without the last value. Which measure changes more?
+  \item The sorted data $2,3,5,7,8,10,12,15$ has the median $7.5$. Find $Q_1$, $Q_3$ and the interquartile range.
+  \item A sensor has $\sigma=0.5$\,cm. What is the standard error of the mean of (a) $4$, (b) $25$, (c) $100$ readings?
+  \item How many readings do you need to bring the standard error of Problem~\thechapter.5 down to $0.05$\,cm?
+  \item The mean of $36$ readings of a sensor with $\sigma=0.3$\,m is $5.10$\,m. Give the $95\,\%$ confidence interval for the true value.
+  \item Compute the correlation coefficient of $x=1,2,3$ and $y=2,4,6$ and of $x=1,2,3$ and $y=6,4,2$. What do you expect before computing?
+  \item Write a Python program that generates $1000$ means of $30$ die rolls each and prints the mean and standard deviation of these $1000$ means. What do you expect?
+  \item[\textbf{\thechapter.10}$\star$] Two robots both score on average $2$ goals per match. Robot~A scores $0,4,0,4$ goals in four matches, robot~B scores $2,2,2,2$. Compute the sample standard deviations. Which robot is more reliable, and why is the mean alone not enough?
+\end{enumerate}

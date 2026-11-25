@@ -1,0 +1,23 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $\hat p=\frac68=0.75$. $L(0.75)=0.75^6\cdot0.25^2=0.178\cdot0.0625=0.0111$.
+  \item $L(0.5)=0.5^8=0.0039$. The ratio is $\frac{0.0111}{0.0039}=2.85$: the data is almost three times as likely under $p=0.75$.
+  \item Example:
+\begin{verbatim}
+import numpy as np
+
+def softmax(z):
+    z = np.asarray(z, dtype=float)
+    e = np.exp(z - z.max())     # subtract the maximum
+    return e / e.sum()
+
+print(softmax([1000, 1001]))    # [0.269 0.731]
+print(softmax([2, 1, 0.1]))     # [0.659 0.242 0.099]
+\end{verbatim}
+  \item $c=2$: $1+0+16=17$. $c=3$: $4+1+9=14$. $c=4$: $9+4+4=17$. The best is $c=3$, the mean of the data $\frac{1+2+6}{3}=3$.
+  \item (a) $2$ bits. (b) $-0.7\log_20.7-0.3\log_20.3=0.360+0.521=0.881$ bits. (c) $3$ bits.
+  \item (a) $(\frac13,\frac13,\frac13)$. (b) $(0.5,0.5)$. (c) $\frac{e^3}{e^3+1}=\frac{20.086}{21.086}=0.953$ and $0.047$.
+  \item Sum $=2.718+7.389+20.086=30.193$. Probabilities $(0.090,\ 0.245,\ 0.665)$.
+  \item A: $-\ln0.7=0.357$. B: $-\ln0.2=1.609$. Network A is better: it gives more probability to the correct class.
+  \item Losses $0.105$, $0.693$, $2.303$, sum $3.101$, average $1.034$. The third sample (probability $0.1$ for the correct class) contributes most.
+  \item[\textbf{\ansnum.10}] $\frac{e^z}{e^z+e^0}=\frac{e^z}{e^z+1}$. Divide numerator and denominator by $e^z$: $\frac{1}{1+e^{-z}}$. For $z=3$: $\frac{1}{1+e^{-3}}=\frac1{1.0498}=0.953$.
+\end{enumerate}

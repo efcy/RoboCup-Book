@@ -1,0 +1,22 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item (a) $\frac36=\frac12$. (b) outcomes $5,6$: $\frac26=\frac13$. (c) $1-\frac16=\frac56$.
+  \item (a) $\frac6{36}=\frac16$. (b) sums $11$ and $12$: $(5,6),(6,5),(6,6)$, so $\frac3{36}=\frac1{12}$. (c) $(1,1),\dots,(6,6)$: $\frac6{36}=\frac16$.
+  \item $1-0.08=0.92$. Three tests: $0.92^3=0.7787$.
+  \item $P(A\cup B)=0.6+0.5-0.3=0.8$. Neither: $1-0.8=0.2$.
+  \item (a) $0.7^3=0.343$. (b) $1-0.3^3=0.973$. (c) $3\cdot0.7^2\cdot0.3=3\cdot0.49\cdot0.3=0.441$.
+  \item Captain and vice-captain: $6\cdot5=30$. Two substitutes: $\binom62=15$.
+  \item (a) $120$. (b) $15$. (c) $\frac{10\cdot9\cdot8}{3\cdot2\cdot1}=120$. (d) $1$.
+  \item Independent: $\frac16\cdot\frac12=\frac1{12}$.
+  \item Example:
+\begin{verbatim}
+import random
+n = 100000
+hits = 0
+for _ in range(n):
+    if random.randint(1, 6) + random.randint(1, 6) == 7:
+        hits += 1
+print(hits / n)
+\end{verbatim}
+  The result is close to $\frac16=0.1667$ (for example $0.166$ or $0.168$).
+  \item[\textbf{\ansnum.10}] All different: $\frac{365}{365}\cdot\frac{364}{365}\cdot\frac{363}{365}\cdot\frac{362}{365}\cdot\frac{361}{365}=0.9729$. So $P(\text{at least two share})=1-0.9729=0.0271$, about $2.7\,\%$.
+\end{enumerate}

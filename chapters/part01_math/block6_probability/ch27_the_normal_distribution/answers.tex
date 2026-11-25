@@ -1,0 +1,19 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $P(X<3)=0.3$. $P(4\le X\le9)=\frac5{10}=0.5$. Mean $5$, $\sigma=\frac{10}{\sqrt{12}}=2.89$.
+  \item $\sigma=0.5$: $\frac{0.3989}{0.5}=0.798$. $\sigma=2$: $\frac{0.3989}{2}=0.199$. The curve with $\sigma=2$ is wider (and lower).
+  \item $z=\frac{3.5-3}{0.2}=2.5$, $z=\frac{2.6-3}{0.2}=-2$, $z=0$.
+  \item $z=1.5$: $P(X\le3.3)=0.9332$, $P(X>3.3)=0.0668$. $P(2.7\le X\le3.3)=0.9332-0.0668=0.8664$.
+  \item (a) $z=\frac{0.50-0.40}{0.05}=2$, $P=0.0228$. (b) $z=\mp1$, $P=0.683$.
+  \item $0.40\mp1.96\cdot0.05$: from $0.302$ to $0.498$\,m/s.
+  \item $z=\frac{3}{1.5}=2$, so $P(|e|>3^\circ)=2\cdot0.0228=0.0455$ (about $4.6\,\%$).
+  \item The mean is $0$, the variance $9+16=25$, so $\sigma=5$\,cm. The range $\pm5$\,cm is $\mp1\sigma$: probability $0.683$.
+  \item Example:
+\begin{verbatim}
+import numpy as np
+rng = np.random.default_rng()
+x = rng.normal(3.0, 0.2, 100000)
+print(np.mean((x > 2.8) & (x < 3.2)))
+\end{verbatim}
+  Expected: about $0.683$.
+  \item[\textbf{\ansnum.10}] The factor is $e^{-1/2}=0.6065$. For $\sigma=1$: $0.3989\cdot0.6065=0.2420$.
+\end{enumerate}
