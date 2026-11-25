@@ -1,0 +1,41 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $640$ wide, $480$ high. The pixel is \texttt{im[2, 9]} (counting from $0$); for the drawing function the point is \texttt{(9, 2)}, i.e.\ \texttt{(x, y)}.
+  \item OpenCV stores colours as BGR, Matplotlib expects RGB, so red and blue are swapped. Convert with \verb!cv2.cvtColor(im, cv2.COLOR_BGR2RGB)! before \texttt{imshow}.
+  \item
+\begin{verbatim}
+im = cv2.imread("a.png")
+if im is None:
+    raise FileNotFoundError("a.png")
+gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+small = cv2.resize(gray, None, fx=0.5, fy=0.5)
+cv2.imwrite("a_small.png", small)
+\end{verbatim}
+  \item It returns \texttt{None} (with only a warning), and later calls fail with confusing errors. The program should test for \texttt{None} and stop with a clear message.
+  \item In HSV the colour type (hue) is separate from brightness, so one narrow hue range covers the ball in light and in shadow; in BGR all three channels change with the light. Red lies at both ends of the hue circle ($0$ and $179$), so it needs two ranges.
+  \item
+\begin{verbatim}
+mask = cv2.inRange(hsv, (5, 150, 150), (20, 255, 255))
+n = cv2.countNonZero(mask)
+print(f"{n} pixels = {100 * n / mask.size:.2f} %")
+\end{verbatim}
+  \item $1920\cdot1080\cdot30\approx6.2\cdot10^7$ pixels per second per operation (and three channels for colour). Half width and height leaves a quarter, $1.6\cdot10^7$.
+  \item $x-w/2=100-160=-60$ pixels; $-60/320\cdot60^\circ=-11.25^\circ$: $11.25^\circ$ to the \emph{left} of the centre.
+  \item
+\begin{verbatim}
+n = 0
+while True:
+    ok, f = cap.read()
+    if not ok: break
+    n += 1
+    m = cv2.inRange(cv2.cvtColor(f, cv2.COLOR_BGR2HSV), (5,150,150), (20,255,255))
+    if cv2.countNonZero(m) > 200:
+        print("frame", n)
+cap.release()
+\end{verbatim}
+  \item[\textbf{\ansnum.10}] Red sits at the beginning \emph{and} the end of the hue scale ($0\dots179$ wraps around), so one interval cannot contain it without also containing the colours between.
+\begin{verbatim}
+m1 = cv2.inRange(hsv, (0, 120, 80), (10, 255, 255))
+m2 = cv2.inRange(hsv, (170, 120, 80), (179, 255, 255))
+mask = cv2.bitwise_or(m1, m2)
+\end{verbatim}
+\end{enumerate}

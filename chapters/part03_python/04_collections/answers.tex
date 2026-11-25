@@ -1,0 +1,35 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \verb!n[:3]!; \verb!n[-1]!; \verb!n[::2]!; \verb!n[::-1]! (or \verb!list(reversed(n))!).
+  \item \texttt{b} is the same list as \texttt{a}, so it is \texttt{[1, 2, 3]}. With \verb!b = a.copy()! it stays \texttt{[1, 2]}.
+  \item \texttt{sort} sorts in place and returns \texttt{None}, so \texttt{n} becomes \texttt{None} and the list is lost. Write \verb!n.sort()! or \verb!n = sorted(n)!.
+  \item \verb![x * x for x in range(1, 10, 2)]! $\to$ \texttt{[1, 9, 25, 49, 81]}.
+  \item
+\begin{verbatim}
+print([k for k, v in angles.items() if v < 0])     # ['knee']
+print(max(angles.values()))                        # 0.1
+\end{verbatim}
+  \item (a) \verb!list(set(x))!. (b) \verb!list(dict.fromkeys(x))! $\to$ \texttt{[3, 1, 2]}: dictionaries keep the order of insertion and keys are unique.
+  \item
+\begin{verbatim}
+count = {}
+for ch in "robocup":
+    count[ch] = count.get(ch, 0) + 1
+# {'r': 1, 'o': 2, 'b': 1, 'c': 1, 'u': 1, 'p': 1}
+from collections import Counter
+print(Counter("robocup"))
+\end{verbatim}
+  \item The multiplication repeats the \emph{same} inner list three times; changing one cell changes the cell in every row. Correct: \verb![[0] * 3 for _ in range(3)]!.
+  \item A \texttt{set} (or a dictionary): membership tests take the same short time however many IDs exist, while \verb!x in list! walks through up to $100\,000$ elements $10\,000$ times, about $10^9$ comparisons.
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+lines = ["k1,1.18,30", "nao,0.57,5", "t1,1.18,30"]
+rows = []
+for line in lines:
+    name, h, w = line.split(",")
+    rows.append({"name": name, "h": float(h), "w": float(w)})
+rows.sort(key=lambda r: r["name"])           # secondary key first
+rows.sort(key=lambda r: r["h"], reverse=True)    # stable sort
+print([r["name"] for r in rows])             # ['k1', 't1', 'nao']
+\end{verbatim}
+  Sorting is stable: equal heights keep the order of the earlier sort. Alternatively use one key with a tuple, \verb!key=lambda r: (-r["h"], r["name"])!.
+\end{enumerate}

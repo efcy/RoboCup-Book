@@ -1,0 +1,27 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $3$, $2$, $-4$ (rounds down), $1.4142135623730951$.
+  \item Decimal numbers are stored in binary, and $0.1$, $0.2$ cannot be represented exactly, so the sum is $0.30000000000000004$. Use \verb!math.isclose(0.1 + 0.2, 0.3)! or \verb!abs(a - b) < 1e-9!.
+  \item
+\begin{verbatim}
+c = float(input("Celsius: "))
+print(f"{1.8 * c + 32:.1f} F")
+\end{verbatim}
+  \item \verb!s[0]!; \verb!s[-3:]! (\texttt{'cup'}); \verb!s.upper()!; \verb!s[::-1]!; \verb!s.count("o")! ($2$).
+  \item \texttt{2.33 2 1}.
+  \item A \texttt{TypeError}: text and number cannot be added. \verb!int("3") + 4! gives $7$; \verb!"3" + str(4)! gives \texttt{'34'}.
+  \item \texttt{True}: every non-empty string is true, whatever it says. Only \texttt{""} is false.
+  \item \verb!a, b = b, a!.
+  \item
+\begin{verbatim}
+v = 2.4 / 5
+print(f"{v:.2f} m/s = {v * 3.6:.2f} km/h")
+\end{verbatim}
+  Output: \texttt{0.48 m/s = 1.73 km/h}.
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+t = 5025
+h, rest = divmod(t, 3600)
+m, s = divmod(rest, 60)
+print(f"{h:02d}:{m:02d}:{s:02d}")      # 01:23:45
+\end{verbatim}
+\end{enumerate}

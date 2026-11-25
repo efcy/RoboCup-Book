@@ -1,0 +1,71 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item
+\begin{verbatim}
+n = int(input("n: "))
+print("even" if n % 2 == 0 else "odd")
+\end{verbatim}
+  \item
+\begin{verbatim}
+if points >= 90:   print("A")
+elif points >= 75: print("B")
+elif points >= 50: print("C")
+else:              print("F")
+\end{verbatim}
+  The first true test wins. If \texttt{points >= 50} came first, $95$ would also print \texttt{C}.
+  \item \texttt{[10, 7, 4, 1]}.
+  \item \verb!sum(i for i in range(1000) if i % 3 == 0 or i % 5 == 0)! gives $233168$. With a loop: accumulate in \texttt{total}.
+  \item
+\begin{verbatim}
+for i in range(1, 11):
+    print(f"7 x {i} = {7 * i}")
+\end{verbatim}
+  \item
+\begin{verbatim}
+for i in range(1, 31):
+    if i % 15 == 0:   print("FizzBuzz")
+    elif i % 3 == 0:  print("Fizz")
+    elif i % 5 == 0:  print("Buzz")
+    else:             print(i)
+\end{verbatim}
+  The test for $15$ (both) must come first.
+  \item
+\begin{verbatim}
+level, minutes = 100.0, 0
+while level >= 20:
+    level -= 2.5
+    minutes += 1
+print(minutes)        # 33
+\end{verbatim}
+  Check: $100-2.5\cdot32=20$ is not below $20$, after $33$ minutes it is $17.5$.
+  \item
+\begin{verbatim}
+total, count = 0.0, 0
+while True:
+    x = float(input("number (0 = end): "))
+    if x == 0:
+        break
+    total += x
+    count += 1
+print(total, count)
+\end{verbatim}
+  \item
+\begin{verbatim}
+for row in range(1, 6):
+    print("*" * row)
+\end{verbatim}
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+p, e = 1, 0
+while p <= 1_000_000:
+    p *= 2
+    e += 1
+print(e, p)           # 20 1048576
+
+total, n = 0, 0
+while total <= 10_000:
+    n += 1
+    total += n
+print(n)              # 141
+\end{verbatim}
+  $141\cdot142/2=10011>10000$ while $140\cdot141/2=9870$.
+\end{enumerate}

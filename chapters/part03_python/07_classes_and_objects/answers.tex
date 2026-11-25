@@ -1,0 +1,67 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item A class is the blueprint (it defines attributes and methods), an object (instance) is one thing built from it. Each object has its own attribute values.
+  \item \texttt{self} is the object on which the method is called; \texttt{\_\_init\_\_} is the constructor that sets up a new object. Python passes the object automatically as the first argument, so \verb!knee.move_to(3)! means \verb!Joint.move_to(knee, 3)!.
+  \item
+\begin{verbatim}
+class Counter:
+    def __init__(self): self.value = 0
+    def increment(self): self.value += 1
+    def reset(self): self.value = 0
+a, b = Counter(), Counter()
+a.increment(); a.increment(); b.increment()
+print(a.value, b.value)      # 2 1
+\end{verbatim}
+  \item
+\begin{verbatim}
+from dataclasses import dataclass
+@dataclass(frozen=True)
+class Pose:
+    x: float
+    y: float
+    theta: float = 0.0
+    def moved(self, dx, dy):
+        return Pose(self.x + dx, self.y + dy, self.theta)
+\end{verbatim}
+  A new object leaves the old one intact: other parts of the program that hold the old pose do not get surprised, and you can keep a history.
+  \item \verb!def __repr__(self): return f"Ball(x={self.x}, y={self.y})"!.
+  \item
+\begin{verbatim}
+class Servo(Joint):
+    def __init__(self, name, lo, hi, max_step):
+        super().__init__(name, lo, hi)
+        self.max_step = max_step
+    def move_to(self, target):
+        d = max(-self.max_step, min(self.max_step, target - self.angle))
+        return super().move_to(self.angle + d)
+\end{verbatim}
+  The constructor logic (name, limits, angle) and the limit clamping come from \texttt{Joint} via \texttt{super()}.
+  \item A \texttt{Servo} is a \texttt{Joint}: inheritance. A \texttt{Robot} is not a joint but \emph{has} joints: composition.
+  \item
+\begin{verbatim}
+import math
+class Angle:
+    def __init__(self, rad): self.rad = rad
+    @property
+    def degrees(self): return math.degrees(self.rad)
+\end{verbatim}
+  \item
+\begin{verbatim}
+class V:
+    def __init__(self, x, y): self.x, self.y = x, y
+    def __add__(self, o): return V(self.x + o.x, self.y + o.y)
+    def __eq__(self, o): return (self.x, self.y) == (o.x, o.y)
+print(V(1, 2) + V(3, 4) == V(4, 6))     # True
+\end{verbatim}
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+from collections import deque
+class MovingAverage:
+    def __init__(self, n): self.buf = deque(maxlen=n)
+    def update(self, x):
+        self.buf.append(x)
+        return sum(self.buf) / len(self.buf)
+m = MovingAverage(3)
+print([m.update(x) for x in [1, 2, 3, 4, 5]])   # [1.0, 1.5, 2.0, 3.0, 4.0]
+\end{verbatim}
+  The deque with \texttt{maxlen} drops the oldest value automatically.
+\end{enumerate}

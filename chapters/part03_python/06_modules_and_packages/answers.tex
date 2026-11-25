@@ -1,0 +1,21 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \verb!import math! keeps the module name in front (\texttt{math.sqrt}), so it is clear where a function comes from. \verb!from math import sqrt! imports one name for direct use. Most people prefer the first for general code, and \texttt{from} for a few well known names; \texttt{import *} should be avoided.
+  \item Python finds your \texttt{random.py} in the script directory before the standard library, so the program imports itself instead of the library. Rename your file and remove \texttt{\_\_pycache\_\_}.
+  \item The code below it runs only if the file is started directly (\verb!python file.py!), not when it is imported. Without the guard, the self-test or main program would run (and maybe move the robot) every time another file imports the module.
+  \item A module is one \texttt{.py} file, a package is a directory of modules. \texttt{\_\_init\_\_.py} marks the directory as a package, runs when it is imported and can define what the package exports.
+  \item
+\begin{verbatim}
+import subprocess
+r = subprocess.run(["ls", "-l", "/tmp"], capture_output=True, text=True)
+print(len(r.stdout.splitlines()))
+\end{verbatim}
+  \item
+\begin{verbatim}
+from datetime import date
+print((date(2026, 12, 24) - date.today()).days)
+\end{verbatim}
+  \item Create \texttt{mylib/mylib/\_\_init\_\_.py}, \texttt{mylib/mylib/geometry.py} and \texttt{mylib/pyproject.toml}; in the activated venv run \verb!pip install -e mylib!; then from any folder \verb!python -c "from mylib.geometry import distance"!.
+  \item The package was installed for another Python or into another virtual environment than the one that runs the script (check \verb!which python!, use \verb!python -m pip!); the venv is not activated; there is a file called \texttt{requests.py} in your folder; the install was in a different machine or container.
+  \item It records the exact versions that work, so that the robot gets the same ones. Do not commit the virtual environment \texttt{.venv} (it can be rebuilt) or \texttt{\_\_pycache\_\_}.
+  \item[\textbf{\ansnum.10}] (1) Move the shared code that both need into a third module that imports neither. (2) Import inside the function that needs the other module, so that the import happens at call time, not at load time. Also consider whether the two modules should be one.
+\end{enumerate}

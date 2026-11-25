@@ -1,0 +1,205 @@
+\bookchapter{Classes and Objects}\label{ch:py7}
+
+\section*{Explanation}
+A robot has joints. Each joint has a name, limits and a current angle, and it can move. Lists of names, lists of limits and lists of angles that must be kept in step are error-prone. A \textbf{class} bundles the \emph{data} (attributes) and the \emph{operations} on it (methods) of one kind of thing, so that your program talks about \texttt{knee.move\_to(1.0)} instead of juggling parallel lists. This style is called \textbf{object-oriented programming}. ROS~2 nodes, PyTorch models and OpenCV classes all work this way, so you must be able to read and write classes.
+
+\section*{A first class}
+\begin{verbatim}
+class Joint:
+    """A robot joint with an angle limit."""
+
+    def __init__(self, name, lo, hi):
+        self.name = name
+        self.lo = lo
+        self.hi = hi
+        self.angle = 0.0
+
+    def move_to(self, target):
+        self.angle = max(self.lo, min(self.hi, target))
+        return self.angle
+
+    def __repr__(self):
+        return f"Joint({self.name!r}, angle={self.angle:.2f})"
+\end{verbatim}
+\begin{verbatim}
+>>> knee = Joint("knee", 0, 2.4)      # create an object (an instance)
+>>> hip = Joint("hip", -1, 1)
+>>> knee.move_to(3.0)                 # clamped to the limit
+2.4
+>>> knee, hip
+(Joint('knee', angle=2.40), Joint('hip', angle=0.00))
+>>> knee.angle                        # read an attribute
+2.4
+\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[cls/.style={draw,thick,fill=blue!8,minimum width=4.6cm,align=left,font=\footnotesize\ttfamily,inner sep=5pt},obj/.style={draw,rounded corners,thick,fill=green!12,minimum width=3.4cm,align=left,font=\footnotesize\ttfamily,inner sep=4pt},>={Stealth[length=2.5mm]}]
+  \node[cls] (c) at (0,0) {\textbf{class Joint}\\[2pt]-- data: name, lo, hi, angle\\-- methods: move\_to(target)};
+  \node[obj] (k) at (7.4,0.9) {knee\\name = "knee"\\lo = 0, hi = 2.4\\angle = 2.4};
+  \node[obj] (h) at (7.4,-1.1) {hip\\name = "hip"\\lo = -1, hi = 1\\angle = 0.0};
+  \draw[->,thick,dashed] (k.west)--node[above,font=\scriptsize,sloped]{instance of}(c.east|-k.west);
+  \draw[->,thick,dashed] (h.west)--node[below,font=\scriptsize,sloped]{instance of}(c.east|-h.west);
+\end{tikzpicture}
+\captionof{figure}{The class is the blueprint, the objects are the things built from it. Each object has its own attribute values; all share the methods.}\label{fig:py7_class}
+\end{center}
+\begin{itemize}[nosep]
+  \item \texttt{class Joint:} defines the blueprint (the name starts with a capital).
+  \item \texttt{\_\_init\_\_} is the \textbf{constructor}: it runs when you write \verb!Joint(...)! and sets up the new object.
+  \item \texttt{self} is the object itself. Every method receives it as the first parameter, Python passes it automatically: \verb!knee.move_to(3.0)! is the same as \verb!Joint.move_to(knee, 3.0)!.
+  \item \texttt{\_\_repr\_\_} returns the text shown by the REPL and by \texttt{print}. Always define it, it makes debugging much easier.
+\end{itemize}
+Objects behave like lists in one respect: names are labels (Chapter~\ref{ch:py4}). After \verb!k2 = knee! both names refer to the \emph{same} joint. Each object keeps its attributes in a dictionary, visible as \texttt{knee.\_\_dict\_\_}. An attribute that is shared by the class (\verb!count = 0! written directly in the class body, changed with \verb!Joint.count += 1!) exists once for all objects.
+
+\section*{Dataclasses: classes for data}
+Many classes only hold values. Writing \texttt{\_\_init\_\_}, \texttt{\_\_repr\_\_} and \texttt{\_\_eq\_\_} by hand is tedious; the decorator \texttt{@dataclass} generates them from the annotated attributes:
+\begin{verbatim}
+from dataclasses import dataclass
+
+@dataclass
+class Pose:
+    x: float
+    y: float
+    theta: float = 0.0            # default value
+
+    def distance_to(self, other):
+        return ((self.x - other.x) ** 2 + (self.y - other.y) ** 2) ** 0.5
+\end{verbatim}
+\begin{verbatim}
+>>> p, q = Pose(1, 2), Pose(4, 6)
+>>> p
+Pose(x=1, y=2, theta=0.0)
+>>> p.distance_to(q)
+5.0
+>>> p == Pose(1, 2, 0.0)          # compares the content
+True
+\end{verbatim}
+With \verb!@dataclass(frozen=True)! the object cannot be changed after creation (assigning an attribute raises \texttt{FrozenInstanceError}); this is good for values such as poses or commands, because nobody can change them by accident. Compare this with the dictionaries of Chapter~\ref{ch:py4}: a dataclass fixes the field names, so a typo like \texttt{pose.thetta} is an immediate error instead of a silent new key.
+
+\section*{Inheritance}
+A class can build on another one and change or add behaviour:
+\begin{verbatim}
+class Servo(Joint):
+    """A joint whose speed is limited."""
+    def __init__(self, name, lo, hi, max_speed):
+        super().__init__(name, lo, hi)       # let Joint set up its part
+        self.max_speed = max_speed
+
+    def move_to(self, target, dt=0.02):
+        step = target - self.angle
+        limit = self.max_speed * dt
+        self.angle += max(-limit, min(limit, step))
+        return self.angle
+\end{verbatim}
+\begin{verbatim}
+>>> s = Servo("ankle", -1, 1, max_speed=0.5)
+>>> s.move_to(1.0), s.move_to(1.0)       # moves 0.01 per cycle
+(0.01, 0.02)
+>>> isinstance(s, Joint)
+True
+\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[cls/.style={draw,thick,fill=blue!8,minimum width=3.6cm,align=left,font=\footnotesize\ttfamily,inner sep=4pt},>={Stealth[length=3mm,open]}]
+  \node[cls] (j) at (0,1.5) {\textbf{Joint}\\name, lo, hi, angle\\move\_to()};
+  \node[cls] (s) at (-3.2,-0.9) {\textbf{Servo}\\max\_speed\\move\_to() \textit{(new)}};
+  \node[cls] (m) at (3.2,-0.9) {\textbf{ContinuousJoint}\\turns\\move\_to() \textit{(new)}};
+  \draw[->,thick] (s.north)--(j.south west);
+  \draw[->,thick] (m.north)--(j.south east);
+\end{tikzpicture}
+\captionof{figure}{Inheritance. The arrow reads ``is a kind of''. \texttt{Servo} gets everything of \texttt{Joint} and replaces \texttt{move\_to}.}\label{fig:py7_inh}
+\end{center}
+\texttt{super()} reaches the parent class. A \texttt{Servo} \emph{is a} \texttt{Joint}, so code that expects a \texttt{Joint} also accepts a \texttt{Servo}; the right \texttt{move\_to} is chosen at run time (\textbf{polymorphism}). Python also needs no common parent for this: anything that has the right methods fits (\emph{duck typing}: ``if it walks like a duck\dots'').
+
+\begin{keyidea}[Prefer composition]
+Inheritance is overused. Ask: is it \emph{is a} (a servo is a joint) or \emph{has a} (a robot has joints, a controller has a filter)? ``Has a'' is solved by \textbf{composition}: the object keeps other objects in its attributes. It is simpler and more flexible. A robot with a list of joints:
+\end{keyidea}
+\begin{verbatim}
+class Robot:
+    def __init__(self, joints):
+        self.joints = {j.name: j for j in joints}     # dictionary by name
+
+    def move(self, targets):
+        return {n: self.joints[n].move_to(a) for n, a in targets.items()}
+
+r = Robot([Joint("hip", -1, 1), Joint("knee", 0, 2.4)])
+print(r.move({"hip": 0.3, "knee": 5.0}))      # {'hip': 0.3, 'knee': 2.4}
+\end{verbatim}
+
+\section*{Properties and special methods}
+A \textbf{property} looks like an attribute but runs code. It computes derived values and can check assignments:
+\begin{verbatim}
+class Temp:
+    def __init__(self, c):
+        self._c = c                      # leading underscore: "internal"
+
+    @property
+    def f(self):                         # read-only: t.f
+        return self._c * 1.8 + 32
+
+    @property
+    def c(self):
+        return self._c
+
+    @c.setter
+    def c(self, value):                  # t.c = 30 calls this
+        if value < -273.15:
+            raise ValueError("below absolute zero")
+        self._c = value
+\end{verbatim}
+Python has no \texttt{private} keyword; a leading underscore is a convention for ``do not touch from outside''. Methods with double underscores let your class use operators and built-in functions:
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{p{4.2cm}p{8.8cm}}
+\texttt{\_\_repr\_\_}, \texttt{\_\_str\_\_} & text for debugging, for \texttt{print}\\
+\texttt{\_\_eq\_\_}, \texttt{\_\_lt\_\_} & \texttt{==}, \texttt{<} (and with them sorting)\\
+\texttt{\_\_add\_\_}, \texttt{\_\_mul\_\_} & \texttt{+}, \texttt{*} (vectors, poses)\\
+\texttt{\_\_len\_\_}, \texttt{\_\_getitem\_\_} & \texttt{len(x)}, \texttt{x[i]}\\
+\texttt{\_\_enter\_\_}, \texttt{\_\_exit\_\_} & the \texttt{with} statement (open a camera, close it safely)\\
+\texttt{\_\_call\_\_} & use the object like a function: \texttt{model(x)} in PyTorch\\
+\end{tabular}
+\end{center}
+\begin{verbatim}
+class V:
+    def __init__(self, x, y): self.x, self.y = x, y
+    def __add__(self, o): return V(self.x + o.x, self.y + o.y)
+    def __repr__(self): return f"V({self.x}, {self.y})"
+print(V(1, 2) + V(3, 4))            # V(4, 6)
+\end{verbatim}
+Two further kinds of methods: \verb!@staticmethod! (a plain function that lives in the class and gets no \texttt{self}) and \verb!@classmethod! (receives the class, used for alternative constructors such as \verb!Pose.from_json(text)!).
+
+\section*{When to use a class}
+Not everything needs a class. Use \textbf{functions} for calculations that turn inputs into outputs (\texttt{clamp}, \texttt{distance}). Use a \textbf{dataclass} for a bundle of values. Use a \textbf{class with methods} when an object has \emph{state that changes over time} and several operations on it: a filter that remembers its last value, a connection to a camera, a controller with an integrator, a robot. The test: if two functions pass the same five variables around, those variables want to be an object.
+
+\begin{example}
+\textbf{A low-pass filter with memory.} Sensor values are noisy; the filter $y_k=\alpha x_k+(1-\alpha)\,y_{k-1}$ smooths them. It must remember $y_{k-1}$, so it is naturally a class:
+\begin{verbatim}
+class LowPass:
+    def __init__(self, alpha):
+        self.alpha = alpha
+        self.y = None
+
+    def update(self, x):
+        if self.y is None:
+            self.y = x
+        else:
+            self.y = self.alpha * x + (1 - self.alpha) * self.y
+        return self.y
+
+f = LowPass(0.2)
+print([round(f.update(x), 2) for x in [1, 1, 1, 5, 1, 1]])
+# [1, 1.0, 1.0, 1.8, 1.64, 1.51]
+\end{verbatim}
+The spike of $5$ is reduced to $1.8$. Each \texttt{LowPass} object has its own memory, so a robot can have one filter per joint.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item What is the difference between a class and an object? Which one has the attribute values?
+  \item What are \texttt{self} and \texttt{\_\_init\_\_}? Why does \texttt{knee.move\_to(3)} work although the method is defined with two parameters?
+  \item Write a class \texttt{Counter} with methods \texttt{increment()} and \texttt{reset()} and an attribute \texttt{value}. Make two counters and show that they are independent.
+  \item Turn \texttt{Pose} into a dataclass with the fields \texttt{x}, \texttt{y}, \texttt{theta} and a method \texttt{moved(dx, dy)} that returns a \emph{new} \texttt{Pose}. Why is returning a new object sometimes better than changing the old one?
+  \item Define \texttt{\_\_repr\_\_} for a class \texttt{Ball} with \texttt{x}, \texttt{y} so that \texttt{print(Ball(1, 2))} shows \texttt{Ball(x=1, y=2)}.
+  \item Write \texttt{Servo} so that its \texttt{move\_to} may never move more than \texttt{max\_step} per call. Which parts do you inherit from \texttt{Joint}?
+  \item Is a \texttt{Robot} a \texttt{Joint}? Is a \texttt{Servo} a \texttt{Joint}? Which relation is inheritance and which composition?
+  \item Write a property \texttt{degrees} for a class \texttt{Angle} that stores radians.
+  \item Implement \texttt{\_\_add\_\_} and \texttt{\_\_eq\_\_} for a 2D vector class and test \texttt{V(1, 2) + V(3, 4) == V(4, 6)}.
+  \item[\textbf{\thechapter.10}$\star$] Write a class \texttt{MovingAverage(n)} with \texttt{update(x)} that returns the mean of the last $n$ values (use \texttt{collections.deque(maxlen=n)}). Test it on \texttt{[1, 2, 3, 4, 5]} with $n=3$.
+\end{enumerate}

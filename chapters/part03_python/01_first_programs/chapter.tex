@@ -1,0 +1,187 @@
+\bookchapter{First Programs}\label{ch:py1}
+
+\section*{Explanation}
+Python is the language of this book: the training code for the robot, the data analysis and the video tools are all written in it. It was designed to be readable, so a short Python program often looks almost like a sentence. This chapter takes you from the first line to small programs that calculate with numbers and text. You need only a Linux shell (Chapter~\ref{ch:linux1}) and a text editor.
+
+\begin{keyidea}[Learn by typing]
+Programming is a skill like playing the guitar: reading is not enough. Type every example, change a number, break it on purpose, read the error message. The error message is not an insult, it is a hint with a line number.
+\end{keyidea}
+
+\section*{Two ways to run Python}
+\begin{verbatim}
+$ python3 --version
+Python 3.13.1
+$ python3                    # interactive mode (the REPL)
+>>> 2 + 3
+5
+>>> print("Hello, robot")
+Hello, robot
+>>> exit()
+\end{verbatim}
+The \textbf{REPL} (read--eval--print loop) executes each line at once. It is perfect for trying things and as a calculator. For real programs you write a \textbf{script}, a text file ending in \texttt{.py}:
+\begin{verbatim}
+# hello.py
+print("Hello, robot")
+\end{verbatim}
+\begin{verbatim}
+$ python3 hello.py
+Hello, robot
+\end{verbatim}
+Everything after a \texttt{\#} is a \textbf{comment}, ignored by Python and written for humans. Use VS Code with the Python extension or any editor; the commands in this book work in every terminal. Whenever Python needs a package that is not installed, use a virtual environment (Chapter~\ref{ch:linux4}); on current Ubuntu you should not install packages system-wide with \texttt{pip}.
+
+\section*{Numbers}
+Python has two kinds of numbers: integers (\texttt{int}) and decimal numbers (\texttt{float}).
+\begin{verbatim}
+>>> 7 / 2          # division always gives a float
+3.5
+>>> 7 // 2         # integer division (rounds down)
+3
+>>> 7 % 2          # remainder (modulo)
+1
+>>> 2 ** 10        # power
+1024
+>>> -7 // 2        # rounds down, not towards zero!
+-4
+>>> -7 % 2
+1
+\end{verbatim}
+Operators follow the rules of mathematics: power before multiplication before addition, parentheses first. The remainder \texttt{\%} is useful: \texttt{n \% 2 == 0} tests for even numbers, and \texttt{angle \% 360} wraps an angle into one turn.
+
+\begin{keyidea}[Floats are not exact]
+Computers store decimals in binary, and $0.1$ has no exact binary form (like $1/3$ has no exact decimal form).
+\end{keyidea}
+\begin{verbatim}
+>>> 0.1 + 0.2
+0.30000000000000004
+>>> 0.1 + 0.2 == 0.3
+False
+>>> import math
+>>> math.isclose(0.1 + 0.2, 0.3)
+True
+\end{verbatim}
+Never compare floats with \texttt{==}; use \texttt{math.isclose} or test whether the difference is small. The \texttt{math} module offers \texttt{sqrt}, \texttt{sin}, \texttt{cos} (angles in \emph{radians}), \texttt{pi}, \texttt{atan2} and more. Useful built-in functions: \texttt{abs}, \texttt{round}, \texttt{min}, \texttt{max}, \texttt{sum}, \texttt{divmod}. Note that \texttt{round(2.5)} is $2$ and \texttt{round(3.5)} is $4$: Python rounds halves to the even number.
+
+\section*{Names and values}
+A \textbf{variable} is a name that points to a value (Figure~\ref{fig:py1_names}). The assignment \texttt{=} does not mean ``equal'' as in mathematics, it means ``from now on this name stands for that value''.
+\begin{verbatim}
+>>> speed = 0.5
+>>> speed = speed + 0.25      # right side first, then the name moves
+>>> speed
+0.75
+>>> speed += 0.25             # shorthand for the line above
+>>> a, b = 3, 4               # several at once
+>>> a, b = b, a               # swap
+\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[val/.style={draw,rounded corners,thick,fill=green!12,minimum width=1.5cm,minimum height=0.8cm,font=\footnotesize\ttfamily},nm/.style={draw,fill=yellow!25,minimum height=0.7cm,minimum width=1.3cm,font=\footnotesize\ttfamily},>={Stealth[length=2.5mm]}]
+  \node[nm] (s) at (0,1.2) {speed};
+  \node[val] (v1) at (3,1.2) {0.5};
+  \draw[->,thick,gray] (s)--(v1);
+  \node[font=\footnotesize] at (1.5,0.45) {before};
+  \node[nm] (s2) at (6.5,1.2) {speed};
+  \node[val,gray,dashed] (v2) at (9.5,1.8) {0.5};
+  \node[val] (v3) at (9.5,0.6) {0.75};
+  \draw[->,thick,gray,dashed] (s2)--(v2);
+  \draw[->,thick] (s2)--(v3);
+  \node[font=\footnotesize] at (8,-0.15) {after \texttt{speed = speed + 0.25}};
+\end{tikzpicture}
+\captionof{figure}{A name is a label on a value. Assigning a new value moves the label; it does not change the old value.}\label{fig:py1_names}
+\end{center}
+\textbf{Rules for names:} letters, digits and underscores, not starting with a digit, no spaces; upper and lower case differ (\texttt{Speed} $\neq$ \texttt{speed}). The community style (PEP~8) is \texttt{snake\_case} for variables and functions, \texttt{CapitalWords} for classes, \texttt{UPPER\_CASE} for constants. Choose names that explain: \texttt{step\_length\_m} is better than \texttt{s}.
+
+\section*{Text}
+Text is a \textbf{string} (\texttt{str}) in quotes. Single or double quotes are the same; triple quotes allow several lines.
+\begin{verbatim}
+>>> s = "Booster K1"
+>>> len(s)
+10
+>>> s[0], s[-1]            # counting starts at 0; -1 is the last
+('B', '1')
+>>> s[0:7]                 # slice: from 0 up to (not including) 7
+'Booster'
+>>> s[::-1]                # reversed
+'1K retsooB'
+>>> s.upper()
+'BOOSTER K1'
+>>> s.lower().replace(" ", "_")
+'booster_k1'
+>>> s.split()              # cut at spaces
+['Booster', 'K1']
+>>> "x" in "box"
+True
+>>> "ab" * 3 + "!"
+'ababab!'
+\end{verbatim}
+Strings cannot be changed in place (they are \emph{immutable}); every method returns a new string. Other methods: \texttt{strip()} removes surrounding spaces and line breaks, \texttt{startswith}, \texttt{endswith}, \texttt{find}, \texttt{join}, \texttt{count}.
+
+\subsection*{f-strings: formatting output}
+Put an \texttt{f} before the quote, and write expressions in braces:
+\begin{verbatim}
+>>> name, h = "K1", 1.18
+>>> print(f"{name} is {h:.1f} m tall = {h*100:.0f} cm")
+K1 is 1.2 m tall = 118 cm
+>>> print(f"{1234567:,}  {0.256:.1%}  {42:05d}  {name:>6}")
+1,234,567  25.6%  00042      K1
+>>> print(f"{h=}")                # prints the name too: handy for debugging
+h=1.18
+\end{verbatim}
+After the colon comes the format: \texttt{.2f} two decimals, \texttt{05d} five digits padded with zeros, \texttt{>6} right-aligned in width 6, \texttt{,} thousands separator, \texttt{.1\%} percent.
+
+\section*{Types and conversion}
+Every value has a \textbf{type}. \texttt{type(x)} shows it. Python does not convert automatically between text and numbers; you must say so.
+\begin{verbatim}
+>>> type(3), type(3.0), type("3"), type(True), type(None)
+(<class 'int'>, <class 'float'>, <class 'str'>,
+ <class 'bool'>, <class 'NoneType'>)
+>>> "3" + 4
+TypeError: can only concatenate str (not "int") to str
+>>> int("3") + 4, "3" + str(4)
+(7, '34')
+>>> int(3.9), float("3.5"), bool(0), bool(""), bool("a")
+(3, 3.5, False, False, True)
+\end{verbatim}
+\texttt{int(3.9)} cuts off the decimals (toward zero). The values \texttt{0}, \texttt{0.0}, \texttt{""}, \texttt{None} and empty collections count as false, everything else as true. \texttt{True} and \texttt{False} are the two \textbf{booleans}; \texttt{None} means ``no value''.
+
+\section*{Input and output}
+\begin{verbatim}
+# circle.py
+import math
+
+radius = float(input("Radius in m: "))     # input() always returns text
+area = math.pi * radius ** 2
+print(f"Area: {area:.2f} m^2")
+\end{verbatim}
+\begin{verbatim}
+$ python3 circle.py
+Radius in m: 0.5
+Area: 0.79 m^2
+\end{verbatim}
+\texttt{print} accepts several values (separated by a space) and the options \texttt{sep=} and \texttt{end=}. Programs that run on a robot rarely ask questions; they read command-line arguments and files (Chapter~\ref{ch:py5}). Reading error messages: Python prints the \emph{last} line first as the cause (\texttt{ValueError: could not convert string to float: 'abc'}), and above it the line numbers where it happened.
+
+\begin{example}
+\textbf{Converting units.} A joint angle sensor reports $1.2217$ rad. In degrees:
+\begin{verbatim}
+import math
+angle_rad = 1.2217
+print(f"{math.degrees(angle_rad):.1f} deg")      # 70.0 deg
+\end{verbatim}
+and \texttt{math.radians(90)} gives $1.5708$. A $100$-pulse-per-turn encoder that counted $250$ pulses has turned \texttt{250 / 100} $=2.5$ turns, i.e.\ \texttt{250 \% 100} $=50$ pulses into the third turn.
+\end{example}
+
+\begin{aibox}
+An assistant can explain an error message or write a first version of a small program. Do not paste code you do not understand into your robot. Run it on small examples in the REPL first and make sure that you can explain each line.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Compute in the REPL: \texttt{17 // 5}, \texttt{17 \% 5}, \texttt{-17 // 5}, \texttt{2 ** 0.5}. Predict first, then check.
+  \item Why does \texttt{0.1 + 0.2 == 0.3} give \texttt{False}? How do you compare the two numbers correctly?
+  \item Write a script that reads a temperature in Celsius and prints it in Fahrenheit with one decimal. ($F=1.8\,C+32$.)
+  \item Let \texttt{s = "robocup"}. Write expressions for: the first letter, the last three letters, the word in capital letters, the word reversed, the number of letters \texttt{o}.
+  \item What is the output of \texttt{print(f"\{7/3:.2f\} \{7//3\} \{7\%3\}")}?
+  \item What happens with \texttt{"3" + 4}, and how do you fix it in two different ways (one giving $7$, one giving \texttt{"34"})?
+  \item What is the value of \texttt{bool("False")}? Explain.
+  \item Variables \texttt{a = 5} and \texttt{b = 9}: swap their values without a third variable.
+  \item A robot drives $2.4$\,m in $5$\,s. Write a script that computes the speed in m/s and in km/h and prints both with two decimals using an f-string.
+  \item[\textbf{\thechapter.10}$\star$] Seconds to clock: given \texttt{t = 5025} seconds, compute hours, minutes and seconds using only \texttt{//} and \texttt{\%} (or \texttt{divmod}) and print \texttt{01:23:45}.
+\end{enumerate}

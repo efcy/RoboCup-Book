@@ -1,0 +1,223 @@
+\bookchapter{Python in Robot Programs: Loops, Time and Concurrency}\label{ch:py12}
+
+\section*{Explanation}
+A robot program is not a script that runs once and ends. It runs a \textbf{loop} that reads sensors, computes, and commands motors, for example $50$ times per second, for hours, while other things (a camera, a network connection, a user interface) need attention at the same time. This chapter collects the Python patterns for that: a loop with a steady rhythm, measuring time correctly, doing several things at once (threads, processes, \texttt{asyncio}), stopping safely, and an honest look at what Python can and cannot do in real time.
+
+\section*{The control loop}
+The simplest loop sleeps after each step:
+\begin{verbatim}
+while running:
+    step()                  # read sensors, compute, command motors
+    time.sleep(0.02)        # wait 20 ms
+\end{verbatim}
+The period is then $20\,\text{ms}$ \emph{plus} the duration of \texttt{step()} plus the inaccuracy of the sleep. A step of $5$\,ms gives $25$\,ms, i.e.\ $40$\,Hz instead of $50$\,Hz, and the error grows with the step time. The remedy is to sleep until a \textbf{deadline} computed from a fixed schedule (Figure~\ref{fig:py12_loop}):
+\begin{verbatim}
+import time
+PERIOD = 0.02                                   # 50 Hz
+t_next = time.perf_counter()
+while running:
+    step()
+    t_next += PERIOD                            # next deadline, no drift
+    delay = t_next - time.perf_counter()
+    if delay > 0:
+        time.sleep(delay)
+    else:
+        log.warning("overrun by %.1f ms", -delay * 1000)
+\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.2mm]}]
+  \draw[->,thick] (0,0)--(12.4,0) node[right,font=\footnotesize]{time};
+  \node[font=\footnotesize,anchor=east] at (-0.2,0.0) {sleep(0.02):};
+  \foreach \x/\w in {0/0.5,2.5/0.5,5.0/0.5,7.5/0.5}{\fill[blue!40] (\x,0.1) rectangle (\x+\w,0.5);}
+  \foreach \x in {0.5,3.0,5.5,8.0}{\draw[gray] (\x,0.1)--(\x+2,0.1);}
+  \foreach \x in {2.5,5.0,7.5,10.0}{\draw[red!70!black,thick] (\x,-0.05)--(\x,0.65);}
+  \node[font=\scriptsize,red!70!black] at (6.3,0.95) {starts drift: period = step + sleep};
+  \draw[->,thick] (0,-1.8)--(12.4,-1.8) node[right,font=\footnotesize]{time};
+  \node[font=\footnotesize,anchor=east] at (-0.2,-1.8) {deadlines:};
+  \foreach \x/\w in {0/0.5,2.0/0.9,4.0/0.5,6.0/0.5,8.0/0.7}{\fill[blue!40] (\x,-1.7) rectangle (\x+\w,-1.3);}
+  \foreach \x in {0,2,4,6,8,10}{\draw[green!50!black,thick] (\x,-1.85)--(\x,-1.15);}
+  \node[font=\scriptsize,green!50!black] at (6.3,-0.85) {fixed grid: the period stays $20$\,ms whatever the step takes};
+  \node[font=\scriptsize,blue!50!black,anchor=west] at (0.1,-2.3) {blue = work in \texttt{step()}};
+\end{tikzpicture}
+\captionof{figure}{Top: sleeping a fixed time after the work makes the cycle longer than planned. Bottom: sleeping until the next point of a fixed grid keeps the rhythm; it needs the step to be shorter than the period.}\label{fig:py12_loop}
+\end{center}
+On a test machine, $200$ cycles of $20$\,ms took $4.046$\,s with the naive loop and $3.980$\,s with deadlines: the mean period was $20.33$\,ms against $20.00$\,ms. In both variants single cycles were up to $22.7$\,ms long: the \emph{jitter} comes from the operating system, not from the program (Chapter~\ref{ch:linux8}).
+
+\subsection*{Which clock?}
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{p{4.0cm}p{9.0cm}}
+\texttt{time.perf\_counter()} & highest resolution, never goes backwards: for \emph{measuring durations} and loop timing\\
+\texttt{time.monotonic()} & never goes backwards; for timeouts\\
+\texttt{time.time()} & wall-clock time (seconds since 1970); \textbf{can jump} when the clock is corrected (chrony, NTP): for time stamps in logs, never for measuring durations\\
+\end{tabular}
+\end{center}
+Time stamps of sensor data should come from the sensor or from \texttt{time.time()} at the moment of reading, not from the moment your program gets around to processing them.
+
+\section*{How real-time is Python?}
+Python is not a real-time language. Even with a perfect loop, the following can delay a cycle:
+\begin{itemize}[nosep]
+  \item the \textbf{operating system}: other processes, interrupts, the scheduler (Chapter~\ref{ch:linux8}); typical jitter is $0.1$--$2$\,ms and with load much more;
+  \item the \textbf{garbage collector} and memory allocation: Python pauses occasionally to free memory; creating many objects in a loop makes it worse (\texttt{gc.get\_threshold()} shows the settings; \texttt{gc.freeze()} and \texttt{gc.disable()} are options for experts);
+  \item \textbf{slow operations}: printing to a terminal, logging to a slow disk, a network call without timeout, a heavy NumPy call.
+\end{itemize}
+This is fine for a camera pipeline, a behaviour tree, or a walking controller at $50$\,Hz with a margin of a few milliseconds. It is \emph{not} fine for a $1$\,kHz joint controller with a hard deadline. For that you either use a real-time kernel and a compiled language (Rust, Part~\ref{part:rust}; C++), or you let the motor drivers run the fast inner loop and let Python send the slower commands. Measure first: record the cycle time of every cycle, print the maximum and the $99$th percentile (Chapter~\ref{ch:linux8}), and decide on the numbers.
+
+\section*{Several things at once}
+The camera delivers $30$ images per second, the controller needs a command every $20$\,ms, and a network socket waits for messages. If one loop does it all sequentially, a slow image processing delays the controller. Python offers three tools; the choice depends on what the tasks \emph{wait for}.
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{3.0cm}p{5.4cm}p{4.6cm}}
+\textbf{Tool} & \textbf{Use for} & \textbf{Note}\\ \hline
+\texttt{threading} & waiting for I/O: camera, serial port, network, file & shares memory; the GIL limits calculation\\
+\texttt{multiprocessing} and \texttt{concurrent.futures} & heavy calculation on several cores & separate memory, data must be sent\\
+\texttt{asyncio} & many network or I/O tasks in one thread & functions must be \texttt{async}\\
+\end{tabular}
+\end{center}
+
+\subsection*{The GIL}
+The standard Python interpreter has a \textbf{global interpreter lock} (GIL): only one thread executes Python code at a time. Threads therefore do \emph{not} speed up pure Python calculations, but they work well while a thread \emph{waits} (the GIL is released during sleeping, file and network access, and in many NumPy and OpenCV calls). A test with four calculation jobs, each burning the CPU for about $0.1$\,s, on a $2$-core machine:
+\begin{verbatim}
+sequential   0.43 s
+4 threads    0.52 s      # no gain (the GIL), a little overhead
+4 processes  0.31 s      # real parallelism, limited by 2 cores
+\end{verbatim}
+Recent Python versions also offer an optional build without the GIL; today the safe assumption is still that threads are for waiting and processes are for calculating.
+
+\subsection*{Threads and queues}
+Never let two threads change the same variable without protection. The clean pattern is a \textbf{queue}: one thread \emph{produces}, another \emph{consumes}, and the queue is thread-safe (Figure~\ref{fig:py12_queue}).
+\begin{verbatim}
+import threading, queue, time
+q = queue.Queue(maxsize=2)            # small: old frames are worthless
+stop = threading.Event()
+
+def camera():                         # producer
+    i = 0
+    while not stop.is_set():
+        i += 1
+        try:
+            q.put(i, timeout=0.1)
+        except queue.Full:
+            pass                      # drop the frame instead of piling up
+        time.sleep(0.01)              # (a real camera.read() blocks here)
+
+def worker():                         # consumer
+    while not stop.is_set():
+        try:
+            x = q.get(timeout=0.1)
+        except queue.Empty:
+            continue
+        print("processed frame", x)
+        time.sleep(0.03)              # slow processing
+
+t1 = threading.Thread(target=camera, daemon=True)
+t2 = threading.Thread(target=worker, daemon=True)
+t1.start(); t2.start()
+time.sleep(0.15); stop.set(); t1.join(); t2.join()
+\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[b/.style={draw,rounded corners,thick,minimum width=2.8cm,minimum height=1.0cm,align=center,font=\footnotesize},>={Stealth[length=2.5mm]}]
+  \node[b,fill=blue!10] (c) at (0,0) {camera thread\\\texttt{put(frame)}};
+  \node[draw,thick,fill=yellow!25,minimum width=2.6cm,minimum height=0.8cm,font=\footnotesize\ttfamily] (q) at (4.6,0) {Queue(2)};
+  \node[b,fill=green!12] (w) at (9.2,0) {worker thread\\\texttt{get()}, process};
+  \node[b,fill=orange!15] (m) at (9.2,-2.0) {control loop\\50 Hz};
+  \draw[->,thick] (c)--(q); \draw[->,thick] (q)--(w);
+  \draw[->,thick] (w)--node[right,font=\scriptsize]{latest result}(m);
+  \node[font=\scriptsize,gray!60!black,align=center] at (4.6,-1.0) {full: drop the oldest\\or skip the new frame};
+\end{tikzpicture}
+\captionof{figure}{The producer--consumer pattern. A small queue decouples the rates of camera ($100$\,Hz here) and processing ($33$\,Hz); the control loop only reads the newest result.}\label{fig:py12_queue}
+\end{center}
+Rules: share data through queues or immutable (frozen) objects; protect unavoidable shared variables with \texttt{threading.Lock} (\verb!with lock:!); give every blocking call a \textbf{timeout}; use a \texttt{threading.Event} to tell threads to stop; and never update a GUI from a worker thread. Debugging threads is hard (Chapter~\ref{ch:py11}): bugs appear only sometimes. Keep the number of threads small and the interactions simple.
+
+\subsection*{Processes}
+\begin{verbatim}
+from concurrent.futures import ProcessPoolExecutor
+if __name__ == "__main__":                  # required on Windows and macOS
+    with ProcessPoolExecutor(4) as ex:
+        results = list(ex.map(burn, [3_000_000] * 4))
+\end{verbatim}
+Each process has its own interpreter and memory; arguments and results are copied (pickled) between them, so processes pay off when the work per call is big compared with the data. This is how you would run several simulations or evaluations in parallel.
+
+\subsection*{asyncio}
+For many tasks that mostly wait, \texttt{asyncio} runs them in one thread; \texttt{await} marks the places where the task hands control to others:
+\begin{verbatim}
+import asyncio
+async def sensor(name, period, n):
+    for i in range(n):
+        await asyncio.sleep(period)
+        print(f"{name} {i}")
+
+async def main():
+    await asyncio.gather(sensor("imu", 0.01, 3), sensor("cam", 0.025, 2))
+
+asyncio.run(main())
+# imu 0, imu 1, cam 0, imu 2, cam 1   (in this order, after 0.05 s in total)
+\end{verbatim}
+Inside an \texttt{async} function you must not call blocking functions such as \texttt{time.sleep} or a long calculation; they would stop all tasks. Libraries for web servers, websockets and many network protocols are built on \texttt{asyncio}. ROS~2 (Part~\ref{part:ros}) has its own executors with callbacks and timers, so you rarely write threads yourself there; the same ideas (do not block a callback, keep it short) apply.
+
+\section*{Stopping safely}
+A robot program is stopped by a person or by systemd with \texttt{SIGTERM} (Chapter~\ref{ch:linux5}), by \texttt{Ctrl+C} (\texttt{SIGINT}), or by a crash. In every case the motors must end in a safe state. Combine a signal handler with \texttt{try}/\texttt{finally} (Chapter~\ref{ch:py5}):
+\begin{verbatim}
+import signal, time
+running = True
+def on_signal(signum, frame):
+    global running
+    running = False                   # only set a flag; the loop ends itself
+
+signal.signal(signal.SIGTERM, on_signal)
+signal.signal(signal.SIGINT, on_signal)
+
+try:
+    while running:
+        step()
+        time.sleep(0.02)
+finally:
+    stop_motors()                     # also after Ctrl+C, SIGTERM, errors
+    print("safe stop: motors off")
+\end{verbatim}
+Sending \texttt{kill -TERM} to this program prints \texttt{safe stop: motors off} and exits cleanly. \texttt{SIGKILL} (\texttt{kill -9}) cannot be caught, so a robust robot also has a \textbf{watchdog}: the motor controller (or a separate small program) stops the motors if it receives no command for, say, $100$\,ms. Never trust that the software will always shut down nicely.
+
+\begin{keyidea}[A checklist for robot programs]
+(1) One main loop with a fixed period and an overrun warning. (2) Parameters in a config file (Chapter~\ref{ch:py5}), not in the code. (3) Logging with levels (Chapter~\ref{ch:py11}), no \texttt{print} in the fast loop. (4) Every blocking call has a timeout. (5) Safe stop with \texttt{finally} and a watchdog. (6) Slow work (camera, network, planning) in other threads or processes, connected by queues. (7) Measure the cycle time and its maximum, in the real situation. (8) Tests for the logic, a simulation for the rest.
+\end{keyidea}
+
+\begin{example}
+\textbf{A complete skeleton.} Putting the pieces together, a controller that reads the newest camera result, computes a command at $50$\,Hz, warns on overruns and stops safely:
+\begin{verbatim}
+def main():
+    latest = {"angle": 0.0}                  # written by the worker, read here
+    ...start the camera/worker thread, which updates latest["angle"]...
+    t_next = time.perf_counter()
+    worst = 0.0
+    try:
+        while running:
+            t0 = time.perf_counter()
+            cmd = 0.8 * latest["angle"]       # simple proportional control
+            send(cmd)
+            worst = max(worst, time.perf_counter() - t0)
+            t_next += PERIOD
+            delay = t_next - time.perf_counter()
+            if delay > 0:
+                time.sleep(delay)
+            else:
+                log.warning("overrun by %.1f ms", -delay * 1000)
+    finally:
+        stop_motors()
+        log.info("worst step: %.2f ms", worst * 1000)
+\end{verbatim}
+Reading and writing a single dictionary entry is safe enough for a single writer and a single reader; with more complex data use a queue or a lock.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A loop runs \texttt{step()} (which takes $8$\,ms) and then \texttt{time.sleep(0.02)}. What is the real period and frequency? How do you get exactly $50$\,Hz?
+  \item Which clock do you use for (a) measuring the duration of a function, (b) writing a time stamp into a log line, (c) a timeout of $2$\,s? Why not \texttt{time.time()} for (a) and (c)?
+  \item List three reasons why a Python loop can occasionally miss its $20$\,ms deadline although the step normally needs only $2$\,ms.
+  \item Is Python suitable for a $1$\,kHz joint controller on a robot? Explain, and name two alternatives.
+  \item Four threads each calculate for $1$\,s (pure Python). How long does the program take, roughly? What if each thread waits one second for network data instead?
+  \item Why use a \texttt{Queue} with a small \texttt{maxsize} between a camera thread and a processing thread? What should happen when the queue is full?
+  \item Why must every blocking call in a robot program have a timeout?
+  \item Write a program that prints \texttt{tick} every $0.5$\,s using the deadline method, and stops cleanly with \texttt{Ctrl+C}, printing \texttt{bye}.
+  \item Explain what happens with \texttt{kill -9} on the program of Problem~\ref{ch:py12}.8. What protects the robot in this case?
+  \item[\textbf{\thechapter.10}$\star$] Extend the loop so that it records the duration of every cycle in a list, and after $10$ seconds prints the mean, the maximum and the $99$th percentile of the cycle durations (use \texttt{numpy}). Interpret what you see.
+\end{enumerate}

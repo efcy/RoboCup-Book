@@ -1,0 +1,155 @@
+\bookchapter{Functions}\label{ch:py3}
+
+\section*{Explanation}
+When a program grows, you must not write the same lines twice. A \textbf{function} gives a block of code a name, so that you can use it again with different inputs. Functions are also how you think: break a big problem into small named pieces such as \texttt{read\_sensor()}, \texttt{compute\_step()} and \texttt{send\_to\_motors()}. This chapter shows how to write them well.
+
+\section*{Defining and calling}
+\begin{verbatim}
+def clamp(x, lo=-1.0, hi=1.0):
+    """Limit x to the range [lo, hi]."""
+    return max(lo, min(hi, x))
+
+print(clamp(3))            # 1.0
+print(clamp(-0.4))         # -0.4
+\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.5mm]}]
+  \node[draw,rounded corners,thick,fill=blue!10,minimum width=4.2cm,minimum height=2.0cm,align=center] (f) at (0,0) {\texttt{def clamp(x, lo, hi):}\\[2pt]\texttt{\ \ \ \ \dots}\\\texttt{\ \ \ \ return result}};
+  \draw[->,thick] (-4.4,0.5)--node[above,font=\scriptsize]{arguments}node[below,font=\scriptsize]{\texttt{3, -1, 1}}(-2.1,0.5);
+  \draw[->,thick] (2.1,0.5)--node[above,font=\scriptsize]{return value}node[below,font=\scriptsize]{\texttt{1}}(4.4,0.5);
+  \node[font=\scriptsize,gray!60!black] at (0,-1.4) {local variables live only while the function runs};
+\end{tikzpicture}
+\captionof{figure}{A function takes arguments, computes with its own local variables and hands back one value with \texttt{return}.}\label{fig:py3_func}
+\end{center}
+\begin{itemize}[nosep]
+  \item \texttt{def name(parameters):} opens the function, the indented block is its body.
+  \item The \textbf{docstring} (the text in triple quotes) says what the function does. Tools and \texttt{help(clamp)} show it. Write one for every function that is not trivial.
+  \item \texttt{return} ends the function and gives a value back. Without \texttt{return}, the function returns \texttt{None}.
+  \item \textbf{Parameters} are the names in the definition, \textbf{arguments} are the values you pass in the call.
+\end{itemize}
+A function that only \emph{prints} is different from one that \emph{returns}: a returned value can be used further (\verb!y = clamp(x) * 2!), a printed one is gone. Let functions return, and print in the outer program.
+
+\section*{Arguments in detail}
+\begin{verbatim}
+>>> clamp(5, hi=10)            # keyword argument
+5
+>>> clamp(hi=2, x=7)           # keywords can be in any order
+2
+>>> def stats(xs):
+...     return min(xs), max(xs), sum(xs) / len(xs)
+>>> lo, hi, mean = stats([3, 1, 4, 1, 5])    # returns a tuple, unpacked
+>>> lo, hi, mean
+(1, 5, 2.8)
+\end{verbatim}
+Parameters with a \textbf{default} (\texttt{lo=-1.0}) are optional and must come after those without. Call with keywords when it makes the call readable: \verb!move(distance=2, speed=0.3)! is clearer than \verb!move(2, 0.3)!. A function can return several values separated by commas; really it returns one tuple.
+
+\subsection*{*args and **kwargs}
+\begin{verbatim}
+>>> def total(*nums, **opts):
+...     return nums, opts
+>>> total(1, 2, 3, scale=2)
+((1, 2, 3), {'scale': 2})
+\end{verbatim}
+\texttt{*nums} collects any number of extra positional arguments in a tuple, \texttt{**opts} collects extra keyword arguments in a dictionary. You will see them in library code that passes arguments along.
+
+\begin{keyidea}[The mutable default trap]
+Default values are created \emph{once}, when the function is defined, not at each call. With a list as default, all calls share the same list:
+\end{keyidea}
+\begin{verbatim}
+>>> def bad(x, acc=[]):
+...     acc.append(x); return acc
+>>> bad(1), bad(2)
+([1, 2], [1, 2])             # surprise: the same list twice
+>>> def good(x, acc=None):
+...     if acc is None:
+...         acc = []
+...     acc.append(x); return acc
+>>> good(1), good(2)
+([1], [2])
+\end{verbatim}
+Use \texttt{None} as default for lists, dictionaries and other changeable objects, and create the object inside.
+
+\section*{Scope: where a name lives}
+A name assigned inside a function is \textbf{local}: it exists only during the call and hides a global name of the same spelling.
+\begin{verbatim}
+x = 10
+def shadow():
+    x = 1                  # a new local x
+    return x
+print(shadow(), x)         # 1 10
+
+def f(x):
+    y = x * 2
+    return y
+f(3)
+print(y)                   # NameError: name 'y' is not defined
+\end{verbatim}
+Python looks for a name first locally, then in the enclosing function, then globally, then in the built-ins (the order \textbf{LEGB}). A function can \emph{read} a global variable, but to \emph{assign} one it needs \texttt{global counter}; avoid it. Pass values in as arguments and return results: functions without hidden connections to the outside are easy to test (Chapter~\ref{ch:py11}) and to reason about.
+
+\section*{Good functions}
+\begin{itemize}[nosep]
+  \item \textbf{One job} and a name that says it: a verb phrase such as \texttt{compute\_step\_length}.
+  \item Short enough to read at a glance (a screen, about $20$ lines).
+  \item Few parameters (at most about five); group related ones into a dictionary or a class (Chapter~\ref{ch:py7}).
+  \item No surprises: do not change the arguments you receive (a list passed in is the same list, Chapter~\ref{ch:py4}) unless the name says so.
+  \item Type hints document what goes in and out:
+\end{itemize}
+\begin{verbatim}
+def clamp(x: float, lo: float = -1.0, hi: float = 1.0) -> float:
+    """Limit x to the range [lo, hi]."""
+    return max(lo, min(hi, x))
+\end{verbatim}
+Python does \emph{not} enforce hints, but editors and checkers (\texttt{mypy}, \texttt{pyright}) use them to find mistakes, and they replace many comments.
+
+\section*{Functions are values}
+A function is an object like a number; you can store it or pass it to another function. The most common case is the \texttt{key} of sorting:
+\begin{verbatim}
+>>> sorted(["robot", "a", "k1"], key=len)
+['a', 'k1', 'robot']
+>>> square = lambda x: x * x         # a small anonymous function
+>>> list(map(square, [1, 2, 3]))
+[1, 4, 9]
+\end{verbatim}
+A \texttt{lambda} is a function in one expression, handy for short throw-away jobs. If it needs more than one line, use \texttt{def}.
+
+\section*{Recursion}
+A function may call itself, as long as every call works on a smaller problem and one case needs no further call:
+\begin{verbatim}
+def fact(n):
+    return 1 if n <= 1 else n * fact(n - 1)
+print(fact(5))             # 120
+\end{verbatim}
+Python limits the depth (about $1000$ calls) and each call costs time, so use a loop when the problem is simple. Recursion fits naturally for trees (directories, decision trees). Without a stop case you get \texttt{RecursionError}. A recursive function that recomputes the same values, like the Fibonacci numbers, becomes very slow; remembering earlier results (\emph{caching}) fixes it, for example with the decorator \texttt{@functools.cache} placed above the \texttt{def}.
+
+\begin{example}
+\textbf{A reusable helper.} A joint may move only in a range and not faster than a maximum step per cycle. Two small functions and one that combines them:
+\begin{verbatim}
+def clamp(x, lo, hi):
+    return max(lo, min(hi, x))
+
+def limit_step(target, current, max_step):
+    """Move from current towards target by at most max_step."""
+    return current + clamp(target - current, -max_step, max_step)
+
+def safe_command(target, current, lo=-1.5, hi=1.5, max_step=0.05):
+    return clamp(limit_step(target, current, max_step), lo, hi)
+
+print(safe_command(2.0, 1.48))     # 1.5
+print(safe_command(0.0, 1.0))      # 0.95
+\end{verbatim}
+Each piece can be tried alone in the REPL. The same idea (a rate limiter and a range limiter) protects real motors.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Write a function \texttt{is\_even(n)} that returns \texttt{True} or \texttt{False}. Then write one that returns the string \texttt{"even"} or \texttt{"odd"}. Which is the better design?
+  \item Write \texttt{celsius\_to\_fahrenheit(c)} with a docstring and type hints.
+  \item What is the difference between a parameter and an argument? Between \texttt{print} and \texttt{return}?
+  \item What does this print, and why? \verb!def f(a, b=2): return a - b! and \verb!print(f(b=1, a=5))!.
+  \item Explain the output: \verb!def add(x, acc=[]): acc.append(x); return acc!, \verb!print(add(1)); print(add(2))!. How do you fix the function?
+  \item Write \texttt{mean(*numbers)} that returns the average of any number of arguments.
+  \item What is printed? \verb!x = 5!, \verb!def g(): x = 7!, \verb!g()!, \verb!print(x)!.
+  \item Write a recursive function \texttt{power(base, n)} for integer $n\geq0$ without using \verb!**!.
+  \item Write \texttt{distance(p, q)} for two points given as tuples \texttt{(x, y)}, and use it with \texttt{sorted(points, key=...)} to order points by distance from the origin.
+  \item[\textbf{\thechapter.10}$\star$] Write \texttt{normalize\_angle(a)} that maps any angle in degrees into the range $[-180,180)$ using one expression with \texttt{\%}. Check: $190\to-170$, $-190\to170$, $360\to0$.
+\end{enumerate}

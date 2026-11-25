@@ -1,0 +1,224 @@
+\bookchapter{Testing and Debugging}\label{ch:py11}
+
+\section*{Explanation}
+Your program will contain bugs; that is not a failure of talent but a property of programming. What separates good programmers is how fast they \emph{find} and how reliably they \emph{prevent} bugs. On a robot, the cost of a bug is higher than at a desk: a wrong sign can make a motor drive into its limit. This chapter shows three skills: automated tests that catch errors before the robot does, a systematic way to find a bug, and tools to look inside a running program (logging, a debugger, a profiler).
+
+\section*{Tests with pytest}
+A \textbf{test} is a small program that calls your code with known inputs and checks the result. With \texttt{pytest} (\verb!pip install pytest!) a test is a function whose name starts with \texttt{test\_} and which uses \texttt{assert}:
+\begin{verbatim}
+# walker/limits.py
+def clamp(x, lo, hi):
+    if lo > hi:
+        raise ValueError("lo must not be larger than hi")
+    return max(lo, min(hi, x))
+
+def normalize_angle(a):
+    return (a + 180) % 360 - 180
+\end{verbatim}
+\begin{verbatim}
+# tests/test_limits.py
+import pytest
+from walker.limits import clamp, normalize_angle
+
+def test_clamp_inside():
+    assert clamp(0.5, 0, 1) == 0.5
+
+def test_clamp_above():
+    assert clamp(5, 0, 1) == 1
+
+def test_clamp_swapped_limits():
+    with pytest.raises(ValueError):          # this call MUST raise
+        clamp(1, 2, 1)
+
+CASES = [(190, -170), (-190, 170), (360, 0), (0, 0), (180, -180)]
+
+@pytest.mark.parametrize("a, expected", CASES)
+def test_normalize(a, expected):             # runs once per row
+    assert normalize_angle(a) == expected
+
+def test_float():
+    assert 0.1 + 0.2 == pytest.approx(0.3)   # floats: never compare with ==
+\end{verbatim}
+\begin{verbatim}
+$ python3 -m pytest -q
+..........                                                   [100%]
+10 passed in 0.02s
+\end{verbatim}
+Run it from the project folder (Chapter~\ref{ch:py6}); \texttt{pytest} finds files \texttt{test\_*.py} by itself. When a test fails, the report shows the expected and the actual value:
+\begin{verbatim}
+$ python3 -m pytest -q tests/test_fail.py
+>       assert clamp(-5, 0, 1) == 1
+E       assert 0 == 1
+E        +  where 0 = clamp(-5, 0, 1)
+
+tests/test_fail.py:4: AssertionError
+FAILED tests/test_fail.py::test_clamp_below - assert 0 == 1
+1 failed in 0.02s
+\end{verbatim}
+(Here the \emph{test} had the mistake: below the range, \texttt{clamp} returns the lower limit $0$. A failing test tells you that expectation and code disagree, not which one is wrong.) Useful options: \verb!-x! stop at the first failure, \verb!-k clamp! run tests whose name contains ``clamp'', \verb!-v! verbose, \verb!--lf! run only the tests that failed last time.
+
+\begin{center}
+\begin{tikzpicture}[st/.style={draw,rounded corners,thick,minimum width=2.6cm,minimum height=0.9cm,align=center,font=\footnotesize},>={Stealth[length=2.5mm]}]
+  \node[st,fill=blue!10] (a) at (0,0) {write a\\test};
+  \node[st,fill=red!12] (b) at (3.4,0) {run: it\\\textbf{fails}};
+  \node[st,fill=blue!10] (c) at (6.8,0) {write the\\code};
+  \node[st,fill=green!12] (d) at (10.2,0) {run: it\\\textbf{passes}};
+  \draw[->,thick] (a)--(b); \draw[->,thick] (b)--(c); \draw[->,thick] (c)--(d);
+  \draw[->,thick,gray!60!black] (d.south)--++(0,-0.8)-|node[pos=0.25,below,font=\scriptsize]{refactor, repeat}(a.south);
+\end{tikzpicture}
+\captionof{figure}{Test-driven development: write the test first, see it fail (so that you know it can fail), then make it pass. You do not have to work like this always, but a bug report should \emph{always} become a test first.}\label{fig:py11_tdd}
+\end{center}
+
+\subsection*{What to test}
+\begin{itemize}[nosep]
+  \item \textbf{Normal cases} with a known answer you can calculate by hand.
+  \item \textbf{Edge cases:} zero, empty list, one element, the limits themselves, negative numbers, \texttt{None}. Most bugs live at the edges ($180^\circ$ in the table above!).
+  \item \textbf{Errors:} invalid input must raise the exception you promised.
+  \item \textbf{Regression:} every bug you fix gets a test that would have caught it. It never comes back unnoticed.
+\end{itemize}
+Tests are easiest for \emph{pure functions}: they depend only on their arguments and have no side effects (Chapter~\ref{ch:py3}). Code that talks to hardware is hard to test; hide the hardware behind a small class (Chapter~\ref{ch:py7}) and replace it in tests by a \emph{fake} with the same methods that returns prepared values. A \textbf{fixture} prepares shared test data:
+\begin{verbatim}
+@pytest.fixture
+def limits():
+    return (-1.5, 1.5)
+
+def test_with_fixture(limits):               # pytest passes the fixture in
+    lo, hi = limits
+    assert clamp(2, lo, hi) == hi
+\end{verbatim}
+Run the tests automatically on every push (GitHub Actions, Chapter~\ref{ch:git3}) and before every commit (Chapter~\ref{ch:git4}). A green test suite is what allows you to change code without fear. It does not prove that the program is correct; it only shows that the cases you thought of work. For numerical code compare with \texttt{pytest.approx} or \texttt{np.testing.assert\_allclose}, and fix the random seed (Chapter~\ref{ch:py8}).
+
+\section*{Finding a bug}
+\begin{keyidea}[The method]
+(1) \textbf{Reproduce} the bug reliably, with the smallest input that triggers it. (2) \textbf{Read} the error message and the traceback from the bottom up (Chapter~\ref{ch:py5}). (3) Form a \textbf{hypothesis} (``the list is empty here''). (4) \textbf{Test} the hypothesis by looking: print, log, debugger, a test. (5) Change \emph{one} thing, repeat. (6) Write the regression test. Do not change code at random; each change without a hypothesis is a guess.
+\end{keyidea}
+Typical Python bugs and their messages:
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{p{4.6cm}p{8.4cm}}
+\textbf{Message} & \textbf{Usual cause}\\ \hline
+\texttt{IndentationError} & mixed tabs and spaces, a missing block\\
+\texttt{NameError: name 'x'} & typo, or the variable only exists in another function (scope)\\
+\texttt{TypeError: unsupported operand} & text and number mixed, \texttt{None} where a value was expected\\
+\texttt{AttributeError: 'NoneType'} & a function returned \texttt{None} (forgotten \texttt{return}) and you used the result\\
+\texttt{IndexError}, \texttt{KeyError} & off-by-one; key not present (use \texttt{.get})\\
+\texttt{UnboundLocalError} & assigning to a name inside a function that you also read before\\
+\texttt{ValueError: could not broadcast} & shapes of NumPy arrays do not fit: print \texttt{.shape}\\
+\end{tabular}
+\end{center}
+Typical \emph{silent} bugs (no message, wrong result): a shared mutable default (Chapter~\ref{ch:py3}), two names for one list (Chapter~\ref{ch:py4}), integer overflow in \texttt{uint8} (Chapter~\ref{ch:py8}), row/column confusion in images (Chapter~\ref{ch:py10}), degrees where radians are expected. Tests with hand-calculated values find these; staring at code does not.
+
+\section*{Looking inside: print, logging, debugger}
+\subsection*{print debugging, done well}
+\verb!print(f"{x=}, {len(items)=}")! shows names and values. It is fast and perfectly fine for a first look, but you must remove the prints afterwards, and they disappear into the terminal when the program runs as a service.
+
+\subsection*{logging}
+The module \texttt{logging} is \texttt{print} with levels, time stamps and the ability to switch parts on and off:
+\begin{verbatim}
+import logging
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+                    datefmt="%H:%M:%S")
+log = logging.getLogger("walker.camera")      # one logger per module
+
+log.debug("hidden at level INFO")
+log.info("opened camera %d", 0)
+log.warning("frame late by %.1f ms", 12.5)
+try:
+    1 / 0
+except ZeroDivisionError:
+    log.exception("control step failed")      # message + traceback
+\end{verbatim}
+\begin{verbatim}
+17:20:28 INFO walker.camera: opened camera 0
+17:20:28 WARNING walker.camera: frame late by 12.5 ms
+17:20:28 ERROR walker.camera: control step failed
+Traceback (most recent call last):
+  ...
+ZeroDivisionError: division by zero
+\end{verbatim}
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{p{2.6cm}p{10.4cm}}
+\texttt{DEBUG} & details for the developer (every frame, every command)\\
+\texttt{INFO} & normal milestones (started, camera opened, connected)\\
+\texttt{WARNING} & something unexpected but the program continues\\
+\texttt{ERROR} & an operation failed\\
+\texttt{CRITICAL} & the program cannot continue\\
+\end{tabular}
+\end{center}
+Set the level by an option (\texttt{--verbose}) or an environment variable. Under systemd, everything written to the standard output goes to the journal (Chapter~\ref{ch:linux5}), where \texttt{journalctl -u walker -p warning} filters exactly these levels. Never log passwords, and log \emph{rarely} inside fast loops: $1000$ lines per second fill the disk and slow the loop. ROS~2 has its own logger with the same levels.
+
+\subsection*{The debugger}
+A debugger stops the program at a line and lets you look at all variables and execute step by step. Put \texttt{breakpoint()} where you want to stop, or start the program in VS Code with F5 and click left of a line number to set a breakpoint.
+\begin{verbatim}
+def mean(xs):
+    total = 0
+    for x in xs:
+        total += x
+    breakpoint()                  # the program stops here
+    return total / len(xs)
+mean([])
+\end{verbatim}
+\begin{verbatim}
+> /tmp/py11/dbg.py(5)mean()
+-> breakpoint()
+(Pdb) p total                     # print a value
+0
+(Pdb) p xs
+[]                                # found it: an empty list
+(Pdb) w                           # where am I? (the call stack)
+(Pdb) c                           # continue
+\end{verbatim}
+Commands of \texttt{pdb}: \texttt{n} next line, \texttt{s} step into a function, \texttt{c} continue, \texttt{p expr} print, \texttt{w} stack, \texttt{u}/\texttt{d} up/down in the stack, \texttt{q} quit. The graphical debugger of VS Code shows variables, the call stack and conditional breakpoints (stop only if \texttt{angle > 1.5}). Another useful trick is \verb!python -m pdb script.py!, which stops at the first line, or \verb!python -i script.py!, which opens a REPL after the program ended or crashed so that you can inspect the variables. A robot control loop cannot be stopped for long without consequences: use the debugger on the simulation or on recorded data, not on the walking robot.
+
+\section*{Measuring speed}
+Do not guess where the time goes: measure (Chapter~\ref{ch:linux8} did the same for the whole system). A small piece of code:
+\begin{verbatim}
+$ python3 -m timeit -s "import numpy as np; a = np.random.rand(10000)" "a.sum()"
+100000 loops, best of 5: 3.43 usec per loop
+$ python3 -m timeit -s "a = list(range(10000))" "sum(a)"
+5000 loops, best of 5: 59.6 usec per loop
+\end{verbatim}
+A whole program, sorted by time spent:
+\begin{verbatim}
+$ python3 -m cProfile -s cumtime slow.py
+         4000064 function calls in 1.316 seconds
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       20    0.754    0.038    1.315    0.066 slow.py:1(slow)
+  4000020    0.561    0.000    0.561    0.000 slow.py:2(<genexpr>)
+\end{verbatim}
+\texttt{tottime} is the time inside the function itself, \texttt{cumtime} includes the functions it calls. Optimize only what the profiler shows as the big part; the first step is almost always a better algorithm or a NumPy operation instead of a Python loop (Chapter~\ref{ch:py8}). For a live process on the robot use \texttt{py-spy} (Chapter~\ref{ch:linux8}).
+
+\section*{Style and static checks}
+Code is read more often than written. A common style (PEP~8) and automatic tools remove arguments and many errors: \texttt{ruff} (checks and formats, very fast) and \texttt{mypy} (checks the type hints of Chapter~\ref{ch:py3}).
+\begin{verbatim}
+$ ruff check .                    # finds unused variables, undefined names, ...
+$ ruff format .                   # one uniform layout
+$ mypy walker/                    # finds calls with the wrong types
+\end{verbatim}
+Run them together with the tests in a \emph{pre-commit hook} and in the CI of your repository (Chapters~\ref{ch:git3} and~\ref{ch:git4}). Add the settings to \texttt{pyproject.toml} so that everybody uses the same.
+
+\begin{example}
+\textbf{A bug hunt.} The robot turns the wrong way when the target angle is $350^\circ$ and the current one $10^\circ$: the controller computes the error $350-10=340^\circ$ and turns $340^\circ$ left, instead of $20^\circ$ right. \emph{Reproduce:} \texttt{error(350, 10)} in the REPL gives $340$. \emph{Test first:}
+\begin{verbatim}
+def test_error_wraps():
+    assert angle_error(350, 10) == -20
+    assert angle_error(10, 350) == 20
+\end{verbatim}
+\emph{Fix:} \verb!def angle_error(target, current): return normalize_angle(target - current)!. With \texttt{normalize\_angle} of Problem~\ref{ch:py3}.10 the first test gives $normalize(340)=-20$. Both tests pass, and the bug can never return unnoticed.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item What makes a function name a test for pytest? What does \texttt{assert} do when the condition is false?
+  \item Write three tests for \verb!def is_even(n): return n % 2 == 0!, including one edge case.
+  \item Why do we write \verb!assert x == pytest.approx(0.3)! instead of \verb!assert x == 0.3! for floating-point results?
+  \item Which cases would you test for a function \texttt{mean(xs)}? What should it do for an empty list, and how do you test that?
+  \item A function prints the result and returns nothing. A colleague calls \verb!y = f(3) * 2! and gets a \texttt{TypeError}. Explain and fix.
+  \item Which logging level do you use for (a) ``camera opened'', (b) the value of every pixel ($100$ times per second), (c) ``battery at 15\,\%'', (d) ``cannot connect, giving up''?
+  \item What are the advantages of \texttt{logging} over \texttt{print} on a robot that runs as a service?
+  \item Use \texttt{breakpoint()} to find out why \verb!mean([])! crashes. Which command shows the value of a variable?
+  \item Use \texttt{timeit} (or \texttt{time.perf\_counter}) to compare a list comprehension and a NumPy expression for the squares of $10^5$ numbers.
+  \item[\textbf{\thechapter.10}$\star$] A bug report says: ``sometimes the robot freezes after the camera reconnects.'' Describe step by step how you would proceed, naming which tools of this chapter you use.
+\end{enumerate}

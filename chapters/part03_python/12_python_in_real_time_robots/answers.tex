@@ -1,0 +1,38 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $8+20=28$\,ms, about $35.7$\,Hz. Use the deadline method: \verb!t_next += 0.02! and sleep for \verb!t_next - perf_counter()!, which leaves $12$\,ms of sleep.
+  \item (a) \texttt{time.perf\_counter()}, (b) \texttt{time.time()} (wall-clock, human-readable), (c) \texttt{time.monotonic()}. \texttt{time.time()} can jump forward or backward when the system clock is corrected, which would give negative durations or timeouts that fire too early or too late.
+  \item For example: the garbage collector runs; another process uses the CPU or an interrupt occurs (the scheduler); a slow operation such as logging, printing or a disk write; a first call that loads a module or allocates memory; thermal throttling of the CPU.
+  \item Usually not: the operating system and garbage collector cause jitter of milliseconds, which is too much for a hard $1$\,ms deadline. Alternatives: a compiled language such as Rust or C++ (with a real-time kernel and real-time priority), or let the motor driver hardware run the fast loop and send only setpoints from Python at a lower rate.
+  \item Pure Python calculation: about $4$\,s (the GIL runs one thread at a time), no gain from threads (use processes). Waiting for the network: about $1$\,s, because the waits overlap.
+  \item The queue decouples the two rates and is thread-safe. Old frames are worthless for a robot, so a small queue avoids a growing delay. When it is full, drop the oldest (or the new) frame instead of blocking the camera.
+  \item A call without a timeout can wait forever (cable pulled, server down) and freezes the loop, so the robot stops reacting. With a timeout the program notices, logs and recovers or stops safely.
+  \item
+\begin{verbatim}
+import time
+t_next = time.perf_counter()
+try:
+    while True:
+        print("tick")
+        t_next += 0.5
+        time.sleep(max(0.0, t_next - time.perf_counter()))
+except KeyboardInterrupt:
+    print("bye")
+\end{verbatim}
+  \item \texttt{SIGKILL} cannot be caught, so neither the handler nor \texttt{finally} runs and the motors stay in their last state. A \textbf{watchdog} in the motor controller (stop if no command arrives within a short time) or a hardware emergency stop protects the robot.
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+import numpy as np, time
+durations = []
+t_end = time.perf_counter() + 10
+t_next = time.perf_counter()
+while time.perf_counter() < t_end:
+    t0 = time.perf_counter()
+    step()
+    durations.append(time.perf_counter() - t0)
+    t_next += 0.02
+    time.sleep(max(0.0, t_next - time.perf_counter()))
+d = np.array(durations) * 1000
+print(d.mean(), d.max(), np.percentile(d, 99))
+\end{verbatim}
+  If the mean is small and the maximum is many times larger, rare spikes (garbage collection, scheduling) dominate; the $99$th percentile tells how often the deadline is at risk. Decide on the maximum, not the mean (Chapter~\ref{ch:linux8}).
+\end{enumerate}

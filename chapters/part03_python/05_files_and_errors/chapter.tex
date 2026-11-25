@@ -1,0 +1,206 @@
+\bookchapter{Files, Errors and Command-Line Programs}\label{ch:py5}
+
+\section*{Explanation}
+Real programs read data (logs, sensor recordings, configuration), write results and must survive the unexpected: the file is missing, the number is garbage, the camera does not answer. In this chapter you read and write files, work with the formats that robot software uses (text, CSV, JSON, YAML), handle errors in a controlled way and turn a script into a proper command-line tool.
+
+\section*{Text files}
+\begin{verbatim}
+with open("log.txt", "w") as f:            # "w" = write (overwrites!)
+    f.write("12:00:01 INFO start\n")
+    f.write("12:00:02 WARN battery 18\n")
+
+with open("log.txt") as f:                 # default mode "r" = read
+    for n, line in enumerate(f, start=1):
+        line = line.rstrip("\n")
+        if "WARN" in line or "ERROR" in line:
+            print(n, line)                 # 2 12:00:02 WARN battery 18
+\end{verbatim}
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{p{1.4cm}p{11.6cm}}
+\textbf{Mode} & \textbf{Meaning}\\ \hline
+\texttt{"r"} & read (default); error if the file does not exist\\
+\texttt{"w"} & write; \textbf{deletes} an existing file\\
+\texttt{"a"} & append at the end; creates the file if needed\\
+\texttt{"rb"}, \texttt{"wb"} & binary (images, models, recordings)\\
+\end{tabular}
+\end{center}
+The \texttt{with} block closes the file automatically at the end, even when an error occurs; always use it. Looping over the file reads \emph{one line at a time}, so a log of many gigabytes needs little memory. \texttt{f.read()} loads everything into one string, \texttt{f.readlines()} into a list. Lines end with \verb!\n!; \texttt{rstrip()} removes it. Pass \texttt{encoding="utf-8"} for text with special characters, so that Windows and Linux agree.
+
+\section*{Paths with pathlib}
+Do not glue paths together with \verb!"dir" + "/" + "file"!. The module \texttt{pathlib} handles separators (\texttt{/} on Linux, \texttt{\textbackslash} on Windows) and offers the usual operations:
+\begin{verbatim}
+from pathlib import Path
+p = Path("data") / "run1" / "log.txt"     # the / operator joins
+p.name, p.stem, p.suffix, p.parent        # log.txt, log, .txt, data/run1
+p.exists(), p.is_file(), p.is_dir()
+p.parent.mkdir(parents=True, exist_ok=True)   # like mkdir -p
+text = p.read_text(encoding="utf-8")      # whole file as a string
+p.write_text("hello\n", encoding="utf-8")
+list(Path(".").glob("**/*.csv"))          # all CSV files below here
+Path.home() / ".config" / "walker"        # the home directory
+\end{verbatim}
+Relative paths start at the \emph{current directory of the process}, which is where you started the program, not where the script lies (Chapter~\ref{ch:linux1}). To find files next to your script use \verb!Path(__file__).parent!.
+
+\section*{CSV: tables}
+\textbf{CSV} (comma-separated values) is the simplest table format; spreadsheets and robots both write it.
+\begin{verbatim}
+import csv
+with open("out/a.csv", newline="") as f:
+    rows = list(csv.DictReader(f))        # each row a dictionary
+print(rows[0])        # {'name': 'k1', 'h': '1.18', 'w': '30'}
+print(sum(float(r["h"]) for r in rows) / len(rows))     # 0.875
+
+with open("out/b.csv", "w", newline="") as f:
+    w = csv.writer(f)
+    w.writerow(["t", "angle"])
+    w.writerows([[0, 0.1], [1, 0.2]])
+\end{verbatim}
+Everything read from a CSV is \emph{text}: convert with \texttt{float()} and \texttt{int()}. The \texttt{newline=""} is required by the module. For large numeric tables use NumPy (\texttt{np.loadtxt}, Chapter~\ref{ch:py8}) or the library \texttt{pandas}.
+
+\section*{JSON and YAML: structured data}
+\textbf{JSON} stores nested dictionaries, lists, text, numbers, \texttt{true}/\texttt{false}/\texttt{null}. It is the language of web interfaces and of many configuration files.
+\begin{verbatim}
+import json
+cfg = {"robot": "k1", "limits": {"knee": [0, 2.4]}, "debug": True, "gain": None}
+s = json.dumps(cfg, indent=2)             # Python -> text
+back = json.loads(s)                      # text -> Python
+print(back == cfg)                        # True
+with open("cfg.json", "w") as f:
+    json.dump(cfg, f, indent=2)           # directly into a file
+\end{verbatim}
+Note the translations: \texttt{True} $\leftrightarrow$ \texttt{true}, \texttt{None} $\leftrightarrow$ \texttt{null}, tuples become lists. \textbf{YAML} is a more human-friendly format without braces, used by ROS~2 parameter files and GitHub Actions (Chapter~\ref{ch:git3}). It needs the package \texttt{pyyaml} (\texttt{import yaml}):
+\begin{verbatim}
+robot: k1
+joints: [hip, knee]
+limits:
+  knee: [0, 2.4]
+\end{verbatim}
+\begin{verbatim}
+import yaml
+with open("config.yaml") as f:
+    cfg = yaml.safe_load(f)               # always safe_load, never load
+print(cfg["limits"]["knee"])              # [0, 2.4]
+\end{verbatim}
+In YAML the indentation (spaces only) is the structure, as in Python. A good rule: put parameters that you change often (gains, limits, IP addresses) into a config file instead of the code, so that nobody has to edit the program to tune the robot.
+
+\section*{Errors and exceptions}
+When something goes wrong, Python raises an \textbf{exception} and the program stops with a \emph{traceback}. You can catch it:
+\begin{verbatim}
+for text in ["3", "abc", ""]:
+    try:
+        value = int(text)
+    except ValueError as e:
+        print("not a number:", e)
+    else:
+        print("ok", value)
+\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[st/.style={draw,rounded corners,thick,minimum width=3.0cm,minimum height=0.8cm,font=\footnotesize\ttfamily},>={Stealth[length=2.5mm]},l/.style={font=\scriptsize}]
+  \node[st,fill=blue!10] (t) at (0,0) {try: ...};
+  \node[st,fill=green!12] (e) at (4.6,0.9) {else: (no error)};
+  \node[st,fill=red!12] (x) at (4.6,-0.9) {except: (error)};
+  \node[st,fill=yellow!25] (f) at (9.2,0) {finally: (always)};
+  \draw[->,thick] (t)--node[l,above]{ok}(e);
+  \draw[->,thick] (t)--node[l,below]{exception}(x);
+  \draw[->,thick] (e)--(f); \draw[->,thick] (x)--(f);
+\end{tikzpicture}
+\captionof{figure}{The paths through a \texttt{try} statement. \texttt{finally} runs in every case, also after a \texttt{return} or an uncaught error.}\label{fig:py5_try}
+\end{center}
+Typical exceptions:
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{p{4.4cm}p{8.6cm}}
+\texttt{ValueError} & right type, impossible value (\verb!int("abc")!)\\
+\texttt{TypeError} & wrong type (\verb!"3" + 4!)\\
+\texttt{KeyError}, \texttt{IndexError} & missing dictionary key; index outside the list\\
+\texttt{FileNotFoundError} & the path does not exist\\
+\texttt{ZeroDivisionError} & division by zero\\
+\texttt{KeyboardInterrupt} & the user pressed \texttt{Ctrl+C}\\
+\end{tabular}
+\end{center}
+\begin{keyidea}[Catch only what you can handle]
+Name the exception you expect (\texttt{except ValueError}). A bare \texttt{except:} or \texttt{except Exception:} hides bugs, including typos in your own code and \texttt{Ctrl+C}. If you cannot recover from a problem, let the program stop with the traceback: that is a good error report. If you catch, either fix the problem, or add information and \texttt{raise} again.
+\end{keyidea}
+\begin{verbatim}
+def load_config(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        raise SystemExit(f"config file {path} not found")   # clear message
+\end{verbatim}
+You can raise exceptions yourself to signal misuse, and define your own types:
+\begin{verbatim}
+class ConfigError(Exception):
+    """The configuration is invalid."""
+
+def check(cfg):
+    if "robot" not in cfg:
+        raise ConfigError("missing key 'robot'")
+\end{verbatim}
+Reading a traceback: start from the \emph{bottom} line (the exception type and message), then go upwards through the file and line numbers to the place in your code. In a long-running robot program, an uncaught exception in the control loop must lead to a \emph{safe stop} (zero torque or sitting down); use \texttt{try}/\texttt{finally} for this (Chapter~\ref{ch:py12}).
+
+\section*{Command-line programs}
+Programs on a robot are started from the shell and should take their inputs as arguments, not by asking questions. The module \texttt{argparse} does the work, including a free \texttt{--help}:
+\begin{verbatim}
+# summarize.py
+import argparse
+ap = argparse.ArgumentParser(description="Summarize a robot log")
+ap.add_argument("logfile", help="path of the log file")
+ap.add_argument("-l", "--level", default="ERROR", help="level to count")
+ap.add_argument("-v", "--verbose", action="store_true")
+a = ap.parse_args()
+
+n = sum(1 for line in open(a.logfile) if a.level in line)
+print(f"{n} lines with {a.level}")
+if a.verbose:
+    print("file:", a.logfile)
+\end{verbatim}
+\begin{verbatim}
+$ python3 summarize.py log.txt -l WARN -v
+1 lines with WARN
+file: log.txt
+$ python3 summarize.py -h
+usage: summarize.py [-h] [-l LEVEL] [-v] logfile
+$ python3 summarize.py
+summarize.py: error: the following arguments are required: logfile
+\end{verbatim}
+Add \texttt{type=int} or \texttt{type=float} to convert arguments, \texttt{choices=[...]} to restrict them. The raw list of arguments is \texttt{sys.argv}; the exit status of a program (Chapter~\ref{ch:linux2}) is set with \verb!sys.exit(1)!, so that shell scripts and CI can detect a failure. Wrap the main work in a function and guard the start, so that the file can also be imported:
+\begin{verbatim}
+def main():
+    ...
+
+if __name__ == "__main__":
+    main()
+\end{verbatim}
+
+\begin{example}
+\textbf{Plot-ready data from a log.} A robot writes lines such as \texttt{12:00:02 WARN battery 18}. We want the battery values as a list:
+\begin{verbatim}
+levels = []
+with open("robot.log") as f:
+    for line in f:
+        parts = line.split()
+        if len(parts) == 4 and parts[2] == "battery":
+            try:
+                levels.append(int(parts[3]))
+            except ValueError:
+                print("skipping bad line:", line.strip())
+\end{verbatim}
+Notice the two layers of safety: a check of the expected format (\texttt{len(parts) == 4}) and a \texttt{try} around the conversion. Real log files always contain a few broken lines.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Which file mode would you use to (a) add a line to an existing log, (b) write a new file, (c) read a camera image?
+  \item Why do we write \texttt{with open(...) as f}? What happens if we forget \texttt{f.close()} and the program crashes?
+  \item Write a program that copies a text file and numbers the lines (\texttt{1: ...}).
+  \item With \texttt{p = Path("data/run1/log.txt")}, what are \texttt{p.name}, \texttt{p.stem}, \texttt{p.suffix} and \texttt{p.parent}? Write the code that creates the folder \texttt{data/run1} if it does not exist.
+  \item A CSV file has the columns \texttt{t,angle}. Compute the mean angle. Why must you call \texttt{float}?
+  \item Convert the dictionary \verb!{"a": (1, 2), "b": None}! to JSON text and back. What differs after the round trip?
+  \item What is wrong with this code and how do you improve it? \verb!try: x = int(s)! \texttt{except: pass}.
+  \item Write a function \texttt{safe\_float(text, default=0.0)} that returns the number or the default.
+  \item Extend \texttt{summarize.py} with an option \texttt{--top N} (an integer) that prints the first \texttt{N} matching lines.
+  \item[\textbf{\thechapter.10}$\star$] Write a program that reads a YAML or JSON file with joint limits and a CSV with joint angles, and prints every row in which an angle is outside its limits, with the line number.
+\end{enumerate}

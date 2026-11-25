@@ -1,0 +1,169 @@
+\bookchapter{Modules, Packages and Project Layout}\label{ch:py6}
+
+\section*{Explanation}
+Nobody writes a program of thousands of lines in one file, and nobody writes it from scratch: Python comes with a large \emph{standard library}, and the community shares hundreds of thousands of packages. This chapter shows how to use other people's code, how to split your own code into files, and how to organize a project so that a colleague (or the robot) can install and run it.
+
+\section*{Importing}
+A \textbf{module} is a Python file. \texttt{import} makes its names available.
+\begin{verbatim}
+import math                       # use as math.sqrt(2)
+from math import sqrt, pi         # use as sqrt(2)
+import numpy as np                # a short alias (a common convention)
+from pathlib import Path
+\end{verbatim}
+Avoid \verb!from math import *!: it pours unknown names into your program and hides where a name comes from. Put the imports at the top of the file, in three groups separated by empty lines: standard library, third-party packages, your own modules.
+
+Python finds modules in the list \texttt{sys.path}: first the directory of the running script, then the standard library, then the installed packages (\texttt{site-packages}, or those of the active virtual environment). Which file was imported?
+\begin{verbatim}
+>>> import json, numpy
+>>> json.__file__
+'/usr/local/lib/python3.13/json/__init__.py'
+>>> numpy.__file__
+'/usr/local/lib/python3.13/site-packages/numpy/__init__.py'
+>>> help(json)                    # documentation of a module
+>>> dir(json)                     # its names
+\end{verbatim}
+A common mistake: naming your own file like a library (\texttt{random.py}, \texttt{math.py}, \texttt{numpy.py}). Python then imports \emph{your} file instead of the library, with confusing errors.
+
+\section*{A tour of the standard library}
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{p{2.8cm}p{10.2cm}}
+\textbf{Module} & \textbf{What for}\\ \hline
+\texttt{math}, \texttt{statistics} & \texttt{sqrt}, \texttt{sin}, \texttt{atan2}, \texttt{isclose}; \texttt{mean}, \texttt{stdev}, \texttt{median} (Chapter~\ref{ch:stats})\\
+\texttt{random} & random numbers; \texttt{random.seed(1)} makes them repeatable\\
+\texttt{time}, \texttt{datetime} & \texttt{time.time()}, \texttt{time.sleep()}, \texttt{time.perf\_counter()}; dates and durations\\
+\texttt{pathlib}, \texttt{shutil}, \texttt{os} & paths, copying and removing files, environment variables\\
+\texttt{sys}, \texttt{argparse} & \texttt{sys.argv}, \texttt{sys.exit}; command-line arguments\\
+\texttt{json}, \texttt{csv} & data files (Chapter~\ref{ch:py5})\\
+\texttt{collections}, \texttt{itertools} & \texttt{Counter}, \texttt{deque}, \texttt{defaultdict}; combinations and products\\
+\texttt{subprocess} & run other programs (like the shell does)\\
+\texttt{logging} & structured log output (Chapter~\ref{ch:py11})\\
+\texttt{threading}, \texttt{asyncio} & several things at once (Chapter~\ref{ch:py12})\\
+\texttt{dataclasses}, \texttt{typing} & lightweight classes (Chapter~\ref{ch:py7}); type hints\\
+\end{tabular}
+\end{center}
+A few examples that you can try at once:
+\begin{verbatim}
+>>> import statistics, datetime as dt, itertools as it, subprocess
+>>> statistics.mean([1, 2, 3]), round(statistics.stdev([1, 2, 3, 4]), 3)
+(2, 1.291)
+>>> dt.datetime(2026, 11, 25, 17, 0).strftime("%Y-%m-%d %H:%M")
+'2026-11-25 17:00'
+>>> dt.timedelta(minutes=90)
+datetime.timedelta(seconds=5400)
+>>> list(it.combinations("abc", 2))
+[('a', 'b'), ('a', 'c'), ('b', 'c')]
+>>> r = subprocess.run(["echo", "hi"], capture_output=True, text=True)
+>>> r.returncode, r.stdout
+(0, 'hi\n')
+\end{verbatim}
+\texttt{subprocess.run} with a \emph{list} of arguments (not one long string) is the safe way to call a program from Python; it returns the exit status (Chapter~\ref{ch:linux2}) and the output. Before you write a helper yourself, look in the standard library and at \texttt{pypi.org}: a tested solution usually exists.
+
+\section*{Your own modules}
+Put functions that belong together into a file; the file name (without \texttt{.py}) is the module name.
+\begin{verbatim}
+# limits.py
+def clamp(x, lo, hi):
+    return max(lo, min(hi, x))
+
+if __name__ == "__main__":        # only when run as a script
+    print("self-test:", clamp(5, 0, 1))
+\end{verbatim}
+\begin{verbatim}
+# gait.py                     # in the same folder
+from limits import clamp
+def step(speed):
+    return clamp(speed * 0.75, 0.0, 1.0)
+\end{verbatim}
+When a file is \emph{run}, Python sets its variable \texttt{\_\_name\_\_} to \texttt{"\_\_main\_\_"}; when it is \emph{imported}, \texttt{\_\_name\_\_} is the module name. The guard \verb!if __name__ == "__main__":! lets a file be both a tool and a library. Code at the top level of a module runs once at the first import, so keep it free of side effects (no robot movements, no network calls).
+
+\section*{Packages}
+A \textbf{package} is a directory of modules with a file \texttt{\_\_init\_\_.py} (it may be empty). It lets you import with dots: \verb!import walker.gait!. A typical layout of a small project is shown in Figure~\ref{fig:py6_tree}.
+\begin{center}
+\begin{tikzpicture}[f/.style={font=\footnotesize\ttfamily,anchor=west},d/.style={font=\footnotesize\ttfamily\bfseries,anchor=west,blue!50!black},>={Stealth[length=2mm]}]
+  \node[d] at (0,0) {walker/};
+  \node[f] at (0.6,-0.5) {README.md};
+  \node[f] at (0.6,-1.0) {pyproject.toml};
+  \node[f] at (0.6,-1.5) {.gitignore};
+  \node[d] at (0.6,-2.0) {walker/};
+  \node[f] at (1.2,-2.5) {\_\_init\_\_.py};
+  \node[f] at (1.2,-3.0) {gait.py};
+  \node[f] at (1.2,-3.5) {limits.py};
+  \node[d] at (0.6,-4.0) {tests/};
+  \node[f] at (1.2,-4.5) {test\_limits.py};
+  \node[font=\footnotesize,anchor=west,gray!60!black] at (5.6,-0.5) {what it is, how to install and run};
+  \node[font=\footnotesize,anchor=west,gray!60!black] at (5.6,-1.0) {name, version, dependencies};
+  \node[font=\footnotesize,anchor=west,gray!60!black] at (5.6,-1.5) {\texttt{.venv/}, \texttt{\_\_pycache\_\_/} (Chapter~\ref{ch:git1})};
+  \node[font=\footnotesize,anchor=west,gray!60!black] at (5.6,-2.0) {the package: the code that you import};
+  \node[font=\footnotesize,anchor=west,gray!60!black] at (5.6,-4.0) {tests, outside the package (Chapter~\ref{ch:py11})};
+\end{tikzpicture}
+\captionof{figure}{A small Python project. The outer folder is the repository (Chapter~\ref{ch:git1}), the inner \texttt{walker/} is the package.}\label{fig:py6_tree}
+\end{center}
+\begin{verbatim}
+# walker/__init__.py
+"""Walking utilities."""
+from .limits import clamp         # re-export: walker.clamp works
+__version__ = "0.1.0"
+\end{verbatim}
+\begin{verbatim}
+# walker/gait.py
+from walker.limits import clamp   # absolute import (recommended)
+from .limits import clamp         # relative import: same package
+\end{verbatim}
+Imports with a leading dot are \emph{relative} to the current package. Do not run a file inside a package directly (\verb!python walker/gait.py!): relative imports fail. Run it as a module from the project folder, \verb!python -m walker.gait!, or better: install the package.
+
+\section*{Installing your own project}
+So that \texttt{import walker} works from anywhere, describe the project in \texttt{pyproject.toml} and install it into the virtual environment in \emph{editable} mode, in which changes of the source take effect immediately:
+\begin{verbatim}
+# pyproject.toml
+[project]
+name = "walker"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["numpy"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+\end{verbatim}
+\begin{verbatim}
+$ python3 -m venv .venv                # once per project (Chapter 4)
+$ source .venv/bin/activate
+(.venv) $ pip install -e .             # editable install
+(.venv) $ python -c "import walker; print(walker.__version__)"
+0.1.0
+(.venv) $ pip list
+(.venv) $ pip freeze > requirements.txt     # exact versions for the robot
+\end{verbatim}
+On the robot, install in the same way from the repository (\verb!git pull! then \verb!pip install -e .!). With \verb!pip install -r requirements.txt! you rebuild exactly the versions that you tested. Commit \texttt{pyproject.toml} and \texttt{requirements.txt}, never \texttt{.venv}. The tool \texttt{uv} (Chapter~\ref{ch:linux4}) does the same much faster, and dependencies can also be pinned in a lock file. In ROS~2 projects the build system \texttt{colcon} plays the part of \texttt{pip install}.
+
+\begin{keyidea}[Reproducible environments]
+``It works on my laptop'' is not enough for a robot. Always know: which Python version, which packages in which versions, which commit of your code. A \texttt{pyproject.toml} (what you need), a \texttt{requirements.txt} or lock file (what you used) and a Git tag (which code) together make a run repeatable.
+\end{keyidea}
+
+\section*{Circular imports and other problems}
+\begin{itemize}[nosep]
+  \item \textbf{Circular import:} \texttt{a.py} imports \texttt{b.py}, which imports \texttt{a.py}: an \texttt{ImportError} or half-empty module. Cure: move the shared code into a third module, or import inside the function that needs it.
+  \item \textbf{\texttt{ModuleNotFoundError}:} the package is not installed in the \emph{active} environment (check \verb!which python! and \verb!pip list!), or you are in the wrong folder.
+  \item \textbf{Two Pythons:} \texttt{pip} installs for one Python, \texttt{python} runs another. Use \verb!python -m pip install ...! to be sure that they match.
+  \item \textbf{Slow start:} a heavy import (like \texttt{torch}) at the top of a tiny command-line tool delays every start; import it inside the function that needs it.
+\end{itemize}
+
+\begin{example}
+\textbf{Turning a script into a package.} Ada has \texttt{walk.py} with $400$ lines: constants, helper functions, the control step and a \texttt{main}. She creates the package \texttt{walker/}, moves clamping and rate limiting to \texttt{limits.py}, the step logic to \texttt{gait.py} and leaves only argument parsing in \texttt{walker/cli.py} with \verb!def main()!. In \texttt{pyproject.toml} she adds \texttt{[project.scripts]} with \verb!walk = "walker.cli:main"!. After \verb!pip install -e .! the command \texttt{walk} exists in the shell. Now each part can be tested alone (Chapter~\ref{ch:py11}) and reused by a ROS~2 node.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item What is the difference between \verb!import math! and \verb!from math import sqrt!? Which do you prefer and why?
+  \item You create a file \texttt{random.py} for your project and \verb!import random! suddenly fails with a strange error. Why?
+  \item What does the line \verb!if __name__ == "__main__":! do? What would happen without it if another file imports your module?
+  \item What is the difference between a module and a package? What is the purpose of \texttt{\_\_init\_\_.py}?
+  \item Use \texttt{subprocess.run} to run \verb!ls -l /tmp! and print the number of output lines.
+  \item Use the \texttt{datetime} module to compute the number of days from today to the \texttt{2026-12-24}.
+  \item Create a package \texttt{mylib} with a module \texttt{geometry} containing \texttt{distance(p, q)}, install it in editable mode and import it from a different directory.
+  \item \verb!pip install requests! works, but \verb!import requests! in your script fails. Name three possible reasons.
+  \item Why is \verb!pip freeze > requirements.txt! useful for a robot, and what should \emph{not} be committed to Git?
+  \item[\textbf{\thechapter.10}$\star$] Two modules import each other and the program fails at the start. Describe two ways to remove the problem.
+\end{enumerate}

@@ -1,0 +1,127 @@
+\bookchapter{Plotting with Matplotlib}\label{ch:py9}
+
+\section*{Explanation}
+Numbers in a table hide what a picture shows at once: a joint angle that oscillates, a loss that stops falling, a sensor that jumps every few seconds. \textbf{Matplotlib} is the standard plotting library of Python. Plotting is your main debugging tool for anything that changes over time, and the figures of your reports and of the AI chapters are made with it. Install with \verb!pip install matplotlib!.
+
+\section*{The first plot}
+\begin{verbatim}
+import numpy as np
+import matplotlib.pyplot as plt
+
+x = np.linspace(0, 2 * np.pi, 100)
+fig, ax = plt.subplots(figsize=(5, 2.8))     # a figure with one set of axes
+ax.plot(x, np.sin(x), label="sin")
+ax.plot(x, np.cos(x), "--", label="cos")      # "--": dashed line
+ax.set_xlabel("angle (rad)")
+ax.set_ylabel("value")
+ax.set_title("Two curves")
+ax.grid(True, alpha=0.3)
+ax.legend()
+fig.tight_layout()
+fig.savefig("line.png", dpi=200)              # to a file
+plt.show()                                     # or to a window
+\end{verbatim}
+\begin{center}
+\includegraphics[width=0.62\textwidth]{py/line.png}
+\captionof{figure}{The result of the program above.}\label{fig:py9_line}
+\end{center}
+\begin{keyidea}[Figure and axes]
+A \textbf{figure} is the whole picture (the window or the file). It contains one or more \textbf{axes}: a coordinate system with its own labels, curves and legend. You draw \emph{on an axes object} (\texttt{ax.plot}, \texttt{ax.set\_xlabel}). Many tutorials use the shortcut \texttt{plt.plot(...)}, \texttt{plt.xlabel(...)} which acts on a hidden ``current'' axes; it is quick in the REPL but confusing as soon as there are two plots. Write \texttt{fig, ax = plt.subplots()} from the start.
+\end{keyidea}
+On a robot without a display (a server, \texttt{ssh} without X, a CI job) there is no window. Select a file-only backend before importing \texttt{pyplot}, or set the environment variable:
+\begin{verbatim}
+import matplotlib
+matplotlib.use("Agg")           # draw to files only
+\end{verbatim}
+and copy the picture to your laptop with \texttt{scp} (Chapter~\ref{ch:linux3}).
+
+\section*{Line style, markers, colours}
+\begin{verbatim}
+ax.plot(t, y, "o-", color="tab:blue", lw=2, ms=4, label="measured")
+ax.plot(t, y2, color="#d62728", ls="--")        # hex colour, dashed
+\end{verbatim}
+Format strings combine a marker (\texttt{o}, \texttt{.}, \texttt{s}, \texttt{x}), a line (\texttt{-}, \texttt{--}, \texttt{:}) and a colour letter; the keywords \texttt{lw} (line width), \texttt{ms} (marker size), \texttt{alpha} (transparency), \texttt{color}, \texttt{ls} do the same explicitly. Set limits with \texttt{ax.set\_xlim(0, 10)}, a logarithmic axis with \texttt{ax.set\_yscale("log")} (useful for learning curves that fall over many orders of magnitude), and lines such as a target value with \verb!ax.axhline(1.0, color="k", ls=":")!.
+
+\section*{Several panels}
+\begin{verbatim}
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7, 2.8))   # 1 row, 2 columns
+fig, axs = plt.subplots(2, 2, figsize=(7, 5))            # axs[0, 1] etc.
+fig, (a, b) = plt.subplots(2, 1, sharex=True)            # shared time axis
+\end{verbatim}
+\texttt{tight\_layout()} prevents overlapping labels. With \texttt{sharex=True} the panels zoom together, ideal for signals recorded at the same time.
+
+\begin{example}
+\textbf{Look at a recorded joint angle and its velocity} (the data of Chapter~\ref{ch:py8}):
+\begin{verbatim}
+t = np.linspace(0, 1, 101)
+rng = np.random.default_rng(1)
+angle = np.sin(2 * np.pi * t) + rng.normal(0, 0.05, t.size)
+smooth = np.convolve(angle, np.ones(5) / 5, mode="same")
+vel = np.diff(smooth) / np.diff(t)
+
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(7, 2.8))
+a1.plot(t, angle, ".", ms=3, color="gray", label="measured")
+a1.plot(t[2:-2], smooth[2:-2], lw=2, label="smoothed")
+a1.set_xlabel("time (s)"); a1.set_ylabel("angle (rad)"); a1.legend()
+raw = np.diff(angle) / np.diff(t)
+a2.plot(t[1:], raw, color="lightgray", label="raw derivative")
+a2.plot(t[3:-3], vel[2:-3], lw=2, label="smoothed derivative")
+a2.plot(t, 2 * np.pi * np.cos(2 * np.pi * t), "k--", lw=1, label="true")
+a2.set_xlabel("time (s)"); a2.set_ylabel("velocity (rad/s)")
+a2.legend(fontsize=7)
+fig.tight_layout()
+\end{verbatim}
+\begin{center}
+\includegraphics[width=0.95\textwidth]{py/signal.png}
+\captionof{figure}{Left: noisy measurement and moving average. Right: the derivative of the raw signal is useless (grey), the derivative of the smoothed signal follows the true velocity (dashed) closely.}\label{fig:py9_signal}
+\end{center}
+The picture makes the point of Chapter~\ref{ch:py8} at one glance: differentiating noise is dangerous.
+\end{example}
+
+\section*{Other kinds of plots}
+\begin{verbatim}
+ax.hist(values, bins=30)               # distribution (Chapter 24 and following)
+ax.scatter(x, y, s=14)                 # points without a line
+ax.bar(["a", "b", "c"], [3, 5, 2])     # categories
+ax.errorbar(x, y, yerr=sd, fmt="o")    # points with error bars
+ax.imshow(img, cmap="gray")            # an image or matrix as colours
+ax.fill_between(t, lo, hi, alpha=0.3)  # a band, e.g. mean +- std
+\end{verbatim}
+\begin{center}
+\includegraphics[width=0.95\textwidth]{py/hist_scatter.png}
+\captionof{figure}{A histogram of $2000$ loop times (the shape of a bell, see Chapter~\ref{ch:stats}) and a scatter plot with a fitted line.}\label{fig:py9_hs}
+\end{center}
+\begin{center}
+\includegraphics[width=0.78\textwidth]{py/imshow.png}
+\captionof{figure}{\texttt{imshow} draws a matrix as an image; the colour map decides how values become colours. Gray is natural for camera images, \texttt{viridis} (a perceptually even map with colour bar) for data.}\label{fig:py9_im}
+\end{center}
+\texttt{imshow} treats row $0$ as the \emph{top} of the picture, like image files do (Chapter~\ref{ch:py10}), not like a mathematical $y$-axis.
+
+\section*{Making plots that communicate}
+\begin{itemize}[nosep]
+  \item \textbf{Label every axis with the quantity and the unit.} ``angle (rad)'', not ``y''.
+  \item One message per plot; a title or caption that states it. Few curves, a legend only when needed.
+  \item Choose colours that remain distinguishable for colour-blind readers and in black-and-white print: vary line style as well as colour.
+  \item Start the axis where it makes sense; a cut axis exaggerates small differences. State the sample size or number of runs.
+  \item Save as \texttt{png} for slides and the web with \texttt{dpi=200}, as \texttt{pdf} or \texttt{svg} (vector graphics, sharp at any size) for reports and \LaTeX.
+  \item Keep the plotting code in a script that you can run again, instead of editing the picture by hand.
+\end{itemize}
+\textbf{Live plots} while a robot runs are tempting but slow: redrawing a figure can take $50$ ms or more and will disturb a control loop. Record the data to a file (Chapter~\ref{ch:py5}) and plot afterwards, or plot from a separate process. In ROS~2 use \texttt{rqt\_plot} or PlotJuggler for live signals.
+
+\begin{aibox}
+When a plot looks wrong, ask yourself what the picture \emph{should} look like before you ask an assistant to ``fix the plot''. A flat line may mean that you plotted the wrong column, a sawtooth that a time stamp wraps around, a jump that a unit changed. The plot is data about your \emph{program}, too.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Plot $y=x^2$ and $y=2^x$ for $x\in[0,5]$ in one figure with legend, axis labels and grid.
+  \item What is the difference between a figure and axes? Why is \verb!fig, ax = plt.subplots()! preferred over \texttt{plt.plot}?
+  \item Plot the unit circle with \texttt{np.cos} and \texttt{np.sin} of \texttt{np.linspace(0, 2*np.pi, 200)}. Why do you need \verb!ax.set_aspect("equal")!?
+  \item Create a figure with two panels above each other that share the time axis: the angle $\sin(2\pi t)$ and its derivative $2\pi\cos(2\pi t)$.
+  \item Generate $1000$ numbers from a normal distribution with mean $5$ and standard deviation $2$ and draw a histogram with $20$ bins. Add a vertical line at the mean.
+  \item Your plot script works at your laptop but fails on the robot with a display error. What do you change?
+  \item A learning curve falls from $10$ to $0.001$ over $1000$ epochs. Which axis setting makes the whole curve readable?
+  \item Which three things are missing in a plot that has curves but no axis labels, no legend and no unit?
+  \item Show a random $50\times50$ matrix with \texttt{imshow}, once in gray and once in colour with a colour bar.
+  \item[\textbf{\thechapter.10}$\star$] Read a CSV file with the columns \texttt{t,angle} (Chapter~\ref{ch:py5}), plot the angle and mark all points where the angle exceeds a limit of $1.5$ rad with red crosses.
+\end{enumerate}

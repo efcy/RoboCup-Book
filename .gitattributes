@@ -9,6 +9,7 @@
 *.ltx text eol=lf
 *.mkiv text eol=lf
 *.mkxl text eol=lf
+*.dat text eol=lf
 
 # Treat compiled outputs and binary assets as binary
 *.pdf binary

@@ -1,0 +1,30 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \verb!def is_even(n): return n % 2 == 0! and \verb!def parity(n): return "even" if n % 2 == 0 else "odd"!. The first is the better building block (a boolean can be used in conditions, counted and combined); the text version is a presentation detail.
+  \item
+\begin{verbatim}
+def celsius_to_fahrenheit(c: float) -> float:
+    """Convert degrees Celsius to degrees Fahrenheit."""
+    return 1.8 * c + 32
+\end{verbatim}
+  \item Parameters are the names in the \texttt{def} line, arguments are the values given in the call. \texttt{print} shows something on the screen and the value is gone; \texttt{return} hands the value back to the caller, who can use it.
+  \item \texttt{4}: keyword arguments are matched by name, so $a=5$, $b=1$.
+  \item It prints \texttt{[1]} and then \texttt{[1, 2]}, since the default list is created once and shared. Fix: \verb!def add(x, acc=None): if acc is None: acc = []! and then append.
+  \item \verb!def mean(*numbers): return sum(numbers) / len(numbers)!.
+  \item \texttt{5}: the \texttt{x = 7} inside \texttt{g} is a local variable.
+  \item
+\begin{verbatim}
+def power(base, n):
+    if n == 0:
+        return 1
+    return base * power(base, n - 1)
+\end{verbatim}
+  \item
+\begin{verbatim}
+import math
+def distance(p, q=(0, 0)):
+    return math.hypot(p[0] - q[0], p[1] - q[1])
+pts = [(3, 4), (1, 1), (0, 2)]
+print(sorted(pts, key=distance))    # [(1, 1), (0, 2), (3, 4)]
+\end{verbatim}
+  \item[\textbf{\ansnum.10}] \verb!def normalize_angle(a): return (a + 180) % 360 - 180!. Check: $(190+180)\%360-180=10-180=-170$; $(-190+180)\%360-180=350-180=170$; $(360+180)\%360-180=180-180=0$. Python's \texttt{\%} gives a non-negative result for a positive divisor, which makes this work.
+\end{enumerate}

@@ -1,0 +1,50 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item
+\begin{verbatim}
+x = np.linspace(0, 5, 100)
+fig, ax = plt.subplots()
+ax.plot(x, x ** 2, label="$x^2$"); ax.plot(x, 2 ** x, label="$2^x$")
+ax.set_xlabel("x"); ax.set_ylabel("y"); ax.grid(True); ax.legend()
+\end{verbatim}
+  \item A figure is the whole canvas; axes is one coordinate system on it. With explicit axes objects you always know which plot you change, and several panels work without confusion; \texttt{plt.plot} acts on a hidden current axes.
+  \item
+\begin{verbatim}
+th = np.linspace(0, 2 * np.pi, 200)
+fig, ax = plt.subplots()
+ax.plot(np.cos(th), np.sin(th)); ax.set_aspect("equal")
+\end{verbatim}
+  Without equal aspect ratio the circle is drawn as an ellipse because the axes are scaled independently.
+  \item
+\begin{verbatim}
+t = np.linspace(0, 1, 200)
+fig, (a, b) = plt.subplots(2, 1, sharex=True)
+a.plot(t, np.sin(2 * np.pi * t)); b.plot(t, 2 * np.pi * np.cos(2 * np.pi * t))
+\end{verbatim}
+  \item
+\begin{verbatim}
+r = np.random.default_rng(0).normal(5, 2, 1000)
+fig, ax = plt.subplots(); ax.hist(r, bins=20)
+ax.axvline(r.mean(), color="r")
+\end{verbatim}
+  \item The robot has no display. Use the file backend (\verb!matplotlib.use("Agg")! before importing \texttt{pyplot}, or \verb!MPLBACKEND=Agg python plot.py!), save with \texttt{fig.savefig}, and copy the file with \texttt{scp}.
+  \item A logarithmic $y$ axis: \verb!ax.set_yscale("log")!.
+  \item The meaning of the axes (quantity and unit), which curve is which (legend), and a title or caption that states the message.
+  \item
+\begin{verbatim}
+m = np.random.default_rng(0).random((50, 50))
+fig, (a, b) = plt.subplots(1, 2)
+a.imshow(m, cmap="gray")
+im = b.imshow(m, cmap="viridis"); fig.colorbar(im, ax=b)
+\end{verbatim}
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+d = np.loadtxt("angles.csv", delimiter=",", skiprows=1)   # t, angle
+t, ang = d[:, 0], d[:, 1]
+fig, ax = plt.subplots()
+ax.plot(t, ang)
+bad = ang > 1.5
+ax.plot(t[bad], ang[bad], "rx", label="above limit")
+ax.axhline(1.5, color="k", ls=":"); ax.legend()
+\end{verbatim}
+  The boolean mask of Chapter~\ref{ch:py8} selects the points.
+\end{enumerate}

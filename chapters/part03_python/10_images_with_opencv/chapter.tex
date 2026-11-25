@@ -1,0 +1,139 @@
+\bookchapter{Images and Video with OpenCV}\label{ch:py10}
+
+\section*{Explanation}
+A camera is the most important sensor of a soccer robot: it sees the ball, the lines, the goal and the other players. \textbf{OpenCV} (\texttt{cv2}) is the standard library for reading images and video and for classical image processing. Even when a neural network (YOLO, Part~\ref{part:ai}) does the detection, OpenCV loads the frames, resizes them and draws the result. Install it with \verb!pip install opencv-python! (use \texttt{opencv-python-headless} on a robot without a display).
+
+\section*{An image is an array}
+\begin{verbatim}
+import cv2
+im = cv2.imread("field.png")                 # None if the file is not found!
+print(im.shape, im.dtype)                    # (240, 320, 3) uint8
+print(im[170, 220])                          # pixel at row 170, column 220
+# [  0 127 253]
+\end{verbatim}
+A colour image is a NumPy array (Chapter~\ref{ch:py8}) of shape \texttt{(height, width, 3)} with the type \texttt{uint8}: every value is an integer from $0$ to $255$. \textbf{Indexing is \texttt{[row, column]} = \texttt{[y, x]}}, with the origin in the \emph{top left} corner and $y$ growing downwards (Figure~\ref{fig:py10_axes}). But OpenCV functions that take a point expect \texttt{(x, y)}: a classic source of bugs.
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.5mm]}]
+  \draw[thick,fill=green!10] (0,0) rectangle (4.8,-3.0);
+  \node[font=\footnotesize] at (0.15,0.25) {(0,0)};
+  \draw[->,thick,red!70!black] (-0.1,0.0)--(5.3,0.0) node[right,font=\footnotesize]{$x$ = column};
+  \draw[->,thick,blue!70!black] (0,0.1)--(0,-3.5) node[below,font=\footnotesize]{$y$ = row};
+  \fill[orange] (3.2,-1.8) circle (0.17);
+  \draw[dashed,gray] (3.2,0)--(3.2,-1.8)--(0,-1.8);
+  \node[font=\footnotesize\ttfamily,anchor=west] at (5.4,-1.8) {im[170, 220] $\;\leftrightarrow\;$ point (220, 170)};
+  \node[font=\footnotesize,anchor=west,gray!60!black] at (5.4,-2.4) {\texttt{im.shape = (240, 320, 3)}: height 240, width 320};
+\end{tikzpicture}
+\captionof{figure}{Image coordinates. The array index is \texttt{[y, x]} (row first), the point arguments of OpenCV drawing functions are \texttt{(x, y)}.}\label{fig:py10_axes}
+\end{center}
+\begin{keyidea}[BGR and not RGB]
+OpenCV orders the three colour channels as \textbf{B}lue, \textbf{G}reen, \textbf{R}ed. Matplotlib, PIL and most neural networks expect \textbf{RGB}. If you show an OpenCV image with \texttt{imshow} your reds look blue. Convert with \verb!cv2.cvtColor(im, cv2.COLOR_BGR2RGB)!. The orange pixel above is \texttt{[0 127 253]}: no blue, half green, much red.
+\end{keyidea}
+
+\section*{Reading, writing, showing}
+\begin{verbatim}
+cv2.imwrite("copy.png", im)               # format from the extension
+gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)     # shape (240, 320)
+small = cv2.resize(im, None, fx=0.5, fy=0.5)    # shape (120, 160, 3)
+small = cv2.resize(im, (160, 120))              # (width, height)!
+crop = im[50:150, 100:200]                      # rows 50..149, columns 100..199
+cv2.imshow("field", im); cv2.waitKey(0)         # needs a display
+\end{verbatim}
+\texttt{cv2.imread} returns \texttt{None} and prints only a warning when the path is wrong; always check it (\verb!if im is None: raise FileNotFoundError(path)!). A crop is a \emph{view} (Chapter~\ref{ch:py8}); use \texttt{.copy()} before you draw on it. Image processing time grows with the number of pixels: resize first when full resolution is not needed. Halving the width and height makes everything four times faster.
+
+\section*{Drawing}
+\begin{verbatim}
+out = im.copy()
+cv2.circle(out, (220, 170), 20, (255, 0, 0), 2)   # centre, radius, BGR, width
+cv2.rectangle(out, (50, 30), (120, 90), (0, 255, 255), 2)
+cv2.line(out, (0, 120), (319, 120), (255, 255, 255), 1)
+cv2.putText(out, "ball", (200, 140), cv2.FONT_HERSHEY_SIMPLEX,
+            0.6, (255, 255, 255), 2)
+\end{verbatim}
+Thickness $-1$ fills the shape. Drawing changes the array in place: keep an unmodified copy if you need the original later.
+
+\section*{Finding the ball by colour}
+A classical detector in four steps (Figure~\ref{fig:py10_pipe}): convert to a colour space in which ``orange'' is easy to describe, keep the pixels in the range, clean the mask, find the blobs.
+\begin{verbatim}
+hsv = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)
+mask = cv2.inRange(hsv, (5, 150, 150), (20, 255, 255))      # orange range
+mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+for c in contours:
+    if cv2.contourArea(c) > 50:                  # ignore tiny noise
+        (x, y), r = cv2.minEnclosingCircle(c)
+        print("ball at", round(x), round(y), "radius", round(r))
+        cv2.circle(out, (int(x), int(y)), int(r) + 3, (255, 0, 0), 2)
+\end{verbatim}
+\begin{verbatim}
+ball at 220 170 radius 14
+ball at 80 60 radius 10
+\end{verbatim}
+\begin{center}
+\includegraphics[width=0.98\textwidth]{py/ball_pipeline.png}
+\captionof{figure}{Left: the camera image (a synthetic field with two orange balls, white lines and a red box that is \emph{not} orange). Middle: the mask after \texttt{inRange} and cleaning. Right: the result with circles around the blobs.}\label{fig:py10_pipe}
+\end{center}
+\textbf{HSV} describes a colour by \emph{hue} (the colour type, $0\dots179$ in OpenCV), \emph{saturation} (how pure) and \emph{value} (how bright). The orange ball has a hue near $15$ regardless of whether it sits in shadow, while its BGR values change a lot with the light. That is why colour tests are made in HSV. Red is a problem: it lies at both ends of the hue range ($0$ and $179$), so you need two ranges combined with \texttt{cv2.bitwise\_or}. Morphological \emph{opening} (erode, then dilate) removes isolated noise pixels; \emph{closing} fills small holes. In a real match the thresholds must be tuned for the lighting of the venue; a tool with sliders (\texttt{cv2.createTrackbar}) or a small script that prints the HSV values of a clicked pixel saves hours.
+
+\section*{Smoothing, thresholds and edges}
+\begin{verbatim}
+blur = cv2.GaussianBlur(gray, (5, 5), 0)           # remove noise first
+_, th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+edges = cv2.Canny(blur, 50, 150)                   # edge detector
+\end{verbatim}
+\begin{center}
+\includegraphics[width=0.66\textwidth]{py/edges.png}
+\captionof{figure}{Gray image and Canny edges. The two thresholds (50, 150) decide which gradients count as edges.}\label{fig:py10_edges}
+\end{center}
+A \textbf{filter} slides a small window (the kernel) over the image and computes a weighted sum, the \emph{convolution} you met with the moving average in Chapter~\ref{ch:py8}, now in two dimensions. A blur averages neighbours, an edge filter takes differences. Neural networks for vision learn such kernels from data (Part~\ref{part:ai}). \textbf{Otsu's method} picks the threshold between dark and bright automatically.
+
+\section*{Video and cameras}
+\begin{verbatim}
+cap = cv2.VideoCapture("match.mp4")           # a file; or 0 for /dev/video0
+if not cap.isOpened():
+    raise RuntimeError("cannot open the video source")
+print(cap.get(cv2.CAP_PROP_FPS), cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+while True:
+    ok, frame = cap.read()                # ok is False at the end or on error
+    if not ok:
+        break
+    # ... process frame ...
+cap.release()                                 # always give the device back
+\end{verbatim}
+A camera is opened by number (\texttt{VideoCapture(0)} is \texttt{/dev/video0}, Chapter~\ref{ch:linux6}); for several cameras the number can change after a reboot, which is the reason to create a fixed name with a \texttt{udev} rule. \verb!v4l2-ctl --list-devices! (package \texttt{v4l-utils}) lists them. You can set the resolution and frame rate with \verb!cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)!. Writing a video:
+\begin{verbatim}
+w = cv2.VideoWriter("out.mp4", cv2.VideoWriter_fourcc(*"mp4v"), 10, (320, 240))
+w.write(frame)          # the frame size must match exactly
+w.release()
+\end{verbatim}
+For a video of $30$ frames per second you have $33$\,ms per frame for \emph{everything}: reading, processing, sending the result. Measure with \texttt{time.perf\_counter()} (Chapter~\ref{ch:py12}). If the processing is slower than the camera, frames queue up and the robot reacts to the past; a good loop reads the newest frame and drops older ones.
+
+\begin{keyidea}[Debug with pictures]
+When a detector does not work, save intermediate images: the mask, the gray image, the frame with boxes drawn on it. Looking at the mask tells you at once whether the thresholds, the colour space or the later logic is wrong. Put a \texttt{debug} option into the program that writes these pictures.
+\end{keyidea}
+
+\begin{example}
+\textbf{Where is the ball relative to the image centre?} The robot should turn towards the ball. The image is $w=320$ pixels wide with the horizontal field of view $\text{FOV}=60^\circ$. For a ball at $x=220$:
+\begin{verbatim}
+w, fov = 320, 60.0
+x = 220
+error_px = x - w / 2                         # 60 pixels to the right
+angle = error_px / w * fov                   # approximation: 11.25 degrees
+print(f"turn {angle:.1f} deg to the right")
+\end{verbatim}
+The linear conversion from pixels to angle is accurate near the centre; the exact relation is $\arctan\!\big(\tfrac{\text{error}}{f}\big)$ with the focal length $f=\tfrac{w/2}{\tan(\text{FOV}/2)}=277$ pixels, which gives $12.2^\circ$. A controller (Part~\ref{part:control}) then turns the robot by an amount proportional to this angle.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item An image has the shape \texttt{(480, 640, 3)}. How wide and how high is it? Which element is the pixel in the third row and the tenth column? Which point do you pass to \texttt{cv2.circle} to mark it?
+  \item Why do the colours look wrong when you show an OpenCV image with Matplotlib, and what is the fix?
+  \item Write code that loads an image, checks that loading worked, converts it to gray, halves the size and saves it.
+  \item What happens with \texttt{cv2.imread("wrong\_name.png")} and what should your program do?
+  \item Why is HSV better than BGR for finding an orange ball? Why is red harder than orange?
+  \item Write the code to count the orange pixels in an image (with the range of this chapter) and to print the share of the image they cover.
+  \item You have a $1920\times1080$ video at $30$ fps. How many pixels per second must your program touch for one operation on every pixel? How much do you save by working at half the width and height?
+  \item A ball is detected at $x=100$ in an image $320$ pixels wide with $\text{FOV}=60^\circ$. Compute the angle to the image centre with the linear approximation. Is the ball left or right?
+  \item Write a loop that reads a video and prints the frame number whenever the mask of the orange range has more than $200$ pixels.
+  \item[\textbf{\thechapter.10}$\star$] Why do you need two ranges to detect a red object in HSV? Write the combined mask for hue ranges $0\ldots10$ and $170\ldots179$.
+\end{enumerate}

@@ -1,0 +1,49 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item (a) \texttt{"a"}, (b) \texttt{"w"}, (c) \texttt{"rb"}.
+  \item \texttt{with} closes the file at the end of the block, also when an exception occurs. Without it, unwritten data may stay in a buffer and be lost when the program crashes, and open files are a limited resource.
+  \item
+\begin{verbatim}
+with open("in.txt") as src, open("out.txt", "w") as dst:
+    for n, line in enumerate(src, start=1):
+        dst.write(f"{n}: {line}")
+\end{verbatim}
+  \item \texttt{log.txt}, \texttt{log}, \texttt{.txt}, \texttt{data/run1}. Code: \verb!p.parent.mkdir(parents=True, exist_ok=True)!.
+  \item
+\begin{verbatim}
+import csv
+with open("a.csv", newline="") as f:
+    angles = [float(r["angle"]) for r in csv.DictReader(f)]
+print(sum(angles) / len(angles))
+\end{verbatim}
+  CSV stores only text; without \texttt{float} you would add strings.
+  \item \verb!json.loads(json.dumps(d))! gives \verb!{"a": [1, 2], "b": None}!: the tuple became a list (JSON has no tuples); \texttt{None} stays \texttt{None} (JSON \texttt{null}).
+  \item A bare \texttt{except} catches everything, including \texttt{KeyboardInterrupt} and programming errors, and \texttt{pass} hides it, so \texttt{x} may be undefined later. Better: \verb!try: x = int(s)! \verb!except ValueError: x = 0! (or report the error).
+  \item
+\begin{verbatim}
+def safe_float(text, default=0.0):
+    try:
+        return float(text)
+    except ValueError:
+        return default
+\end{verbatim}
+  \item
+\begin{verbatim}
+ap.add_argument("--top", type=int, default=None)
+...
+hits = [l for l in open(a.logfile) if a.level in l]
+for line in hits[:a.top]:       # [:None] means all
+    print(line, end="")
+\end{verbatim}
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+import csv, json
+limits = json.load(open("limits.json"))    # {"knee": [0, 2.4], ...}
+with open("angles.csv", newline="") as f:
+    for n, row in enumerate(csv.DictReader(f), start=2):
+        for joint, (lo, hi) in limits.items():
+            v = float(row[joint])
+            if not lo <= v <= hi:
+                print(f"line {n}: {joint} = {v} outside [{lo}, {hi}]")
+\end{verbatim}
+  The data starts in line $2$ because line $1$ is the header.
+\end{enumerate}

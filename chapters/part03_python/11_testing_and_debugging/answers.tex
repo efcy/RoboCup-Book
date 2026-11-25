@@ -1,0 +1,23 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item The name starts with \texttt{test\_} (in a file named \texttt{test\_*.py}). A false \texttt{assert} raises an \texttt{AssertionError}; pytest reports the test as failed and shows the values.
+  \item
+\begin{verbatim}
+def test_even():       assert is_even(4)
+def test_odd():        assert not is_even(7)
+def test_zero_neg():   assert is_even(0) and is_even(-2) and not is_even(-3)
+\end{verbatim}
+  The edge cases are zero and negative numbers.
+  \item Floats are binary approximations ($0.1+0.2=0.30000000000000004$), so exact comparison fails; \texttt{approx} accepts a tiny relative error.
+  \item A normal list, one element, negative numbers, floats, the empty list. For the empty list decide: raise \texttt{ValueError} (test with \verb!with pytest.raises(ValueError):!) or return \texttt{None}/\texttt{nan}; then test exactly that.
+  \item \texttt{f} has no \texttt{return}, so it returns \texttt{None}; \verb!None * 2! is a \texttt{TypeError}. Replace \texttt{print(result)} by \texttt{return result} and print outside.
+  \item (a) \texttt{INFO}, (b) \texttt{DEBUG} (or do not log at all), (c) \texttt{WARNING}, (d) \texttt{ERROR} (or \texttt{CRITICAL} if the program stops).
+  \item Levels (filter by importance), time stamps, names of the module, output to files or the journal, switching verbosity without editing the code, automatic traceback with \texttt{log.exception}; and no clutter from forgotten prints.
+  \item Put \texttt{breakpoint()} before the division; at the prompt \verb!p xs! shows \texttt{[]} and \verb!p total! shows $0$; the division by \verb!len(xs)! $=0$ is the cause. \texttt{p name} prints a variable.
+  \item
+\begin{verbatim}
+python3 -m timeit -s "import numpy as np; a = np.arange(10**5)" "a * a"
+python3 -m timeit -s "a = list(range(10**5))" "[x * x for x in a]"
+\end{verbatim}
+  The NumPy version is typically $30$ to $100$ times faster.
+  \item[\textbf{\ansnum.10}] (1) Collect evidence: the logs around the time of the freeze (\texttt{journalctl -u walker}, Chapter~\ref{ch:linux5}), the version of the code (Git commit), what the reconnect looks like. (2) Reproduce: unplug and replug the camera, or simulate with a fake camera that fails. (3) Hypothesis, for example the read loop waits forever for a frame (no timeout) or the device number changed. Add logging with levels around open/read/release. (4) Use \texttt{py-spy dump} on the frozen process to see where it hangs (Chapter~\ref{ch:linux8}). (5) Fix (timeout, reopen the camera, a udev rule for a stable name), write a regression test with a fake camera, and open a pull request with the explanation.
+\end{enumerate}

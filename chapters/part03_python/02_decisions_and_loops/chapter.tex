@@ -1,0 +1,164 @@
+\bookchapter{Decisions and Loops}\label{ch:py2}
+
+\section*{Explanation}
+A program that only calculates in a straight line is a fancy calculator. The power of programming comes from two ideas: \textbf{decisions} (do this only if\dots) and \textbf{repetition} (do this again and again\dots). A robot controller is made of exactly these: \emph{if} the ball is visible, walk towards it; \emph{repeat} this $50$ times per second.
+
+\section*{Comparisons and logic}
+A comparison gives a boolean, \texttt{True} or \texttt{False}:
+\begin{verbatim}
+>>> 3 == 3, 3 != 4, 3 < 4, 3 >= 4
+(True, True, True, False)
+>>> 1 < 2 < 3                    # chained, like in mathematics
+True
+>>> "a" < "b"                    # text: alphabetical order
+True
+>>> x = 5
+>>> x > 0 and x < 10             # and, or, not
+True
+>>> not (x > 0 or x == 3)
+False
+\end{verbatim}
+Do not confuse \texttt{=} (assign) with \texttt{==} (compare). \texttt{and} is true if both sides are, \texttt{or} if at least one is. Python stops as soon as the result is known (\emph{short-circuit}): in \verb!d != 0 and 10 / d > 1! the division is never evaluated for $d=0$.
+
+\section*{if, elif, else}
+\begin{verbatim}
+battery = 18
+if battery > 50:
+    print("ok")
+elif battery > 20:
+    print("low")
+else:
+    print("return to charger")
+\end{verbatim}
+The colon opens a \textbf{block}. Python uses \textbf{indentation} (four spaces) to show which lines belong to the block; there are no braces. Inconsistent indentation is an \texttt{IndentationError}. Conditions are tested from the top; the first true branch runs, the others are skipped (Figure~\ref{fig:py2_if}). \texttt{elif} and \texttt{else} are optional.
+\begin{center}
+\begin{tikzpicture}[st/.style={draw,rounded corners,thick,fill=blue!10,minimum width=2.8cm,minimum height=0.8cm,font=\footnotesize\ttfamily},dc/.style={draw,diamond,aspect=2.4,thick,fill=yellow!25,inner sep=1pt,font=\footnotesize\ttfamily},>={Stealth[length=2.5mm]},l/.style={font=\scriptsize}]
+  \node[dc] (c1) at (0,0) {battery > 50};
+  \node[dc] (c2) at (0,-1.9) {battery > 20};
+  \node[st] (a) at (4.6,0) {print("ok")};
+  \node[st] (b) at (4.6,-1.9) {print("low")};
+  \node[st] (c) at (0,-3.7) {print("return ...")};
+  \node[draw,rounded corners,fill=green!12,minimum width=2cm,font=\footnotesize] (e) at (8.2,-1.9) {next line};
+  \draw[->,thick] (0,1.1)--(c1);
+  \draw[->,thick] (c1)--node[l,above]{yes}(a);
+  \draw[->,thick] (c1)--node[l,left]{no}(c2);
+  \draw[->,thick] (c2)--node[l,above]{yes}(b);
+  \draw[->,thick] (c2)--node[l,left]{no}(c);
+  \draw[->,thick] (a)-|(e);
+  \draw[->,thick] (b)--(e);
+  \draw[->,thick] (c.east)-|(e);
+\end{tikzpicture}
+\captionof{figure}{Flow of an \texttt{if}--\texttt{elif}--\texttt{else} chain. Exactly one branch runs.}\label{fig:py2_if}
+\end{center}
+A one-line form is the \textbf{conditional expression}: \verb!label = "fast" if v > 1 else "slow"!. Many things are true or false by themselves (see Chapter~\ref{ch:py1}), so \verb!if items:! means ``if the list is not empty''. To test a variable against \texttt{None} use \verb!if x is None:!. Python 3.10 added \texttt{match}/\texttt{case} for choosing between many fixed values; \texttt{if}--\texttt{elif} is enough to start.
+
+\section*{Loops}
+\subsection*{for: for each element}
+\begin{verbatim}
+for name in ["hip", "knee", "ankle"]:
+    print("joint", name)
+\end{verbatim}
+\texttt{for} walks through anything that can be walked through: a list, a string, a file (line by line), or a \texttt{range}:
+\begin{verbatim}
+>>> list(range(5))                 # 0 up to (not including) 5
+[0, 1, 2, 3, 4]
+>>> list(range(2, 10, 3))          # start, stop, step
+[2, 5, 8]
+>>> list(range(5, 0, -2))
+[5, 3, 1]
+\end{verbatim}
+\begin{verbatim}
+total = 0
+for i in range(1, 101):
+    total += i
+print(total)                       # 5050
+\end{verbatim}
+If you need the position as well as the element, use \texttt{enumerate}:
+\begin{verbatim}
+for i, c in enumerate("abc"):
+    print(i, c)                    # 0 a / 1 b / 2 c
+\end{verbatim}
+
+\subsection*{while: as long as}
+\begin{verbatim}
+n = 0
+while n < 3:
+    n += 1                         # forgetting this = endless loop
+print(n)
+\end{verbatim}
+A \texttt{while} loop repeats while its condition is true. Use it when you do not know in advance how many rounds are needed. If your program hangs in an endless loop, press \texttt{Ctrl+C}. A robot's main loop is deliberately endless: \verb!while running:! (see Chapter~\ref{ch:py12}).
+
+\begin{center}
+\begin{tikzpicture}[st/.style={draw,rounded corners,thick,fill=blue!10,minimum width=2.6cm,minimum height=0.8cm,font=\footnotesize\ttfamily},dc/.style={draw,diamond,aspect=2.4,thick,fill=yellow!25,inner sep=1pt,font=\footnotesize\ttfamily},>={Stealth[length=2.5mm]},l/.style={font=\scriptsize}]
+  \node[st,fill=gray!15] (i) at (0,0) {n = 0};
+  \node[dc] (c) at (3.6,0) {n < 3};
+  \node[st] (b) at (3.6,-1.8) {n += 1};
+  \node[st,fill=green!12] (e) at (7.4,0) {print(n)};
+  \draw[->,thick] (i)--(c);
+  \draw[->,thick] (c)--node[l,left]{yes}(b);
+  \draw[->,thick] (b.west)-|(1.9,0)--(c.west) ;
+  \draw[->,thick] (c)--node[l,above]{no}(e);
+\end{tikzpicture}
+\captionof{figure}{A \texttt{while} loop tests the condition before every round, and leaves when it is false.}\label{fig:py2_while}
+\end{center}
+
+\subsection*{break, continue, else}
+\texttt{break} leaves the loop at once, \texttt{continue} skips to the next round.
+\begin{verbatim}
+for line in ["ok", "ok", "ERROR", "ok"]:
+    if line == "ERROR":
+        print("found it")
+        break
+\end{verbatim}
+\begin{keyidea}[Loop patterns you will use every day]
+\textbf{Accumulate} (sum, count, maximum) in a variable that is set before the loop. \textbf{Search} with \texttt{for} and \texttt{break}. \textbf{Repeat until} a condition holds with \texttt{while}. \textbf{Nested loops} (a loop in a loop) visit every pair, for example every pixel $(y,x)$ of an image: $480\cdot640$ rounds.
+\end{keyidea}
+
+\begin{example}
+\textbf{Square root by halving.} We look for $\sqrt2$, knowing it lies between $0$ and $2$. Test the middle: if $\text{mid}^2<2$ the root is above, else below. Repeat until the interval is tiny:
+\begin{verbatim}
+lo, hi = 0.0, 2.0
+while hi - lo > 1e-6:
+    mid = (lo + hi) / 2
+    if mid * mid < 2:
+        lo = mid
+    else:
+        hi = mid
+print(round(lo, 5))        # 1.41421
+\end{verbatim}
+Every round halves the interval, so about $\log_2(2/10^{-6})\approx 21$ rounds are enough. This ``bisection'' idea returns later when we search for the faulty commit (Chapter~\ref{ch:git4}) and for roots of functions.
+\end{example}
+\begin{example}
+\textbf{Collatz.} Start with $x=27$. If $x$ is even take $x/2$, else $3x+1$; count the steps until $x=1$:
+\begin{verbatim}
+x, steps = 27, 0
+while x != 1:
+    x = x // 2 if x % 2 == 0 else 3 * x + 1
+    steps += 1
+print(steps)               # 111
+\end{verbatim}
+Nobody knows whether this loop ends for \emph{every} start value. Be careful with \texttt{while} loops whose end you cannot prove.
+\end{example}
+
+\section*{Common mistakes}
+\begin{itemize}[nosep]
+  \item \verb!if x = 5:! (one equals sign) is a \texttt{SyntaxError}; write \texttt{==}.
+  \item Forgetting the colon, or mixing tabs and spaces in the indentation.
+  \item Off-by-one: \texttt{range(1, 10)} ends at $9$. A list with $n$ elements has the indices $0\dots n-1$.
+  \item Changing a list while you loop over it. Loop over a copy or build a new list (Chapter~\ref{ch:py4}).
+  \item A \texttt{while} loop whose condition never becomes false.
+\end{itemize}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Write a program that reads an integer and prints whether it is even or odd.
+  \item Write \texttt{grade(points)} logic: $\geq 90$ prints \texttt{A}, $\geq 75$ prints \texttt{B}, $\geq 50$ prints \texttt{C}, else \texttt{F}. Why is the order of the tests important?
+  \item What does \texttt{list(range(10, 0, -3))} give? Predict it, then check.
+  \item Print the sum of all multiples of $3$ or $5$ below $1000$.
+  \item Print the multiplication table of $7$ in the form \texttt{7 x 3 = 21} for $1\dots10$.
+  \item FizzBuzz: for the numbers $1\dots30$ print \texttt{Fizz} if divisible by $3$, \texttt{Buzz} if by $5$, \texttt{FizzBuzz} if by both, else the number.
+  \item A robot battery drops by $2.5\,\%$ per minute from $100\,\%$. Use a \texttt{while} loop to find after how many minutes it is below $20\,\%$.
+  \item Write a loop that asks for numbers until the user enters \texttt{0} and then prints their sum and the count.
+  \item Print a right triangle of stars with $5$ rows using two nested loops (or one loop and string multiplication).
+  \item[\textbf{\thechapter.10}$\star$] Find the first power of two that is larger than one million, and the exponent. Then change the program to find the smallest $n$ with $1+2+\dots+n>10\,000$.
+\end{enumerate}
