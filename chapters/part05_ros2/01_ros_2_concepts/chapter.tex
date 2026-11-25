@@ -1,8 +1,177 @@
-\bookchapter{ROS 2 concepts}\label{ch:ros1}
-\begin{keyidea}[Planned content]
-This chapter is not written yet. It will cover:
+\bookchapter{ROS 2 Concepts}\label{ch:ros1}
+
+\section*{Explanation}
+A soccer robot is not one program but many: one reads the camera, one finds the ball, one decides what to do, one turns the decision into steps, one talks to the motors. These programs run in parallel, are written by different people, in different languages, and sometimes run on different computers (the robot's own and your laptop). \textbf{ROS 2} (the Robot Operating System, version~2) is the glue between them. Despite the name it is \emph{not} an operating system: it is a collection of libraries, tools and conventions that run on top of Linux (Part~\ref{part:linux}) and give you a standard way to send data between programs, to start and configure many programs at once, to record and replay data, and to look at everything while the robot runs. In this chapter you learn the vocabulary and the command-line tools. Chapter~\ref{ch:ros2} then looks \emph{under} ROS~2 at the network middleware (DDS), and Chapter~\ref{ch:ros6} shows how to write your own nodes.
+
+\section*{Which version?}
+ROS~2 releases come once a year in May; every second release is an \textbf{LTS} (long-term support) release that is supported for five years. A release is tied to an Ubuntu version and has a name in alphabetical order. For this book's laptops (Ubuntu~26.04) the matching release is \textbf{Lyrical Luth} (``lyrical''), released in May~2026 as an LTS with Tier-1 support for Ubuntu~26.04 until May~2031. Installing the full desktop version takes a few commands (see the official installation guide at \verb!docs.ros.org! for the current instructions; they change from release to release):
+\begin{verbatim}
+$ sudo apt install software-properties-common curl
+$ sudo add-apt-repository universe
+$ curl -L -o /tmp/ros2-apt-source.deb <url from the install guide>
+$ sudo dpkg -i /tmp/ros2-apt-source.deb      # adds repo and key
+$ sudo apt update && sudo apt install ros-dev-tools
+$ sudo apt install ros-lyrical-desktop
+$ echo "source /opt/ros/lyrical/setup.bash" >> ~/.bashrc
+$ printenv ROS_DISTRO                        # prints: lyrical
+\end{verbatim}
+The robot itself may run a different distribution or a different Ubuntu version than your laptop. Two ROS~2 distributions can usually \emph{talk} to each other over the network if they use the same middleware and compatible message definitions, but this is not guaranteed; in a team, agree on one version, and use a container (Docker) if you must run an old one.
+
+\section*{The computation graph}
+ROS~2 programs form a \textbf{graph}. The four ideas are:
 \begin{itemize}[nosep]
-  \item Nodes, topics, services, actions
-  \item Messages and interfaces
+\item A \textbf{node} is one program (or one part of a program) that does one job, e.g.\ \verb!camera!, \verb!ball_detector!, \verb!walk_controller!.
+\item A \textbf{topic} is a named channel for a continuous stream of data of one \textbf{message type}. Nodes \emph{publish} to a topic and \emph{subscribe} to it. Publisher and subscriber do not know each other; there can be many of each.
+\item A \textbf{service} is a request--reply call: a client sends a request and waits for exactly one answer (``calibrate the camera'', ``what is the battery state?'').
+\item An \textbf{action} is a long-running request with feedback and the possibility to cancel (``walk to this point'', ``do a kick''): a goal, a stream of feedback messages, and a final result.
 \end{itemize}
+In addition, every node has \textbf{parameters}, named settings that you can change without recompiling (Chapter~\ref{ch:ros3}).
+\begin{center}
+\begin{tikzpicture}[
+  nd/.style={draw,thick,ellipse,fill=blue!10,minimum height=0.9cm,inner sep=3pt,font=\footnotesize,align=center},
+  tp/.style={draw,thick,rectangle,fill=orange!15,minimum height=0.55cm,font=\scriptsize\ttfamily},
+  >={Stealth[length=2.5mm]}]
+ \node[nd] (cam) at (0,0) {camera};
+ \node[tp] (img) at (2.7,0) {/image\_raw};
+ \node[nd] (det) at (5.4,0) {ball\\detector};
+ \node[tp] (ball) at (8.0,0) {/ball};
+ \node[nd] (beh) at (8.0,-2.0) {behaviour};
+ \node[tp] (cmd) at (5.4,-2.0) {/cmd\_vel};
+ \node[nd] (walk) at (2.7,-2.0) {walk\\controller};
+ \node[tp] (js) at (2.7,-3.7) {/joint\_states};
+ \node[nd] (imu) at (0,-2.0) {imu};
+ \node[tp] (imut) at (0,-3.7) {/imu/data};
+ \draw[->,thick] (cam)--(img); \draw[->,thick] (img)--(det);
+ \draw[->,thick] (det)--(ball); \draw[->,thick] (ball)--(beh);
+ \draw[->,thick] (beh)--(cmd); \draw[->,thick] (cmd)--(walk);
+ \draw[->,thick] (walk)--(js); \draw[->,thick] (imu)--(imut);
+\end{tikzpicture}
+\captionof{figure}{A small part of a robot's graph. Ellipses are nodes, boxes are topics. An arrow into a topic means ``publishes'', an arrow out of it ``subscribes''.}\label{fig:ros1_graph}
+\end{center}
+\begin{keyidea}[Why topics make robots flexible]
+The ball detector does not call the camera; it only says ``I want messages of type \verb!Image! from \verb!/image_raw!''. You can exchange the real camera for a recorded video (Chapter~\ref{ch:ros5}) or a simulator without changing one line of the detector, and you can start a second program that also subscribes to the topic, for example a viewer, without disturbing the others. The price: a topic has no guarantee that anybody listens, and no built-in answer.
 \end{keyidea}
+
+\subsection*{A toy topic system}
+To see that there is no magic, here is a ``ROS'' in 25 lines of plain Python (run on localhost): a publisher sends JSON messages with a topic name over UDP, a subscriber keeps only those with its topic.
+\begin{verbatim}
+def subscriber(topic, out, n=20):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(("127.0.0.1", 17400)); s.settimeout(1.0)
+    try:
+        while len(out) < n:
+            data, _ = s.recvfrom(2048)
+            msg = json.loads(data)
+            if msg["topic"] == topic:
+                out.append(msg["data"])
+    except socket.timeout:
+        pass
+def publish(topic, values, rate=200):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    for v in values:
+        s.sendto(json.dumps({"topic": topic, "data": v}).encode(),
+                 ("127.0.0.1", 17400))
+        time.sleep(1 / rate)
+\end{verbatim}
+A subscriber thread for \verb!/ball! and a publisher of $20$ messages for \verb!/ball! plus three for \verb!/other! delivered exactly the $20$ ball messages, the \verb!/other! messages were ignored. Dropping $30\,\%$ of the packets on the receiver side (to imitate a bad WiFi) delivered $13$ of $20$ in one run: UDP does not repeat lost packets. A real middleware adds what this toy lacks: \textbf{discovery} (who exists?), typed messages, delivery guarantees you can choose (\textbf{QoS}), many transports, and tools. How, is the subject of Chapter~\ref{ch:ros2}.
+
+\section*{Messages and interfaces}
+Every topic carries one message type, defined in a short text file with the ending \verb!.msg!. Types are identified as \verb!package/msg/Name!. A few you will meet daily:
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{5.8cm}p{7.0cm}}
+\textbf{Type} & \textbf{Contents}\\ \hline
+\verb!std_msgs/msg/String! & one text field \verb!data!\\
+\verb!geometry_msgs/msg/Twist! & \verb!linear! and \verb!angular! velocity (3 numbers each): the standard walking command\\
+\verb!geometry_msgs/msg/PoseStamped! & position and orientation (quaternion) plus a header\\
+\verb!sensor_msgs/msg/Image! & width, height, encoding, a byte array \verb!data!\\
+\verb!sensor_msgs/msg/Imu! & orientation, angular velocity, linear acceleration\\
+\verb!sensor_msgs/msg/JointState! & arrays of joint names, positions, velocities, efforts\\
+\end{tabular}
+\end{center}
+Most sensor messages start with a \textbf{header}: a \verb!stamp! (time of the measurement, see Chapter~\ref{ch:hw4}) and a \verb!frame_id! (the coordinate frame the data is expressed in, Chapter~\ref{ch:ros4}). Always set both. You write your own types for data that has no standard type:
+\begin{verbatim}
+# my_robot_msgs/msg/BallObservation.msg
+std_msgs/Header header
+float32 x            # metres, in the frame of header.frame_id
+float32 y
+float32 confidence   # 0.0 .. 1.0
+bool    visible
+\end{verbatim}
+Services use \verb!.srv! files (request, three dashes, response), actions use \verb!.action! files (goal, result, feedback). ROS~2 generates Python, C++ (and with extra packages Rust) code from them. The tool \verb!ros2 interface show geometry_msgs/msg/Twist! prints the definition of any type.
+
+\section*{The command-line tools}
+Most problems are solved with a handful of commands. Run the demo nodes first: \verb!ros2 run demo_nodes_cpp talker! in one terminal, \verb!ros2 run demo_nodes_py listener! in another.
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{6.4cm}p{6.4cm}}
+\textbf{Command} & \textbf{What it tells you}\\ \hline
+\verb!ros2 node list! & the running nodes\\
+\verb!ros2 node info /listener! & its publishers, subscribers, services, parameters\\
+\verb!ros2 topic list -t! & all topics with their types\\
+\verb!ros2 topic echo /chatter! & prints the messages (\verb!--once! for one only)\\
+\verb!ros2 topic hz /chatter! & measured publishing rate\\
+\verb!ros2 topic bw /image_raw! & measured bandwidth\\
+\verb!ros2 topic info -v /chatter! & publishers, subscribers \emph{and their QoS}\\
+\verb!ros2 topic pub -r 10 /cmd_vel ...! & publishes by hand\\
+\verb!ros2 service call /srv type '{...}'! & calls a service\\
+\verb!ros2 action send_goal ...! & sends an action goal\\
+\verb!ros2 param list/get/set! & lists, reads, changes parameters\\
+\verb!ros2 doctor! & checks the installation and network\\
+\verb!ros2 interface show type! & shows a message definition\\
+\end{tabular}
+\end{center}
+A typical session (the output of a real system looks like this; numbers differ):
+\begin{verbatim}
+$ ros2 topic list -t
+/chatter [std_msgs/msg/String]
+/parameter_events [rcl_interfaces/msg/ParameterEvent]
+/rosout [rcl_interfaces/msg/Log]
+$ ros2 topic hz /chatter
+average rate: 1.000
+    min: 0.999s max: 1.001s std dev: 0.00057s window: 3
+\end{verbatim}
+\begin{keyidea}[Debug in the right order]
+When something does not work: (1) \verb!ros2 node list!: does the node exist? (2) \verb!ros2 topic list -t!: is the topic there, with the \emph{same type} on both sides? (3) \verb!ros2 topic info -v!: do publisher and subscriber have compatible QoS? (4) \verb!ros2 topic echo!/\verb!hz!: is data really flowing, at the expected rate? (5) Same \verb!ROS_DOMAIN_ID! and the same network on both machines (Chapter~\ref{ch:ros2})? Four of five problems are found in steps 2--5.
+\end{keyidea}
+
+\section*{Names, namespaces and remapping}
+Names start with \verb!/! (absolute) or not (relative to the node's namespace). With the namespace \verb!/robot1! the relative topic \verb!ball! becomes \verb!/robot1/ball!. This is how you run several robots (or a left and a right camera) from the same code. \textbf{Remapping} changes a name at start time without touching the code: \verb!ros2 run my_pkg detector --ros-args -r image:=/camera/left/image_raw! connects the topic the code calls \verb!image! to the real camera topic. Hidden names start with an underscore.
+
+\section*{Quality of Service in short}
+Each publisher and subscriber chooses a \textbf{QoS profile}. The three settings you need first:
+\begin{itemize}[nosep]
+\item \textbf{Reliability}: \verb!reliable! (lost samples are re-sent) or \verb!best effort! (fire and forget, lowest delay).
+\item \textbf{Durability}: \verb!volatile! (late subscribers get nothing from the past) or \verb!transient local! (late subscribers receive the last samples, ideal for maps and static transforms).
+\item \textbf{History/depth}: how many samples are kept, e.g.\ \verb!keep last 10!.
+\end{itemize}
+Camera images and fast sensor streams use \verb!best effort! (a lost frame is replaced by the next one; waiting for a resend only adds delay); commands and configuration use \verb!reliable!. A reliable subscriber \emph{cannot} receive from a best-effort publisher: both sides appear in \verb!ros2 topic list!, yet no data arrives. This is the most common beginner problem; \verb!ros2 topic info -v! shows it. Chapter~\ref{ch:ros2} explains the mechanism.
+
+\section*{Workspaces and building}
+Your own code lives in a \textbf{workspace}: a folder with a fixed structure.
+\begin{verbatim}
+ros2_ws/
+  src/        # your packages (git repositories)
+  build/      # intermediate files        } created by colcon,
+  install/    # the finished packages     } never commit these
+  log/        # build logs                }
+\end{verbatim}
+You build with \textbf{colcon} from the workspace folder: \verb!colcon build --symlink-install!. Afterwards you \emph{source} the result, \verb!source install/setup.bash!, in every new terminal; this prepares the environment variables so that \verb!ros2 run! finds your packages. The ROS installation is the \textbf{underlay}, your workspace the \textbf{overlay}: it is sourced on top and may replace packages of the underlay. Missing dependencies are installed with \verb!rosdep install --from-paths src -y --ignore-src!. A \textbf{package} is a folder with a \verb!package.xml! (name, version, dependencies) and a build description (\verb!setup.py! for Python, \verb!CMakeLists.txt! for C++). Use \verb!--symlink-install! while developing Python code: changes in the source take effect without rebuilding. The classic error ``package not found'' means that you forgot to source, or that you built in one terminal and run in another without sourcing.
+
+\section*{Time, executors and simulation time}
+Nodes react to events (a message arrives, a timer fires) in \textbf{callbacks}. An \textbf{executor} is the loop that waits for events and runs the callbacks, one after the other in the simplest (single-threaded) case: a long callback delays all others, so a slow neural-network inference in the subscriber callback blocks the timers of the same node (the same problem as in Chapter~\ref{ch:py12}). Time in ROS~2 is a clock of the node: with \verb!use_sim_time:=true! it follows the topic \verb!/clock! of a simulator or of a replayed bag file (Chapter~\ref{ch:ros5}) instead of the wall clock. Never use \verb!time.time()! for stamping or timers inside nodes; ask the node for its clock.
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Explain the difference between a topic, a service and an action. Give one example of each for a soccer robot.
+  \item A camera node publishes $640\times480$ RGB images (3 bytes per pixel) at $30$\,Hz. Compute the data rate in MB/s and the data per minute. Why do you not record such a topic unprocessed for a whole match?
+  \item Which message type would you use for (a) a walking command, (b) the angles of all joints, (c) an IMU measurement? Name package and type.
+  \item You run \verb!ros2 topic list! and see \verb!/ball!, but \verb!ros2 topic echo /ball! prints nothing although the publisher runs. Name three possible reasons and the command that checks each.
+  \item A node is started with the namespace \verb!/robot2!. It publishes \verb!ball!, \verb!/clock! and \texttt{\textasciitilde/debug}. Give the full names. (The tilde stands for the node's private namespace; assume the node name is \verb!detector!.)
+  \item Write the command that starts \verb!ros2 run vision detector! so that the topic the code calls \verb!image! reads from \verb!/camera/front/image_raw!.
+  \item Why can a \emph{reliable} subscriber not receive from a \emph{best effort} publisher, but the other combination works? Which QoS profile would you choose for a camera image and which for a ``stop'' command? Justify.
+  \item Write a \verb!BallObservation.msg! for a robot that also wants to report the ball's velocity (two floats) and the number of cameras that see it. Which field types do you choose?
+  \item You edited a Python file in your package, rebuilt with \verb!colcon build!, and \verb!ros2 run! still runs the old code. List two likely causes.
+  \item[\textbf{\thechapter.10}$\star$] Extend the toy topic system of this chapter so that the subscriber keeps only the \emph{newest} $k$ messages (a ``history depth'' $k$), and measure what depth is needed to not lose messages when the subscriber callback needs $10$\,ms but the publisher sends at $200$\,Hz. What does a real middleware do in this situation, and what would you change in the node?
+\end{enumerate}

@@ -1,0 +1,230 @@
+\bookchapter{DDS Under the Hood, and Using It Without ROS}\label{ch:ros2}
+
+\section*{Explanation}
+When two ROS~2 nodes find each other and exchange messages, ROS~2 itself does very little: the work is done by a middleware called \textbf{DDS} (Data Distribution Service), an industry standard from the Object Management Group that is used in aircraft, ships, medical devices and power plants. ROS~2 hides DDS behind its own interface, which is wonderful until something does not connect: then you must understand domains, discovery, ports and QoS. And sometimes you want to talk to a robot from a program that is \emph{not} part of ROS~2 (a debugging tool written in Rust, a script on a machine without ROS, a game controller) and DDS can be used directly. This chapter covers both.
+
+\section*{Where DDS sits}
+\begin{center}
+\begin{tikzpicture}[blk/.style={draw,thick,minimum width=8.2cm,minimum height=0.8cm,font=\scriptsize,align=center},>={Stealth[length=2.5mm]}]
+ \node[blk,fill=green!12] (app) at (0,3.6) {your node (Python or C++)};
+ \node[blk,fill=green!8] (rcl) at (0,2.7) {\texttt{rclpy} / \texttt{rclcpp} (client libraries)};
+ \node[blk,fill=blue!10] (rclc) at (0,1.8) {\texttt{rcl} (C library, same logic for all languages)};
+ \node[blk,fill=orange!15] (rmw) at (0,0.9) {\texttt{rmw}: middleware interface (one plug-in each)};
+ \node[blk,fill=orange!25] (dds) at (0,0) {DDS: Fast DDS $\cdot$ Cyclone DDS $\cdot$ Connext};
+ \node[blk,fill=gray!15] (net) at (0,-0.9) {RTPS over UDP or shared memory $\cdot$ IP $\cdot$ Ethernet/WiFi};
+ \draw[<->,thick] (app)--(rcl); \draw[<->,thick] (rcl)--(rclc); \draw[<->,thick] (rclc)--(rmw);
+ \draw[<->,thick] (rmw)--(dds); \draw[<->,thick] (dds)--(net);
+ \draw[decorate,decoration={brace,amplitude=5pt}] (4.35,4.0) -- (4.35,0.5) node[midway,right=7pt,font=\scriptsize,align=left]{ROS 2\\ part};
+ \draw[decorate,decoration={brace,amplitude=5pt}] (4.35,0.4) -- (4.35,-1.3) node[midway,right=7pt,font=\scriptsize,align=left]{DDS\\ standard};
+\end{tikzpicture}
+\captionof{figure}{The layers between your node and the network. You can exchange the middleware below the \texttt{rmw} line without changing a line of your own code.}\label{fig:ros2_stack}
+\end{center}
+The DDS standard describes the \emph{API} (what a program calls) and the \emph{wire protocol} \textbf{RTPS} (Real-Time Publish-Subscribe, ``DDSI-RTPS'') that defines the bytes on the network. Because the wire protocol is standardised, programs that use different DDS implementations can often talk to each other. Common implementations: \textbf{Fast DDS} (eProsima, the default of ROS~2 up to and including the current LTS release), \textbf{Cyclone DDS} (Eclipse Foundation, the choice of many robot teams for its simplicity), and \textbf{Connext} (RTI, commercial). ROS~2 also supports a middleware that is \emph{not} DDS, \textbf{Zenoh} (\verb!rmw_zenoh_cpp!), which uses a router instead of multicast discovery and is popular for WiFi and multi-robot setups. Check which of them are officially supported in your release at \verb!docs.ros.org!.
+
+\section*{The vocabulary of DDS}
+\begin{itemize}[nosep]
+\item \textbf{Domain}: an isolated ``world'' with a number, the \textbf{domain ID}. Participants in different domains never see each other. In ROS~2 the domain is set by the environment variable \verb!ROS_DOMAIN_ID! (default $0$).
+\item \textbf{Domain participant}: a program's membership of a domain. A ROS~2 node is (roughly) a participant; recent versions share one participant per process.
+\item \textbf{Topic}: a name plus a data type. The ROS~2 topic \verb!/ball! becomes the DDS topic \verb!rt/ball! (``\verb!rt!'' = ROS topic; services use \verb!rq! and \verb!rr! for request and reply).
+\item \textbf{DataWriter} and \textbf{DataReader}: the DDS names for publisher and subscriber of one topic. A \textbf{Publisher/Subscriber} groups them.
+\item \textbf{QoS policies}: the settings that describe the contract, see below.
+\item \textbf{Key and instance}: a topic may have a key field (e.g.\ a robot ID); each key value is an independent \emph{instance} with its own history. ROS~2 does not use keys; plain DDS programs can.
+\end{itemize}
+\emph{Data-centric} means that you think in terms of ``the current state of the ball'' (a data object that is updated) rather than ``a message from A to B''.
+
+\section*{Discovery: how do participants find each other?}
+Nobody configures an address list; participants find each other by \textbf{discovery}, in two steps. First \textbf{SPDP} (Simple Participant Discovery Protocol): every participant sends a small announcement (``participant with this ID is here, reachable at these addresses'') repeatedly, by default every few seconds, to the IP \emph{multicast} address $239.255.0.1$ at a port that depends on the domain, and also unicast to known peers. Then \textbf{SEDP} (Simple Endpoint Discovery Protocol): the two participants that have found each other exchange lists of their topics, types and QoS over a direct (unicast) connection. A DataWriter and DataReader are \textbf{matched} if topic name, type and QoS fit; after that data flows directly from writer to reader.
+
+The port numbers follow from a formula in the standard, with the domain ID $d$ and a participant index $p$ ($0,1,2,\ldots$ for the participants on one host):
+\begin{align*}
+\text{discovery, multicast} &= 7400+250\,d\\
+\text{discovery, unicast} &= 7400+250\,d+10+2p\\
+\text{user data, multicast} &= 7400+250\,d+1\\
+\text{user data, unicast} &= 7400+250\,d+11+2p
+\end{align*}
+\begin{verbatim}
+PB, DG, PG, D0, D1, D2, D3 = 7400, 250, 2, 0, 10, 1, 11
+def ports(domain, pid=0):
+    base = PB + DG * domain
+    return dict(discovery_multicast=base + D0,
+                discovery_unicast=base + D1 + PG * pid,
+                user_multicast=base + D2,
+                user_unicast=base + D3 + PG * pid)
+\end{verbatim}
+For the domains $0$, $7$ and $42$ this gives (computed with the code above):
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{rrrrr}
+\textbf{domain} & \textbf{disc.\ multicast} & \textbf{disc.\ unicast} ($p=0$) & \textbf{user multicast} & \textbf{user unicast} ($p=0$)\\ \hline
+0 & 7400 & 7410 & 7401 & 7411\\
+7 & 9150 & 9160 & 9151 & 9161\\
+42 & 17900 & 17910 & 17901 & 17911\\
+232 & 65400 & 65410 & 65401 & 65411\\
+\end{tabular}
+\end{center}
+Domain $233$ would already give the port $65650$, which does not exist (the maximum is $65535$), so $232$ is the largest usable domain. The ROS documentation recommends the domains $0$ to $101$ and $215$ to $232$, because the other numbers produce ports in the range that the operating system uses for temporary (ephemeral) connections, where they can clash with other programs. In the lab: give every \emph{team} a domain, and do not leave all robots on $0$, or your robot will react to the commands of the other team's laptop.
+
+\begin{keyidea}[Why ``it works on my computer but not on the robot'']
+Discovery needs (1) the same domain ID on both sides, (2) multicast (or explicit peer addresses) that the network allows, (3) a firewall that lets UDP in the port ranges above through, (4) compatible QoS and types for the endpoints, and (5) the right network interface if a machine has several (cable, WiFi, and the robot's internal network). WiFi access points often drop multicast or send it at a very low rate. That is the reason why a robot over WiFi may find the laptop only after minutes, or never, while on a cable everything works at once.
+\end{keyidea}
+
+\subsection*{Look at the traffic: the RTPS header}
+Every RTPS packet starts with a fixed $20$-byte header: the four letters \verb!RTPS!, the protocol version, a $2$-byte \textbf{vendor ID} (which implementation sent it) and a $12$-byte \textbf{GUID prefix} (identity of the participant). Anything after it is made of submessages. With a socket and \verb!struct! (Chapter~\ref{ch:hw2}) you can read it yourself; the function below was run on a synthetic packet built with the eProsima vendor ID:
+\begin{verbatim}
+import struct
+VENDORS = {0x0101: "RTI Connext", 0x010F: "eProsima Fast DDS",
+           0x0110: "Eclipse Cyclone DDS"}
+def parse_rtps(pkt):
+    if len(pkt) < 20 or pkt[:4] != b"RTPS":
+        return None                     # not RTPS
+    _, major, minor, vendor, guid = struct.unpack("!4sBBH12s", pkt[:20])
+    return dict(version=f"{major}.{minor}",
+                vendor=VENDORS.get(vendor, hex(vendor)),
+                guid_prefix=guid.hex())
+\end{verbatim}
+Result for a header with version $2.3$ and vendor \verb!0x010F!: \texttt{\{'version': '2.3', 'vendor': 'eProsima Fast DDS', 'guid\_prefix': '000102030405060708090a0b'\}}; for any other bytes, such as an HTTP response, the function returns \verb!None!. To see real discovery packets on your network, join the multicast group and print what arrives:
+\begin{verbatim}
+import socket, struct
+d = 0
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("", 7400 + 250 * d))
+mreq = struct.pack("4s4s", socket.inet_aton("239.255.0.1"),
+                   socket.inet_aton("0.0.0.0"))
+s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+while True:
+    pkt, addr = s.recvfrom(65535)
+    print(addr[0], parse_rtps(pkt))
+\end{verbatim}
+(This listener was not run here, since the machine had no DDS traffic to show; start any ROS~2 node on the same network and the lines appear.) For more detail use \verb!sudo tcpdump -i any udp portrange 7400-7500! (Chapter~\ref{ch:linux7}) or Wireshark, whose RTPS decoder shows every submessage. ROS~2 also ships a test tool: \verb!ros2 multicast receive! on one machine and \verb!ros2 multicast send! on another show immediately whether multicast works between them.
+
+\section*{Quality of Service as a contract}
+Every writer \emph{offers} and every reader \emph{requests} a QoS. They match only if the offer is at least as good as the request.
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{2.6cm}p{4.2cm}p{5.8cm}}
+\textbf{Policy} & \textbf{Values} & \textbf{Rule of matching}\\ \hline
+Reliability & best effort $<$ reliable & writer must offer at least what the reader requests\\
+Durability & volatile $<$ transient local & transient-local reader needs a transient-local writer\\
+History/depth & keep last $N$ / keep all & local; not part of the contract\\
+Deadline & period & writer's period $\le$ reader's period\\
+Liveliness & automatic, manual; lease time & writer's lease $\le$ reader's lease\\
+Lifespan & duration & sample expires after this time (local)\\
+\end{tabular}
+\end{center}
+In ROS~2 the QoS is given as a profile: \verb!QoSProfile(depth=10)! (reliable, volatile), \verb!qos_profile_sensor_data! (best effort, small depth; for cameras, lidars, IMUs) and \verb!qos_profile_system_default!. The static transforms of Chapter~\ref{ch:ros4} and the maps use \emph{transient local}, because the subscriber that starts later must still receive the last message.
+
+\subsection*{Large messages and the network}
+UDP packets are limited to about $1400$ payload bytes on Ethernet (Chapter~\ref{ch:hw2}). A $921$\,kB camera frame is therefore \textbf{fragmented} into about $660$ pieces; with \emph{reliable} QoS the middleware repeats missing pieces, with best effort the \emph{whole frame} is lost if one piece is lost. At a loss rate of $1\,\%$ per packet the chance that all $660$ pieces arrive is $0.99^{660}=0.13\,\%$ (!): on a lossy WiFi, uncompressed images over best-effort UDP practically do not arrive. Remedies: compressed images (\verb!image_transport!, JPEG: about $30$--$60$\,kB), a cable, sending only what the other computer needs, or shared memory on the same machine. The operating system's receive buffer also matters: if it is too small the kernel drops the pieces before the middleware reads them. Raise it with \verb!sudo sysctl -w net.core.rmem_max=26214400! (about $25$\,MB, as an example), and make it permanent in \verb!/etc/sysctl.d/! (Chapter~\ref{ch:linux5}).
+
+\section*{Configuring the middleware}
+\begin{verbatim}
+export ROS_DOMAIN_ID=42                         # which "world"
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp    # which middleware
+export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET     # LOCALHOST | SUBNET | OFF
+export ROS_STATIC_PEERS="192.168.1.20;192.168.1.21"
+ros2 doctor --report | grep -i middleware       # what is in use?
+\end{verbatim}
+\verb!ROS_AUTOMATIC_DISCOVERY_RANGE! limits who is found automatically (\verb!LOCALHOST! keeps the traffic on one machine, ideal for development on a shared network; \verb!OFF! needs \verb!ROS_STATIC_PEERS!, an explicit list of addresses, when multicast does not work). It replaced the older \verb!ROS_LOCALHOST_ONLY!; check the documentation of your release if you see either of them in old tutorials. Further steps depend on the middleware:
+\begin{itemize}[nosep]
+\item \textbf{Cyclone DDS}: an XML file, activated with \verb!export CYCLONEDDS_URI=file:///home/robot/cyclone.xml!, for example to bind the middleware to the robot network:
+\begin{verbatim}
+<CycloneDDS>
+  <Domain>
+    <General>
+      <Interfaces>
+        <NetworkInterface name="eth0"/>
+      </Interfaces>
+    </General>
+  </Domain>
+</CycloneDDS>
+\end{verbatim}
+(the element names changed between versions: look into the documentation of the version you have).
+\item \textbf{Fast DDS}: an XML profile, activated with \verb!FASTRTPS_DEFAULT_PROFILES_FILE!, and the \textbf{Discovery Server} mode (\verb!ROS_DISCOVERY_SERVER!): participants talk only to a central server instead of multicasting; much less traffic with many nodes and robots.
+\item \textbf{Zenoh}: you start a router (\verb!ros2 run rmw_zenoh_cpp rmw_zenohd!) and every node connects to it; works across subnets and WiFi.
+\end{itemize}
+Mixing middlewares in one system is possible only through bridges (nodes on both sides forward messages), so the whole team should use one.
+
+\section*{Using DDS without ROS 2}
+\subsection*{When and why}
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{3.6cm}p{9.0cm}}
+\textbf{Tool} & \textbf{Good for}\\ \hline
+ROS 2 & everything robot-specific: tools, bags, tf, visualisation, many ready-made packages\\
+Plain DDS & the same discovery, QoS and typed data without the ROS stack; programs in C, C++, Python (and Rust, C\#\ldots) that must talk to a robot's DDS system or to each other\\
+Plain UDP/TCP (Chapter~\ref{ch:hw2}) & the simplest possible data stream; you handle everything yourself\\
+ZeroMQ, MQTT, WebSocket & request/reply or broker-based messaging, browsers, cloud\\
+\end{tabular}
+\end{center}
+Typical reasons to use DDS directly: a tool on your laptop should receive the robot's telemetry \emph{without} installing ROS~2 (and without matching ROS versions); a small programme on a microcontroller-class computer; or a competition rule that requires a given protocol. The robot's own program need not know about it.
+
+\subsection*{A publisher and a subscriber with Cyclone DDS (Python)}
+The Python binding of Cyclone DDS installs with \verb!pip install cyclonedds! (in a virtual environment, Chapter~\ref{ch:py6}) and needs no ROS~2. Data types are Python dataclasses derived from \verb!IdlStruct!:
+\begin{verbatim}
+# ball_types.py
+from dataclasses import dataclass
+from cyclonedds.idl import IdlStruct
+
+@dataclass
+class BallObservation(IdlStruct, typename="BallObservation"):
+    robot_id: int
+    x: float
+    y: float
+    visible: bool
+\end{verbatim}
+\begin{verbatim}
+# pub.py
+import time
+from cyclonedds.domain import DomainParticipant
+from cyclonedds.topic import Topic
+from cyclonedds.pub import DataWriter
+from ball_types import BallObservation
+
+dp = DomainParticipant(42)                   # domain 42
+topic = Topic(dp, "ball", BallObservation)
+writer = DataWriter(dp, topic)
+for i in range(100):
+    writer.write(BallObservation(1, 0.1 * i, 0.0, True))
+    time.sleep(0.05)
+\end{verbatim}
+\begin{verbatim}
+# sub.py
+import time
+from cyclonedds.domain import DomainParticipant
+from cyclonedds.topic import Topic
+from cyclonedds.sub import DataReader
+from ball_types import BallObservation
+
+dp = DomainParticipant(42)
+topic = Topic(dp, "ball", BallObservation)
+reader = DataReader(dp, topic)
+while True:
+    for sample in reader.take(10):           # up to 10 new samples
+        print(sample)
+    time.sleep(0.01)
+\end{verbatim}
+Start \verb!sub.py! in one terminal and \verb!pub.py! in another (also on another computer in the same subnet, with the same domain): the subscriber prints the observations without any configuration, the discovery of the previous sections happens inside \verb!DomainParticipant!. A QoS is given as an argument (\verb!Qos(Policy.Reliability.Reliable(max_blocking_time=duration(seconds=1)), Policy.History.KeepLast(10))! in the Python binding), to \verb!Topic!, \verb!DataWriter! or \verb!DataReader!. For real programs you do not poll with \verb!sleep!: use a \emph{listener} (callback), a \emph{waitset} or \verb!await reader.take_async()!. The Python package also contains command-line tools (\verb!cyclonedds ls!, \verb!subscribe!, \verb!performance!; \verb!--help! shows what your version offers) to list the participants and topics and to subscribe to any topic without writing code.
+
+\textbf{Note:} the code of this section could not be run while the book was written (the machine used to write it has no internet access to install the package); it follows the documented API of the Python binding of Cyclone DDS, but test it first and compare with the documentation of your installed version, since details such as the \verb!typename! argument and the QoS helpers have changed between releases.
+
+\subsection*{Talking to ROS~2 nodes from plain DDS}
+Plain DDS can in principle read ROS~2 topics, because a ROS~2 topic is a DDS topic. You must reproduce \emph{exactly} the name prefix (\verb!rt/ball!), the type name that the ROS~2 middleware layer generates (for \verb!std_msgs/msg/String! it is \verb!std_msgs::msg::dds_::String_!), the field layout and compatible QoS. This is fragile and depends on the version of ROS~2; use the generated IDL files of the message packages and the code generator of your DDS implementation (\verb!idlc! for Cyclone DDS) rather than writing types by hand. It is much simpler if the \emph{robot side} publishes a small, own data type that you define in IDL and use on both sides. In many projects a ``bridge'' node is written once: it subscribes in ROS~2 and republishes selected data as plain DDS (or UDP, Zenoh, WebSocket), so tools outside ROS~2 stay simple.
+
+\begin{aibox}[Middleware and learned control]
+A neural-network policy that runs at $50$\,Hz on the robot needs its input (IMU, joint states) \emph{fresh} and its output delivered on time (Chapter~\ref{ch:hw7}). Choose best-effort QoS with depth $1$ for such streams, never queue old data, and measure the delay from sensor to actuator with time stamps in the headers. A reliable QoS that waits for a re-send of an old sample is worse than losing it.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Compute the four RTPS port numbers for domain $5$, participant index $p=2$.
+  \item Why is domain $233$ unusable? What is the largest participant index $p$ that still gives valid user-unicast ports in domain $232$?
+  \item Two laptops in the same room run ROS~2 nodes with \verb!ROS_DOMAIN_ID=0! and are connected through the same school WiFi. Name two possible reasons why they do \emph{not} see each other's topics, and two commands to check.
+  \item A writer offers best-effort/volatile, the reader requests reliable/volatile. Do they match? What about writer reliable/transient local and reader best effort/volatile? Explain each in a sentence.
+  \item A camera frame has $921\,600$ bytes. With $1400$ bytes per UDP packet and a packet loss of $0.5\,\%$, how many packets are needed and what is the probability that a best-effort frame arrives complete?
+  \item A JPEG-compressed frame has $45$\,kB. Repeat problem 5. Compute the factor between the two probabilities.
+  \item Explain the difference between a ROS~2 node and a DDS domain participant. Why does it matter for the discovery traffic when you start $100$ small nodes?
+  \item Write the \verb!export! commands to make a robot (a) use Cyclone DDS, (b) use domain $17$, (c) find only the participants on its own computer.
+  \item In the plain-DDS example, what happens if the subscriber starts \emph{after} the publisher has sent its $100$ samples (volatile durability)? How would you change the QoS so that a late reader gets the last sample?
+  \item[\textbf{\thechapter.10}$\star$] Write a Python function \verb!scan(timeout)! that listens for \verb!timeout! seconds on the multicast discovery port of a given domain and returns the set of different GUID prefixes together with the vendor names. How can it tell you how many participants are in your domain? What does it \emph{not} show (think of the unicast discovery)?
+\end{enumerate}

@@ -1,0 +1,38 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Base $=7400+250\cdot5=8650$. Discovery multicast $8650$; discovery unicast $8650+10+4=8664$; user multicast $8651$; user unicast $8650+11+4=8665$.
+  \item $7400+250\cdot233=65650>65535$. In domain $232$: $65400+11+2p\le65535$ gives $p\le62$, i.e.\ $63$ participants per host.
+  \item (1) The access point blocks or throttles multicast between clients (client isolation). (2) A firewall blocks UDP $7400$--$7500$, or the machines are in different subnets/VLANs. (Also: different RMW implementations that cannot talk.) Commands: \verb!ros2 multicast receive! and \verb!ros2 multicast send! on the two machines; \verb!ros2 doctor --report! for the network and domain setting; \verb!sudo tcpdump -i any udp port 7400!.
+  \item First: no. The reader requests reliable, the writer offers only best effort, which is less than requested. Second: yes. The offer (reliable) is better than the request (best effort), and a volatile reader accepts a transient-local writer; the reader simply does not ask for old data.
+  \item $921\,600/1400=658.3\to659$ packets. $P=0.995^{659}=e^{659\ln0.995}=e^{-3.31}=0.037$, i.e.\ $3.7\,\%$.
+  \item $45\,000/1400=32.1\to33$ packets; $P=0.995^{33}=0.847$. The factor is $0.847/0.037\approx23$ times more likely to arrive (the compressed frame is also $20$ times smaller).
+  \item A node is a ROS~2 concept (a computation unit); a participant is a DDS member of a domain, with its own discovery announcements and an endpoint list. If each node is its own participant, $100$ nodes mean $100$ participants that all announce themselves and exchange their endpoints with each other: traffic and start-up time grow roughly with the \emph{square} of the number of participants ($\approx n^2$ matched pairs), which is the motivation for a discovery server, for fewer, bigger processes, and for restricting the discovery range.
+  \item \begin{verbatim}
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=17
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+\end{verbatim}
+  \item With the default (volatile) durability the late reader gets nothing: the samples were not kept for it. Use durability \emph{transient local} on the writer \emph{and} on the reader, together with history keep-last $N\ge1$ (so that the writer keeps the last $N$ samples); the late reader then receives the last $N$ samples when it is matched.
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+import socket, struct, time
+def scan(timeout=10.0, domain=0):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(("", 7400 + 250 * domain))
+    mreq = struct.pack("4s4s", socket.inet_aton("239.255.0.1"),
+                       socket.inet_aton("0.0.0.0"))
+    s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+    s.settimeout(0.5)
+    found, end = {}, time.time() + timeout
+    while time.time() < end:
+        try:
+            pkt, _ = s.recvfrom(65535)
+        except socket.timeout:
+            continue
+        info = parse_rtps(pkt)
+        if info:
+            found[info["guid_prefix"]] = info["vendor"]
+    return found
+\end{verbatim}
+  The number of different GUID prefixes is a lower bound for the participants (one prefix per participant or per process, depending on the implementation). It does \emph{not} show participants that announce only by unicast (static peers, discovery server, Zenoh), nor those whose multicast packets were lost, nor anything about the topics (these are exchanged by SEDP over unicast). Run it long enough ($\ge$ a few announcement periods).
+\end{enumerate}

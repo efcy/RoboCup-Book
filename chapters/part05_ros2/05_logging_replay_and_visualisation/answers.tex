@@ -1,0 +1,27 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $30\cdot3600=108\,000$ lines per hour, $8.6$\,MB. Use \verb!throttle_duration_sec! (e.g.\ once per second: $3600$ lines), or log only on a state change, or at DEBUG level.
+  \item (a) INFO; (b) WARN; (c) ERROR (or FATAL if the node cannot work without the camera); (d) DEBUG.
+  \item JPEG: $50\,\text{kB}\cdot30\cdot600=900$\,MB. IMU: $100\cdot200\cdot600=12$\,MB. Joints: $600\cdot500\cdot600=180$\,MB. Total about $1.09$\,GB (plus a little overhead for time stamps and topic information).
+  \item \verb!--clock! (the player must publish \verb!/clock!) and \verb!use_sim_time:=true! on the nodes. Without it the nodes compare the old time stamps of the bag with the current wall-clock time.
+  \item Replay \verb!/image! (and \verb!/tf!, \verb!/tf_static!, other sensor topics); let the new detector produce \verb!/ball! (and the new behaviour \verb!/cmd_vel!). Replaying the recorded \verb!/ball! would mix the old and the new result on the same topic (use \verb!--topics! to exclude them, or \verb!--remap! them to another name to compare).
+  \item $\Delta t$: $0.034,\,0.032,\,0.034,\,0.100,\,0.033$\,s. Mean $\Delta t=0.233/5=0.0466$\,s $\Rightarrow$ $21.5$\,Hz; largest gap $0.100$\,s; threshold $1.5\cdot33.3=50$\,ms; exactly $1$ gap (the $100$\,ms one) is longer, i.e.\ two frames were lost. (The nominal $30$\,Hz is not reached: $21.5$\,Hz.)
+  \item (1) Wrong \verb!Fixed Frame! or missing transform to the frame of the marker; (2) \verb!color.a! is $0$; (3) \verb!scale! is $0$ (default) or the object is tiny or far away; (4) the display for \verb!Marker! is not added, or the topic name or QoS in rviz differs; (5) the \verb!lifetime! has expired (the marker is not renewed); (6) the \verb!pose.orientation! is the zero quaternion (use $w=1$).
+  \item Hands are busy; people forget, and the one game you want to analyse is the one that was not recorded. Start the recording automatically with the launch file (an \verb!ExecuteProcess! of \verb!ros2 bag record!) or as a systemd service together with the robot software; use \verb!--max-bag-size! for splitting, and a cleanup script (or a rotation) that deletes the oldest files when free space falls below a threshold (check with \verb!df!, Chapter~\ref{ch:linux5}). Record to a separate partition, so that a full disk cannot stop the robot software.
+  \item Open format: no dependence on one installation or version of ROS; analysis with plain Python on any laptop, in other tools (Foxglove, own scripts), and long-term readability of recorded matches; also convertible to training data for neural networks.
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+import numpy as np
+def stats(stamps, nominal=1 / 30):
+    dt = np.diff(np.sort(stamps))
+    print("rate  %.2f Hz" % (1 / dt.mean()))
+    print("max gap %.1f ms" % (dt.max() * 1e3))
+    print("gaps > 1.5 T:", int((dt > 1.5 * nominal).sum()))
+    hist, edges = np.histogram(dt * 1e3, bins=10)
+    for h, lo, hi in zip(hist, edges[:-1], edges[1:]):
+        print("%5.1f-%5.1f ms %s" % (lo, hi, "#" * (60 * h // hist.max())))
+rng = np.random.default_rng(3)
+t = np.arange(0, 60, 1 / 30) + rng.normal(0, 0.002, 1800)
+stats(t[rng.random(1800) > 0.03])
+\end{verbatim}
+  The reading from the bag replaces the last three lines by the loop of the chapter that fills \verb!stamps!. The histogram shows a high peak around $33$\,ms and small peaks at multiples of it ($67$, $100$\,ms) for one or two lost frames.
+\end{enumerate}

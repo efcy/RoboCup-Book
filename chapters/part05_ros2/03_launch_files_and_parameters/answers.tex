@@ -1,0 +1,41 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item
+\begin{verbatim}
+walk_controller:
+  ros__parameters:
+    step_height: 0.04
+    step_period: 0.5
+    max_speed: 0.4
+    gait: "trot"
+\end{verbatim}
+  \item The node declared a \emph{double} (\verb!0.4!); the file provides an \emph{integer}. The type of the declared default fixes the parameter type, so the node fails at start with a parameter type error. Write \verb!1.0!.
+  \item \verb!ros2 launch my_robot_bringup robot.launch.py team:=red gui:=false!
+  \item \verb!LaunchConfiguration! is a substitution object, resolved later when the launch runs, so in Python it is not a string and the comparison is always false. Use \verb!condition=IfCondition(LaunchConfiguration("gui"))! on the action (or \verb!PythonExpression!/\verb!OpaqueFunction! for logic).
+  \item The code copied the value into an attribute at start and never looks at the parameter again. Fix: (1) register \verb!add_on_set_parameters_callback! and update the attribute (and validate); (2) read \verb!self.get_parameter(...).value! every time it is needed (cheap enough for rarely used values), or use a timer that re-reads it.
+  \item The namespace is prepended to \emph{relative} names: \verb!image! $\to$ \verb!/robot1/image!. A remapping replaces the name, and an absolute target ignores the namespace: \verb!image! $\to$ \verb!/cam/front!. Remapping is applied when the node starts (at launch, from \verb!--ros-args!); not later.
+  \item (1) The package was not built/installed or the workspace not sourced (\verb!ros2 pkg list | grep my_robot!). (2) \verb!setup.py! (or \verb!CMakeLists.txt!) does not install the \verb!launch! and \verb!config! folders into \verb!share/<package>!. (3) The \verb!resource/<package>! marker file is missing or the \verb!package.xml! name differs from the folder name. (Also: the file name pattern in \verb!glob! does not match.)
+  \item \verb!TimerAction(period=3.0, actions=[behaviour])!. A fixed delay is a guess: it is too short on a slow start and wastes time on a fast one. More robust: start when the camera is \emph{ready}, with an \verb!OnProcessStart! handler, a lifecycle node transition, or by letting the behaviour node wait for the first image (or call a service) and report a clear error after a timeout.
+  \item If the walking node crashes in the middle of a step the robot is in an unknown state; restarting it automatically starts a new walk from that state. Instead the system should go to the safe state (damped stop, Chapter~\ref{ch:hw8}), via a watchdog in the driver (no commands $\Rightarrow$ go limp), and a human or a defined start-up procedure should restart.
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+def generate_launch_description():
+    share = get_package_share_directory("my_robot_vision")
+    vision = os.path.join(share, "launch", "vision.launch.py")
+    gui = LaunchConfiguration("gui")
+    groups = []
+    for name, colour in (("robot1", "red"), ("robot2", "blue")):
+        groups.append(GroupAction([
+            PushRosNamespace(name),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(vision),
+                launch_arguments={"team_colour": colour}.items()),
+        ]))
+    return LaunchDescription([
+        DeclareLaunchArgument("gui", default_value="false"),
+        *groups,
+        Node(package="rviz2", executable="rviz2",
+             condition=IfCondition(gui)),
+    ])
+\end{verbatim}
+  The included file must declare the argument \verb!team_colour! and pass it on to the node's parameters (as in the chapter, with a dictionary and a \verb!LaunchConfiguration!).
+\end{enumerate}

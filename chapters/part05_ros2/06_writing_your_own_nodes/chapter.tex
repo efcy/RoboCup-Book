@@ -1,0 +1,222 @@
+\bookchapter{Writing Your Own Nodes}\label{ch:ros6}
+
+\section*{Explanation}
+Now you put everything together: you write the nodes of a small soccer-robot system yourself. The goal is not just to make them run, but to make them \emph{good}: logic that can be tested without a robot, callbacks that never block, a clear behaviour when data is missing, and a stop when something goes wrong. We use \textbf{Python} (\verb!rclpy!), which is the language of the earlier chapters and fast enough for decisions, parameters and glue. For control loops at several hundred hertz or heavy image processing, C++ (\verb!rclcpp!) or Rust (Part~\ref{part:rust}) is used; the structure is the same.
+
+\section*{Create a package}
+\begin{verbatim}
+$ cd ~/ros2_ws/src
+$ ros2 pkg create --build-type ament_python my_robot_vision \
+      --dependencies rclpy sensor_msgs geometry_msgs cv_bridge
+$ cd ~/ros2_ws && colcon build --symlink-install
+$ source install/setup.bash
+\end{verbatim}
+The command creates \verb!package.xml!, \verb!setup.py!, a folder with the same name as the package for your Python files, and a test folder. Every executable you add must be registered in \verb!setup.py! under \verb!entry_points!; only then \verb!ros2 run! finds it:
+\begin{verbatim}
+    entry_points={
+        "console_scripts": [
+            "ball_detector = my_robot_vision.ball_detector:main",
+            "behaviour = my_robot_vision.behaviour:main",
+        ],
+    },
+\end{verbatim}
+
+\section*{A publisher and a subscriber}
+A node is a class that derives from \verb!Node!. It creates publishers, subscribers, timers and clients in its constructor, and does its work in callbacks.
+\begin{verbatim}
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+
+class Talker(Node):
+    def __init__(self):
+        super().__init__("talker")
+        self.pub = self.create_publisher(String, "chatter", 10)
+        self.timer = self.create_timer(0.5, self.tick)   # 2 Hz
+        self.n = 0
+
+    def tick(self):
+        msg = String()
+        msg.data = f"hello {self.n}"
+        self.pub.publish(msg)
+        self.n += 1
+
+def main():
+    rclpy.init()
+    node = Talker()
+    try:
+        rclpy.spin(node)               # the executor: wait, call back
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
+
+if __name__ == "__main__":
+    main()
+\end{verbatim}
+The subscriber side differs by one call, \verb!self.create_subscription(String, "chatter", self.on_msg, 10)!, with a method \verb!on_msg(self, msg)! as callback. The number $10$ is the queue depth (QoS, Chapters~\ref{ch:ros1} and~\ref{ch:ros2}); for sensors use the matching profile:
+\begin{verbatim}
+from rclpy.qos import qos_profile_sensor_data
+self.sub = self.create_subscription(
+    Image, "image", self.on_image, qos_profile_sensor_data)
+\end{verbatim}
+
+\section*{Keep the logic out of the node}
+The most important design rule: \textbf{the ROS node is a thin shell around plain Python functions}. The function that finds the ball in an image takes a numpy array and returns numbers; it knows nothing about ROS. Then you can test it with a saved picture and \verb!pytest! (Chapter~\ref{ch:py11}), on a laptop without ROS, in a second. Only the shell converts messages to arrays and back. The ball detector, as a function:
+\begin{verbatim}
+# my_robot_vision/ball_logic.py   (no ROS imports here)
+import cv2
+import numpy as np
+
+def find_ball(bgr, hue=(5, 20), min_radius=6.0):
+    """Return (u, v, diameter_px) of the biggest orange blob, or None."""
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, (hue[0], 120, 80), (hue[1], 255, 255))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,
+                            np.ones((3, 3), np.uint8))
+    cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
+                               cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return None
+    (u, v), r = cv2.minEnclosingCircle(max(cnts, key=cv2.contourArea))
+    return (u, v, 2 * r) if r >= min_radius else None
+\end{verbatim}
+and the node around it:
+\begin{verbatim}
+# my_robot_vision/ball_detector.py
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
+from sensor_msgs.msg import Image
+from geometry_msgs.msg import PointStamped
+from cv_bridge import CvBridge
+from my_robot_vision.ball_logic import find_ball
+
+class BallDetector(Node):
+    def __init__(self):
+        super().__init__("ball_detector")
+        self.declare_parameter("hue_min", 5)
+        self.declare_parameter("hue_max", 20)
+        self.declare_parameter("min_radius_px", 6.0)
+        self.bridge = CvBridge()
+        self.pub = self.create_publisher(PointStamped, "ball_pixel", 10)
+        self.create_subscription(Image, "image", self.on_image,
+                                 qos_profile_sensor_data)
+
+    def on_image(self, msg):
+        bgr = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        hue = (self.get_parameter("hue_min").value,
+               self.get_parameter("hue_max").value)
+        r = self.get_parameter("min_radius_px").value
+        found = find_ball(bgr, hue, r)
+        if found is None:
+            return
+        out = PointStamped()
+        out.header = msg.header          # keep stamp AND frame_id!
+        out.point.x, out.point.y, out.point.z = found
+        self.pub.publish(out)
+
+def main():
+    rclpy.init()
+    rclpy.spin(BallDetector())
+\end{verbatim}
+Notice: the output \emph{copies the header} of the input image, so that the stamp is the time of the \emph{capture}, not of the end of the computation (Chapter~\ref{ch:ros4}). The pixel position and the diameter travel in a \verb!PointStamped! for simplicity (a proper project defines its own message, as in Chapter~\ref{ch:ros1}). The detector does not publish anything when nothing is found, and says nothing: the \emph{consumer} must handle the missing data, as the next node does.
+
+\section*{A behaviour node with a watchdog}
+The behaviour node decides what to do and publishes the walking command. The rules of Chapter~\ref{ch:hw8} apply: it publishes at a \emph{fixed rate} from a timer (not only when new data arrives), it \emph{checks the age} of its inputs, and the safe action is to stop.
+\begin{verbatim}
+from geometry_msgs.msg import PointStamped, Twist
+from rclpy.node import Node
+
+class Behaviour(Node):
+    def __init__(self):
+        super().__init__("behaviour")
+        self.declare_parameter("ball_timeout", 1.0)   # seconds
+        self.declare_parameter("search_turn", 0.4)    # rad/s
+        self.last_ball = None
+        self.last_ball_time = None
+        self.create_subscription(PointStamped, "ball_base",
+                                 self.on_ball, 10)
+        self.cmd = self.create_publisher(Twist, "cmd_vel", 10)
+        self.create_timer(0.05, self.step)            # 20 Hz
+
+    def on_ball(self, msg):
+        self.last_ball = msg.point
+        self.last_ball_time = self.get_clock().now()
+
+    def step(self):
+        cmd = Twist()                                 # all zero = stop
+        timeout = self.get_parameter("ball_timeout").value
+        if self.last_ball_time is not None:
+            age = (self.get_clock().now()
+                   - self.last_ball_time).nanoseconds * 1e-9
+            if age < timeout:
+                b = self.last_ball                    # ball in base frame
+                cmd.angular.z = 1.5 * math.atan2(b.y, b.x)
+                cmd.linear.x = 0.3 if b.x > 0.5 else 0.0
+            else:
+                cmd.angular.z = self.get_parameter("search_turn").value
+                self.get_logger().info("ball lost: searching",
+                                       throttle_duration_sec=1.0)
+        self.cmd.publish(cmd)
+\end{verbatim}
+(The import of \verb!math! is missing in the listing; add it.) The node uses the ROS clock, so it behaves identically in a replay with simulated time (Chapter~\ref{ch:ros5}); the default command is zero; and a lost ball leads to a defined search behaviour, not to the last command repeated forever. The proportional steering $\omega=1.5\,\operatorname{atan2}(y,x)$ is the simplest controller there is; Part~\ref{part:control} improves it.
+
+\begin{keyidea}[Four rules for a node that you can trust]
+(1) \textbf{Publish control commands from a timer}, never only as a reaction to input. (2) \textbf{Check the age} of every input before you use it. (3) \textbf{The default output is ``stop''}; every branch of your code that does not know what to do gives zero velocity. (4) \textbf{Never block in a callback}: no \verb!time.sleep!, no waiting for a service in the callback of the same executor, no heavy computation without thinking about it.
+\end{keyidea}
+
+\section*{Services and actions in code}
+A service server:
+\begin{verbatim}
+from std_srvs.srv import SetBool
+
+self.srv = self.create_service(SetBool, "enable_search", self.on_enable)
+
+def on_enable(self, request, response):
+    self.search_enabled = request.data
+    response.success = True
+    response.message = f"search {'on' if request.data else 'off'}"
+    return response
+\end{verbatim}
+A client creates \verb!self.cli = self.create_client(SetBool, "enable_search")!, waits with \verb!self.cli.wait_for_service(timeout_sec=2.0)! and then calls \verb!future = self.cli.call_async(req)!. In a \emph{callback} you never call \verb!rclpy.spin_until_future_complete!; instead you attach \verb!future.add_done_callback(...)!. An \textbf{action server} (\verb!ActionServer(self, Kick, "kick", self.execute)!) receives a goal, may send feedback with \verb!goal_handle.publish_feedback(...)!, must regularly check \verb!goal_handle.is_cancel_requested! and ends with \verb!goal_handle.succeed()! or \verb!abort()!; use an action for everything that takes seconds and can go wrong.
+
+\section*{Executors, callback groups and threads}
+\verb!rclpy.spin! uses a \textbf{single-threaded executor}: callbacks run one after the other. That is simple and safe (no shared-data races), but a callback that needs $200$\,ms stops all timers and subscribers of the node for $200$\,ms; the behaviour above would then publish at $5$\,Hz instead of $20$\,Hz. Solutions, in the order in which you should try them:
+\begin{enumerate}[nosep]
+\item Make the callback fast: store the newest message and do the heavy work elsewhere.
+\item Put heavy work in a separate node (a separate process), so that it can run on another core; this also isolates crashes.
+\item Use a multi-threaded executor (class \verb!MultiThreadedExecutor!) with callback groups, either \emph{reentrant} or \emph{mutually exclusive} (callbacks of the same \emph{mutually exclusive} group never run at the same time, those of different groups may). Protect data that two callbacks share with a lock (\verb!threading.Lock!); the Python global interpreter lock does not make \verb!self.x += 1! between threads safe (Chapter~\ref{ch:py12}).
+\end{enumerate}
+Recent releases add an \verb!AsyncNode! base class that runs callbacks in an \verb!asyncio! loop (check the release notes of your distribution): useful for code that waits for many things, such as services and actions, without blocking.
+
+\section*{Time and synchronisation of several inputs}
+When a node needs two inputs from the same moment (the image and the head angles), you do not combine ``the newest of each'': they are from different times (Chapter~\ref{ch:hw4}). Use \verb!tf2! to ask for the transform at the \emph{time of the image} (Chapter~\ref{ch:ros4}), or \verb!message_filters! (\verb!ApproximateTimeSynchronizer!) that delivers messages whose stamps lie within a tolerance (the \verb!slop!, e.g.\ $0.02$\,s). Timers: \verb!create_timer(period, callback)! runs in the executor, hence the period is a wish, not a guarantee; if a real-time loop is needed (Chapter~\ref{ch:py12}), keep the control loop in a driver or a real-time process and send it set-points over ROS.
+
+\section*{Testing}
+\begin{itemize}[nosep]
+\item \textbf{Unit tests} for the plain functions (\verb!find_ball!, the steering law), with \verb!pytest!, run with \verb!colcon test! or directly.
+\item \textbf{Replay tests}: a recorded bag with a known difficult situation as input; check the output topics (Chapter~\ref{ch:ros5}).
+\item \textbf{Integration tests} with \verb!launch_testing!, which starts nodes and checks messages.
+\item \textbf{Simulation} before the real robot, and the robot on the stand before the floor (Chapter~\ref{ch:hw8}).
+\end{itemize}
+The function \verb!find_ball! and the two tests of problem~\thechapter.10 were run while this book was written (OpenCV, \verb!pytest!: both tests pass; the test circle is found at $(100.0,\,60.0)$ with a diameter of $20.0$ pixels). The ROS parts could not be run, because ROS~2 is not installed on the writing machine: try them on your laptop, compare with the tutorials of your distribution, and note any differences.
+
+\begin{aibox}[Your neural network as a node]
+A detector based on a neural network (Part~\ref{part:ai}) fits the same pattern: the model is loaded once in the constructor, the callback converts the image to a tensor, runs the model, and publishes detections with the \emph{input's header}. Make the inference \verb!best effort! with queue depth $1$ so that a slow model skips frames instead of falling behind, and put it in its own process, so that a crash or a slow GPU call cannot block the behaviour and the safety logic.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Write the \verb!console_scripts! entry that makes \verb!ros2 run my_robot_vision kicker! start the function \verb!main! in the file \verb!my_robot_vision/kicker.py!.
+  \item The timer of the behaviour node has a period of $50$\,ms. A subscriber callback of the same node takes $120$\,ms per image. What publishing behaviour do you observe with a single-threaded executor? What do you change?
+  \item In the ball detector the output header is copied from the input. What goes wrong if you write \verb!out.header.stamp = self.get_clock().now().to_msg()! instead, for the transformation in the map frame?
+  \item Explain why \verb!find_ball! is written as a function without ROS imports. Name two advantages.
+  \item In \verb!Behaviour.step! the ball is last seen $0.8$\,s ago and \verb!ball_timeout! is $1.0$\,s. What does the robot do? What if the camera node crashes completely: what is the robot's behaviour after $1.0$\,s, and after $60$\,s? Is this acceptable?
+  \item The steering law is $\omega=1.5\operatorname{atan2}(y,x)$. For the ball at $(2,1)$ (base frame, metres) compute $\omega$; with the limit $|\omega|\le1.0$\,rad/s add the clipping.
+  \item Modify \verb!step! so that the robot also stops when it has no valid \emph{tf} for the ball, and so that the walking command is limited in acceleration (at most $0.5$\,m/s$^2$ change in $x$ per second at $20$\,Hz). Write the new lines.
+  \item Why is it wrong to call a service with \verb!rclpy.spin_until_future_complete! inside a subscriber callback of a node that is spinning? What do you use instead?
+  \item Two callbacks, one in each of two callback groups of a \verb!MultiThreadedExecutor!, both do \verb!self.count += 1!. Why can the result be wrong? Name the remedy.
+  \item[\textbf{\thechapter.10}$\star$] Write a pytest test for \verb!find_ball!: build a $120\times160$ image with numpy, draw an orange circle of radius $10$ at $(u,v)=(100,60)$ with \verb!cv2.circle!, and check that \verb!find_ball! returns a centre within $1$\,px and a diameter of about $20$\,px, and that an empty (black) image returns \verb!None!.
+\end{enumerate}

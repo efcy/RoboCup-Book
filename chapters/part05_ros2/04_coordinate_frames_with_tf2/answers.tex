@@ -1,0 +1,28 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $\cos30^\circ=0.866$, $\sin30^\circ=0.5$:
+  \[T_\text{map,base}=\begin{pmatrix}0.866&-0.500&0&1\\0.500&0.866&0&2\\0&0&1&0\\0&0&0&1\end{pmatrix}\]
+  \item $\vv p_\text{map}=R\,(1,0)^\top+(1,2)^\top=(0.866,0.5)+(1,2)=(1.866,\,2.500)$.
+  \item $\vv p_\text{base}=R^\top\big((4,3)-(1,2)\big)=R^\top(3,1)$ with $R^\top=\begin{pmatrix}0.866&0.5\\-0.5&0.866\end{pmatrix}$: $(3.098,\,-0.634)$. Distance $\sqrt{3.098^2+0.634^2}=3.162$\,m (equal to $|(3,1)|$, because rotations keep lengths); bearing $\arctan(-0.634/3.098)=-11.6^\circ$ (to the right).
+  \item Yaw $-90^\circ$: $(0,0,\sin(-45^\circ),\cos(-45^\circ))=(0,0,-0.7071,0.7071)$. Yaw $180^\circ$: $(0,0,\sin90^\circ,\cos90^\circ)=(0,0,1,0)$. The quaternion $(0,0,0,0)$ has length $0$, not $1$; it describes no rotation and cannot be normalised (division by zero), so \verb!tf2! rejects it. The identity rotation is $(0,0,0,1)$.
+  \item No rotation: add the offset: $(2+0.08,\;0.5,\;-0.3+0.35)=(2.08,\,0.50,\,0.05)$.
+  \item $x=Z=2.0$, $y=-X=-0.2$, $z=-Y=0.1$: $(2.0,\,-0.2,\,0.1)$.
+  \item With one parent per frame the chain between any two frames is unique. With two publishers for \verb!odom!$\to$\verb!base_link! the robot appears to flicker between two positions, the transform jumps back and forth in \verb!rviz2!, and the lookups return an alternating value. (The fix: find the second publisher with \verb!ros2 topic info -v /tf!.)
+  \item $60^\circ$/s$\cdot0.08$\,s$=4.8^\circ$. At $2.5$\,m: $2.5\cdot\tan4.8^\circ=0.21$\,m.
+  \item The detection is stamped $0.5$\,s \emph{in the future} for the robot's \verb!tf! buffer: ``extrapolation into the future'' (or a timeout of the lookup). Fix the clocks (NTP/PTP with \verb!chrony!, Chapter~\ref{ch:hw2}), or stamp the message with the robot computer's time when it is received.
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+import numpy as np
+F, CX, CY, D = 554.0, 320.0, 240.0, 0.13
+R_CL_OPT = np.array([[0, 0, 1], [-1, 0, 0], [0, -1, 0]])
+def pixel_to_map(u, v, d_px, T_map_base, T_base_cam,
+                 ball_z=0.0, base_height=0.83, tol=0.15):
+    Z = F * D / d_px
+    p_opt = np.array([(u - CX) * Z / F, (v - CY) * Z / F, Z])
+    p_cam = np.append(R_CL_OPT @ p_opt, 1.0)
+    p_map = T_map_base @ T_base_cam @ p_cam
+    if abs(p_map[2] - (ball_z - base_height)) > tol:
+        return None                  # physically impossible
+    return p_map[:3]
+\end{verbatim}
+  With the transforms of the chapter, \texttt{pixel\_to\_map(400, 300, 24, \ldots)} returns $(2.433,\,3.809,\,-0.832)$; for $v=150$ (the ball seemingly high above the floor) it returns \verb!None!. The check (in the example the floor is at $z=-0.83$ because \verb!base_link! is at $z=0$) catches wrong distance estimates (a wrongly detected object of the wrong size, e.g.\ a bright spot at the ceiling, is far off the floor), wrong camera calibration or a wrong tilt of the head, and wrong frames or signs.
+\end{enumerate}

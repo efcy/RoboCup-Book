@@ -1,0 +1,22 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item A \emph{topic} is a continuous stream with many publishers and subscribers (camera images, \verb!/ball!). A \emph{service} is one request with one reply (``calibrate the camera'', ``set the team colour''). An \emph{action} is a long request with feedback and cancel (``walk to the ball'': feedback = distance remaining; result = arrived or failed).
+  \item $640\cdot480\cdot3=921\,600$ bytes per frame; $\cdot30=27.6$\,MB/s; per minute $1.66$\,GB, per $10$-minute half $16.6$\,GB. A match of $20$ minutes would fill $33$\,GB per camera; you record compressed images (JPEG, video) or only the detections.
+  \item (a) \verb!geometry_msgs/msg/Twist!; (b) \verb!sensor_msgs/msg/JointState!; (c) \verb!sensor_msgs/msg/Imu!.
+  \item (1) Different message types or QoS: \verb!ros2 topic info -v /ball!. (2) Different domain ID or network (multicast blocked): compare \verb!printenv ROS_DOMAIN_ID! and use \verb!ros2 doctor!. (3) The publisher publishes only occasionally or at zero rate: \verb!ros2 topic hz /ball!. (4) The topic name differs by namespace, e.g.\ \verb!/robot1/ball!: \verb!ros2 topic list!.
+  \item \verb!/robot2/ball!; \verb!/clock! (absolute, unchanged); \texttt{\textasciitilde/debug} $\to$ \verb!/robot2/detector/debug!.
+  \item \verb!ros2 run vision detector --ros-args -r image:=/camera/front/image_raw!
+  \item A reliable subscriber demands re-sends and ordering, which a best-effort publisher does not offer: the contract cannot be met, so no connection is made. A best-effort subscriber accepts whatever arrives, so a reliable publisher is fine. Camera: best effort, depth $1$--$5$ (an old frame is useless). ``Stop'': reliable (it must arrive), and often volatile; additionally a repeated command or a watchdog (Chapter~\ref{ch:hw8}).
+  \item
+\begin{verbatim}
+std_msgs/Header header
+float32 x
+float32 y
+float32 vx
+float32 vy
+uint8   num_cameras
+bool    visible
+\end{verbatim}
+  \verb!float32! is enough for metres and m/s; \verb!uint8! for a small count.
+  \item (1) The terminal was not re-sourced after the build (\verb!source install/setup.bash!); an older version of the package from the underlay or another workspace shadows it. (2) Without \verb!--symlink-install! the installed copy is stale after an edit of a Python file unless you rebuild; or the build failed and you did not see the error. (A third: a still-running old node.)
+  \item[\textbf{\ansnum.10}] Use \verb!collections.deque(maxlen=k)! as receive buffer written by a receiver thread, and a consumer that sleeps $10$\,ms per message. The consumer takes $100$ messages/s but $200$/s arrive, so any finite $k$ eventually overflows: the queue grows by $100$ per second, so no depth is enough for a continuous stream; the depth only absorbs bursts of length $k/100$\,s. A real middleware keeps \verb!depth! samples and discards the oldest ones (keep last); with reliable QoS it may instead block the publisher. Fix the node: make the callback fast (copy the newest message and process in a separate thread or timer), or accept dropping and process only the latest message.
+\end{enumerate}

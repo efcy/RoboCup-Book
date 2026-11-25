@@ -1,0 +1,180 @@
+\bookchapter{Launch Files and Parameters}\label{ch:ros3}
+
+\section*{Explanation}
+A real robot runs ten to fifty nodes. Starting them by hand in ten terminals, each with the right topic remappings and settings, is slow and error-prone: one forgotten \verb!--ros-args! and the robot does not see the ball. A \textbf{launch file} describes the whole system once: which nodes, with which names, namespaces, remappings and parameters. \textbf{Parameters} are the settings of a node (thresholds, topic names, the team colour), kept outside the code so that you can change them on the field in a minute without rebuilding. This chapter shows both, and how to organise a package so that one command starts your robot.
+
+\section*{Parameters}
+A parameter has a name, a type (bool, integer, double, string, or an array of these) and a value. A node must \textbf{declare} the parameters it uses, with a default value; undeclared parameters cannot be set (a good thing: a typo in the config file is caught).
+\begin{verbatim}
+import rclpy
+from rclpy.node import Node
+
+class BallDetector(Node):
+    def __init__(self):
+        super().__init__("ball_detector")
+        self.declare_parameter("hue_min", 5)
+        self.declare_parameter("hue_max", 20)
+        self.declare_parameter("min_radius_px", 6.0)
+        self.declare_parameter("team_colour", "blue")
+        self.hue_min = self.get_parameter("hue_min").value
+        self.get_logger().info(f"hue range starts at {self.hue_min}")
+\end{verbatim}
+The command line shows and changes them while the node runs:
+\begin{verbatim}
+$ ros2 param list /ball_detector
+$ ros2 param get /ball_detector hue_min
+$ ros2 param set /ball_detector hue_min 8
+$ ros2 param dump /ball_detector > detector.yaml   # save current values
+\end{verbatim}
+A \verb!set! changes only the value in the running node. If the code reads the value once in \verb!__init__! (as above), nothing happens. To react to changes register a callback, which can also \emph{reject} wrong values (for example \verb!hue_min! larger than \verb!hue_max!):
+\begin{verbatim}
+from rcl_interfaces.msg import SetParametersResult
+...
+        self.add_on_set_parameters_callback(self.on_params)
+
+    def on_params(self, params):
+        for p in params:
+            if p.name == "hue_min":
+                self.hue_min = p.value
+        return SetParametersResult(successful=True)
+\end{verbatim}
+\begin{keyidea}[Parameters are for settings and not for data]
+Parameters change rarely (thresholds, filenames, gains, topic names). Anything that changes continuously, such as a target position, is a topic. Anything that is an \emph{event} with an answer (``recalibrate now'') is a service. Mixing these up gives programs that are hard to understand and to test.
+\end{keyidea}
+
+\subsection*{Parameter files in YAML}
+The usual way to give parameters to nodes is a YAML file. The first key is the node name (or \verb!/**! for every node), the second is always \verb!ros__parameters! (two underscores):
+\begin{verbatim}
+# config/detector.yaml
+ball_detector:
+  ros__parameters:
+    hue_min: 5
+    hue_max: 20
+    min_radius_px: 6.0
+    team_colour: "blue"
+"/**":                        # applies to every node of this launch
+  ros__parameters:
+    use_sim_time: false
+\end{verbatim}
+A common beginner error: an integer where the code declares a double (\verb!6! instead of \verb!6.0!) leads to a type error, because the declared default fixes the type. Use one YAML file for what is the same on all robots, and a second for what differs per robot (camera calibration, joint offsets); the later file wins.
+
+\section*{Launch files}
+ROS~2 launch files are normally written in \textbf{Python} (the examples here), but XML and YAML formats exist and are fine for simple cases; the Python form is the most powerful because you have the whole language, for example to choose nodes by the hostname. A launch file defines a function \verb!generate_launch_description! that returns a list of actions.
+\begin{verbatim}
+# launch/vision.launch.py
+import os
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+
+def generate_launch_description():
+    share = get_package_share_directory("my_robot_vision")
+    cfg = os.path.join(share, "config", "detector.yaml")
+    return LaunchDescription([
+        DeclareLaunchArgument("camera_topic",
+                              default_value="/camera/image_raw"),
+        DeclareLaunchArgument("use_sim_time", default_value="false"),
+        Node(
+            package="my_robot_vision",
+            executable="ball_detector",
+            name="ball_detector",
+            namespace="robot1",
+            parameters=[cfg, {"use_sim_time":
+                              LaunchConfiguration("use_sim_time")}],
+            remappings=[("image",
+                         LaunchConfiguration("camera_topic"))],
+            output="screen",
+        ),
+    ])
+\end{verbatim}
+Start it with \verb!ros2 launch my_robot_vision vision.launch.py use_sim_time:=true!. Reading the example:
+\begin{itemize}[nosep]
+\item The action \verb!DeclareLaunchArgument! defines a command-line argument with a default. \verb!LaunchConfiguration("name")! is a \emph{substitution}: a placeholder evaluated when the launch starts, not when the file is read (do not use it as an ordinary Python string).
+\item \texttt{Node(\ldots)} starts one executable. \verb!parameters! takes files and dictionaries; later entries win. \verb!remappings! is a list of (old, new) pairs.
+\item \verb!output="screen"! prints the node's output in the terminal.
+\item \verb!ros2 launch ... --show-args! lists the arguments of a launch file.
+\end{itemize}
+\subsection*{Building bigger systems}
+\begin{verbatim}
+from launch.actions import IncludeLaunchDescription, GroupAction
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.conditions import IfCondition
+from launch_ros.actions import PushRosNamespace
+
+camera = IncludeLaunchDescription(
+    PythonLaunchDescriptionSource(
+        os.path.join(cam_share, "launch", "camera.launch.py")),
+    launch_arguments={"fps": "30"}.items())
+
+robot = GroupAction([PushRosNamespace("robot1"),
+                     camera, detector, behaviour])
+
+viewer = Node(package="rviz2", executable="rviz2",
+              condition=IfCondition(LaunchConfiguration("gui")))
+\end{verbatim}
+\verb!IncludeLaunchDescription! reuses other launch files (the camera package ships its own), \verb!GroupAction! with \verb!PushRosNamespace! puts everything inside a namespace (a second robot: the same launch file with \verb!robot2!), and a \verb!condition! switches nodes on and off with an argument, for example no \verb!rviz2! on the robot. In Python you can also write ordinary logic around it:
+\begin{verbatim}
+import socket
+is_robot = socket.gethostname().startswith("k1-")
+actions = [camera, detector] + ([] if is_robot else [viewer])
+\end{verbatim}
+Other useful actions: \verb!ExecuteProcess! (start any command), \verb!TimerAction! (start something after $5$\,s, for example the behaviour when the camera is up), \verb!RegisterEventHandler! with \verb!OnProcessExit! (react when a process ends: restart, or stop everything), and the \verb!respawn=True! option of a \verb!Node! for a crashing but unimportant node. For a safety-relevant node, respawning is \emph{not} the answer; see Chapter~\ref{ch:hw8}.
+
+\section*{Package layout}
+Launch and parameter files are \emph{installed} with the package. For a Python package the folder looks like this:
+\begin{verbatim}
+my_robot_vision/
+  package.xml
+  setup.py
+  my_robot_vision/ball_detector.py
+  launch/vision.launch.py
+  config/detector.yaml
+\end{verbatim}
+and \verb!setup.py! must copy the two folders into the \verb!install! directory, otherwise the package folder lookup in the launch file finds nothing:
+\begin{verbatim}
+import os
+from glob import glob
+from setuptools import setup
+...
+    data_files=[
+        ("share/ament_index/resource_index/packages",
+         ["resource/my_robot_vision"]),
+        ("share/my_robot_vision", ["package.xml"]),
+        (os.path.join("share", "my_robot_vision", "launch"),
+         glob("launch/*.launch.py")),
+        (os.path.join("share", "my_robot_vision", "config"),
+         glob("config/*.yaml")),
+    ],
+\end{verbatim}
+With a C++ package, \verb!CMakeLists.txt! contains an \verb!install(DIRECTORY launch config ...)! command for the two folders. After editing, rebuild (\verb!colcon build --symlink-install! lets changes in the launch and YAML files take effect without another build) and source again.
+
+\section*{Starting at boot}
+On the robot you want the system to start without a laptop. A \verb!systemd! service (Chapter~\ref{ch:linux5}) runs a small wrapper script that sources the environment, then launches:
+\begin{verbatim}
+#!/bin/bash
+# /opt/robot/start.sh
+source /opt/ros/lyrical/setup.bash
+source /home/robot/ros2_ws/install/setup.bash
+export ROS_DOMAIN_ID=17
+exec ros2 launch my_robot_bringup robot.launch.py
+\end{verbatim}
+The service file contains \verb!ExecStart=/opt/robot/start.sh!, \verb!Restart=on-failure! and \verb!User=robot!; \verb!journalctl -u robot -f! shows the output. The \verb!exec! makes the launch the main process, so that \verb!systemctl stop! reaches it and it can shut the nodes down cleanly.
+
+\subsection*{Composition in one sentence}
+Several nodes can be loaded into \emph{one process} (a \emph{component container}): they then pass messages by pointer without copying and without the network, which matters for big images. In a launch file this is the \verb!ComposableNodeContainer!. Use it when a profile shows that copying images costs too much (Chapter~\ref{ch:py12} shows how to measure), not before.
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Write a YAML parameter file for the node \verb!walk_controller! with the parameters \verb!step_height! ($0.04$), \verb!step_period! ($0.5$), \verb!max_speed! ($0.4$) and \verb!gait! (\verb!"trot"!).
+  \item The file of problem 1 says \verb!max_speed: 1! while the node declares \verb!declare_parameter("max_speed", 0.4)!. What happens, and why?
+  \item Write the command that starts a launch file \verb!robot.launch.py! of the package \verb!my_robot_bringup! with the arguments \verb!team:=red! and \verb!gui:=false!.
+  \item In a launch file you write \verb!if LaunchConfiguration("gui") == "true":!. Why does that not work, and what do you use instead?
+  \item A node reads its \verb!hue_min! parameter once in \verb!__init__!. You run \verb!ros2 param set!; the value changes in \verb!ros2 param get!, but not the behaviour. Explain and give two ways to fix it.
+  \item Explain what \verb!namespace="robot1"! and \verb!remappings=[("image", "/cam/front")]! do to the topic \verb!image! that the node subscribes to. What is its full name in each case, and when is the remapping applied?
+  \item Your launch file works from \verb!ros2 launch! in the source folder, but after installing it says \verb!package 'my_robot_vision' not found! or cannot find \verb!detector.yaml!. List three things to check.
+  \item You want the behaviour node to start only $3$\,s after the camera. Which launch action do you use? Why is a fixed delay not ideal, and what would be more robust?
+  \item Why should you not use \verb!respawn=True! for the node that sends the walking command? What should happen instead if it crashes?
+  \item[\textbf{\thechapter.10}$\star$] Write a complete launch file for a two-robot simulation: for each of \verb!robot1! and \verb!robot2! it includes \verb!vision.launch.py! inside the namespace, with the parameter \verb!team_colour! red for the first and blue for the second, and one shared \verb!rviz2! only if the argument \verb!gui! is true.
+\end{enumerate}

@@ -1,0 +1,136 @@
+\bookchapter{Logging, Replay and Visualisation}\label{ch:ros5}
+
+\section*{Explanation}
+A robot that works only while you watch it is a demo, not a robot. At a competition you have few minutes between games, the field is noisy, and the bug that appeared in the last game will not appear again on command. Three tools solve this: \textbf{logging} (the programs tell you what they think and do), \textbf{recording and replay} (\emph{rosbag}: all data of a run is stored and can be played back as often as you like, on any computer), and \textbf{visualisation} (you \emph{see} the frames, the detections, the plans). Together they turn ``it did something strange'' into a reproducible test.
+
+\section*{Logging}
+Every node has a logger with five levels: \verb!DEBUG! (details for developers), \verb!INFO! (normal events), \verb!WARN! (something is wrong, but the robot continues), \verb!ERROR! (a function failed) and \verb!FATAL! (the node cannot continue).
+\begin{verbatim}
+self.get_logger().debug(f"candidates: {len(contours)}")
+self.get_logger().info("ball found")
+self.get_logger().warn("camera frame is 120 ms old")
+self.get_logger().error(f"tf lookup failed: {e}")
+self.get_logger().info("searching", throttle_duration_sec=1.0)
+self.get_logger().info("kickoff!", once=True)
+\end{verbatim}
+\verb!throttle_duration_sec! prints at most once per second: without it a message in a $30$\,Hz callback produces $1800$ lines per minute, hides everything else and slows the node down. Messages go to the terminal, to a file in \verb!~/.ros/log! and to the topic \verb!/rosout! (so that tools can show messages of all nodes in one place: \verb!rqt_console!). The level of a node is set at start, without changing the code:
+\begin{verbatim}
+$ ros2 run my_robot_vision ball_detector --ros-args --log-level debug
+$ ros2 run my_robot_vision ball_detector --ros-args \
+      --log-level ball_detector:=debug --log-level rcl:=warn
+\end{verbatim}
+Recent releases also let you choose the logging backend (the environment variable \verb!RCL_LOGGING_IMPLEMENTATION!) and the level per message; see the release notes of your distribution.
+
+\begin{keyidea}[What a good log message contains]
+\textbf{Who} (the node is in the log automatically), \textbf{what happened}, and \textbf{the numbers} that you will need later. ``Error'' is useless; ``tf lookup \verb!map!$\leftarrow$\verb!camera_link! failed: extrapolation 0.31\,s into the future'' is a bug report. Log \emph{state changes} (``searching $\to$ approaching ball'') at INFO and never every cycle; log everything that you would like to know afterwards \emph{before} the competition, not after.
+\end{keyidea}
+
+\section*{Recording with rosbag2}
+A \textbf{bag} is a file (or a folder) with time-stamped messages of selected topics. \verb!ros2 bag record! subscribes to the topics, exactly like any node, and writes what it receives.
+\begin{verbatim}
+$ ros2 bag record -o match1 /camera/image_compressed /imu/data \
+      /joint_states /tf /tf_static /ball /cmd_vel
+$ ros2 bag info match1
+Files:             match1_0.mcap
+Bag size:          1.2 GiB
+Storage id:        mcap
+Duration:          612.4s
+Messages:          453208
+Topic information: Topic: /ball | Type: ... | Count: 18372 ...
+\end{verbatim}
+(The output is typical; the numbers depend on your system.) Rules for recording that avoid pain later:
+\begin{itemize}[nosep]
+\item \textbf{Record the inputs and the outputs}: sensor data (compressed images, IMU, joint states), \verb!/tf! and \verb!/tf_static!, and the decisions (\verb!/ball!, \verb!/cmd_vel!). Then you can replay the sensors and compare the new decisions to the old ones.
+\item \textbf{Do not record everything} (\verb!-a!): raw images fill the disk and slow down the robot. The sizes below show why.
+\item \textbf{Use compressed images} and, if needed, compression of the bag (\verb!--compression-mode file --compression-format zstd!).
+\item \textbf{Record the QoS}: a late-joining recorder must subscribe with a QoS that matches the publisher (\verb!tf_static! is transient local): current versions of \verb!ros2 bag record! adapt automatically; if a topic stays empty, check \verb!ros2 topic info -v!.
+\item \textbf{Split long recordings} (\verb!--max-bag-size 1000000000! splits at $1$\,GB), so that a crash or a full disk loses at most one file. The storage format is SQLite3 or MCAP depending on the release (MCAP is the recommended one: robust against a power cut, and readable by many tools).
+\item Write the recording to a fast local disk, and keep a text file next to it: which robot, which software version (\verb!git rev-parse HEAD!), which parameters, what you tested.
+\end{itemize}
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{5.2cm}rr}
+\textbf{Topic} & \textbf{data rate} & \textbf{per minute}\\ \hline
+Raw image $640\times480$ RGB, $30$\,Hz & $27.6$ MB/s & $1659$ MB\\
+JPEG image $45$\,kB, $30$\,Hz & $1.35$ MB/s & $81$ MB\\
+Joint states, $22$ joints, $500$\,Hz (about $590$ bytes per message) & $0.29$ MB/s & $17.6$ MB\\
+\end{tabular}
+\end{center}
+A $20$-minute match with the raw image is about $33$\,GB, with JPEG $1.6$\,GB plus about $0.35$\,GB for the joints.
+
+\section*{Playing back}
+\begin{verbatim}
+$ ros2 bag play match1 --clock           # real speed, publishes /clock
+$ ros2 bag play match1 -r 0.5            # half speed
+$ ros2 bag play match1 --loop --start-offset 120
+$ ros2 bag play match1 --topics /imu/data /joint_states /tf
+\end{verbatim}
+The nodes under test must run with \verb!use_sim_time:=true! (Chapter~\ref{ch:ros3}): they then take the time from the \verb!/clock! that the player publishes, not from the wall clock, which would make every time stamp in the replayed data ``too old''. The typical workflow after a bad game: (1) copy the bag to your laptop; (2) replay the sensor topics (\emph{not} the old results such as \verb!/ball! and \verb!/cmd_vel!) into your new version of the detector; (3) compare its \verb!/ball! with the recorded one; (4) fix, replay, compare again, until the problem is gone. This is also the basis for \emph{regression tests}: a short bag that once triggered a bug becomes a test that the bug must never come back (Chapter~\ref{ch:py11}).
+
+\subsection*{Reading a bag in Python}
+Inside ROS~2 the package \verb!rosbag2_py! reads bags:
+\begin{verbatim}
+import rosbag2_py
+from rclpy.serialization import deserialize_message
+from rosidl_runtime_py.utilities import get_message
+
+reader = rosbag2_py.SequentialReader()
+reader.open(rosbag2_py.StorageOptions(uri="match1", storage_id="mcap"),
+            rosbag2_py.ConverterOptions("", ""))
+types = {t.name: t.type for t in reader.get_all_topics_and_types()}
+stamps = []
+while reader.has_next():
+    topic, data, t_ns = reader.read_next()
+    if topic == "/ball":
+        msg = deserialize_message(data, get_message(types[topic]))
+        stamps.append(t_ns * 1e-9)
+\end{verbatim}
+The same data can be read \emph{without} ROS installed: the MCAP format is an open container, with Python packages (\verb!mcap!, \verb!mcap-ros2-support!) that can be installed with pip on any laptop (not tested here). Therefore you can analyse a match recorded on the robot on a computer that has only Python and numpy.
+
+\begin{example}
+\textbf{What does \verb!ros2 topic hz! compute?} Take the time stamps of a topic: $\Delta t_i=t_{i+1}-t_i$. The average rate is $1/\overline{\Delta t}$; a healthy $30$\,Hz stream has $\Delta t\approx33.3$\,ms with a small spread. We simulated $60$\,s of a $30$\,Hz camera with $2$\,ms of timing jitter and $3\,\%$ lost frames and computed the statistics from the time stamps with \verb!numpy.diff!: $1744$ of $1800$ frames arrived, the mean rate was $29.07$\,Hz, the intervals ranged from $24.0$ to $101.6$\,ms (a gap of three periods happens when two frames in a row are lost) with a standard deviation of $6.9$\,ms, and $52$ gaps were longer than $1.5$ periods. The mean alone ($29$\,Hz) looks harmless; the \emph{largest gap} (about $100$\,ms) is what a controller experiences. Always look at the maximum and at the number of gaps, not only at the average.
+\end{example}
+
+\section*{Visualisation}
+\begin{itemize}[nosep]
+\item \textbf{rviz2}: the 3D view of the robot. It shows frames (TF), the robot model (URDF), images, point clouds, maps, paths and \emph{markers}. Set the \textbf{Fixed Frame} first (usually \verb!map!); a display that stays red with ``no transform'' shows a frame problem (Chapter~\ref{ch:ros4}).
+\item \textbf{rqt}: small plug-ins in one window: \verb!rqt_graph! (the node/topic graph of Figure~\ref{fig:ros1_graph}), \verb!rqt_console! (log messages with filter), \verb!rqt_plot! and \verb!rqt_reconfigure! (change parameters with sliders).
+\item \textbf{PlotJuggler} and \textbf{Foxglove}: more powerful tools for time series, joint torques and replay of bags; Foxglove reads MCAP files and can show a robot live through a bridge node. (Both are separate installations.)
+\end{itemize}
+To show your own result in \verb!rviz2!, publish a \emph{marker}, a message that says ``draw a sphere here'':
+\begin{verbatim}
+from visualization_msgs.msg import Marker
+m = Marker()
+m.header.frame_id = "map"
+m.header.stamp = self.get_clock().now().to_msg()
+m.ns, m.id = "ball", 0
+m.type, m.action = Marker.SPHERE, Marker.ADD
+m.pose.position.x, m.pose.position.y = bx, by
+m.pose.orientation.w = 1.0
+m.scale.x = m.scale.y = m.scale.z = 0.13          # ball diameter
+m.color.r, m.color.g, m.color.a = 1.0, 0.5, 1.0   # orange, opaque
+m.lifetime.sec = 1                                # disappears if not renewed
+self.marker_pub.publish(m)
+\end{verbatim}
+Do not forget \verb!color.a! (the transparency): the default $0$ makes the marker invisible, the most common ``my marker does not appear''. The \verb!lifetime! makes a stale marker vanish.
+
+\subsection*{Measuring delay}
+For every message with a header, the \emph{age} is $\text{now}-\text{stamp}$. A node can compute it per message and log it (throttled), and \verb!ros2 topic delay /camera/image! shows it from the command line. A delay that grows over time means that a subscriber is slower than the publisher and the queue grows (Chapter~\ref{ch:ros1}, problem~10); a constant delay is the sum of capture, transmission and processing time (Chapter~\ref{ch:hw4}).
+
+\begin{aibox}[Bags as training data]
+The same bag that helps you debug is a source of training data for neural networks (Part~\ref{part:ai}): images with the detections and the robot's pose give labelled examples from the real robot and real lighting. Record the time stamps and the calibration with them; without them the images cannot be matched to the poses afterwards.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A callback at $30$\,Hz logs one INFO line of $80$ bytes per call. How many lines and bytes per hour? Which option avoids this?
+  \item Name the log level you would use for (a) ``kickoff signal received'', (b) ``camera image is 300 ms old'', (c) ``cannot open the camera device'', (d) the content of a list of candidate balls.
+  \item Estimate the size of a bag of $10$ minutes with JPEG images ($50$\,kB, $30$\,Hz), a $200$\,Hz IMU ($100$ bytes per message) and $500$\,Hz joint states ($600$ bytes).
+  \item You replay a bag with \verb!ros2 bag play match1! and your nodes complain that messages are ``too old'' and \verb!tf! lookups fail. What did you forget?
+  \item A bag contains the topics \verb!/image!, \verb!/ball! and \verb!/cmd_vel!. You want to test a new detector. Which topics do you replay and which do you let the new nodes produce?
+  \item Compute from the time stamps $0.000,\,0.034,\,0.066,\,0.100,\,0.200,\,0.233$\,s the mean rate, the largest gap and the number of gaps that are longer than $1.5$ times the nominal $33.3$\,ms period.
+  \item Your rviz marker does not appear. List four causes, ordered from most to least likely.
+  \item Why should a recording not be started and stopped by hand in the heat of the game? Describe a way to start it automatically, and how to protect the disk from running full.
+  \item What is the advantage of an open container format such as MCAP for the team, compared with a database that only ROS tools can read?
+  \item[\textbf{\thechapter.10}$\star$] Write a script that reads the time stamps of one topic from a bag (as in the chapter) and prints the mean rate, the maximum gap, the number of gaps larger than $1.5$ periods and a histogram of the intervals (text or matplotlib). Test the statistics part with the simulated time stamps of the chapter (random generator, $30$\,Hz, $3\,\%$ loss).
+\end{enumerate}

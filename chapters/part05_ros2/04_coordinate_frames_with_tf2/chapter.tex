@@ -1,0 +1,167 @@
+\bookchapter{Coordinate Frames with tf2}\label{ch:ros4}
+
+\section*{Explanation}
+The camera sees the ball ``$3$ metres in front''. The walking controller wants to know ``where is the ball relative to my feet?'' and the strategy wants ``where is the ball on the field?'' Every one of these questions is about the \emph{same} point, expressed in a different \textbf{coordinate frame}. A humanoid robot has dozens of frames (every link, every sensor) that move relative to each other, and one wrong sign or one wrong frame gives bugs that look like ``the robot kicks to the left''. The ROS~2 library \textbf{tf2} keeps track of all frames and their transformations over time, so that you can ask: \emph{where was the ball, in the frame of the robot, $0.2$\,s ago?} The mathematics is the rotation and translation you know from Part~\ref{part:math} (matrices, vectors); here we apply it.
+
+\section*{Frames and transforms}
+A \textbf{frame} is a coordinate system attached to something: the field, the robot's body, a camera. A \textbf{transform} from frame \verb!A! to frame \verb!B! says where the origin of \verb!B! is and how \verb!B! is rotated, as seen from \verb!A!: a translation $\vv t$ and a rotation $R$. A point with the coordinates $\vv p_B$ in frame \verb!B! has in frame \verb!A! the coordinates
+\[
+\vv p_A=R\,\vv p_B+\vv t,\qquad\text{or with $4\times4$ matrices:}\quad
+\begin{pmatrix}\vv p_A\\1\end{pmatrix}=\underbrace{\begin{pmatrix}R&\vv t\\\vv 0^{\!\top}&1\end{pmatrix}}_{T_{AB}}\begin{pmatrix}\vv p_B\\1\end{pmatrix}.
+\]
+Read $T_{AB}$ as ``\verb!B! expressed in \verb!A!'', or ``converts coordinates from \verb!B! to \verb!A!''. Chains are products, and the inverse goes backwards:
+\[
+T_{AC}=T_{AB}\,T_{BC},\qquad T_{BA}=T_{AB}^{-1}=\begin{pmatrix}R^{\top}&-R^{\top}\vv t\\\vv 0^{\!\top}&1\end{pmatrix}.
+\]
+(The inverse of a rotation matrix is its transpose.) The subscripts in $T_{AB}T_{BC}$ ``cancel'' in the middle, a habit that prevents most mistakes. ROS~2 stores the rotation as a \textbf{quaternion} $(x,y,z,w)$, four numbers of unit length that avoid the problems of Euler angles; a rotation about the $z$-axis by the angle $\psi$ (yaw) is $(0,0,\sin\tfrac\psi2,\cos\tfrac\psi2)$, for $\psi=90^\circ$: $(0,0,0.7071,0.7071)$. An \emph{unrotated} frame is $(0,0,0,1)$, and the all-zero quaternion is \emph{invalid}, a classic mistake when filling a message by hand.
+
+\subsection*{Conventions that you must know}
+\begin{itemize}[nosep]
+\item \textbf{Axes of a robot or body frame} (REP~103): $x$ forward, $y$ left, $z$ up. A rotation about $z$ by a positive angle turns the robot to the left (counter-clockwise from above). Units: metres, radians, seconds.
+\item \textbf{Axes of a camera optical frame}: $x$ right, $y$ down, $z$ forward (along the viewing direction). This is the convention of computer vision (Chapter~\ref{ch:hw4}) and of OpenCV. A ROS camera therefore has \emph{two} frames: \verb!camera_link! (body convention) and \verb!camera_optical_frame!, related by the fixed rotation that sends optical $z$ to body $x$, optical $x$ to body $-y$ and optical $y$ to body $-z$.
+\item \textbf{Standard frames of a mobile robot} (REP~105): \verb!map! (fixed to the world, does not drift, but may jump when the self-localisation corrects itself), \verb!odom! (fixed to the world, smooth and continuous, drifts), \verb!base_link! (attached to the robot body). The chain is \verb!map! $\to$ \verb!odom! $\to$ \verb!base_link! $\to$ sensors and links.
+\end{itemize}
+\begin{center}
+\begin{tikzpicture}[fr/.style={draw,thick,rounded corners=2pt,fill=blue!8,minimum height=0.7cm,font=\scriptsize\ttfamily},>={Stealth[length=2.5mm]}]
+ \node[fr] (map) at (0,0) {map};
+ \node[fr] (odom) at (2.1,0) {odom};
+ \node[fr] (base) at (4.6,0) {base\_link};
+ \node[fr] (cam) at (7.7,1.5) {camera\_link};
+ \node[fr] (opt) at (10.9,1.5) {camera\_optical};
+ \node[fr] (imu) at (7.7,0.5) {imu\_link};
+ \node[fr] (lf) at (7.7,-0.5) {left\_foot};
+ \node[fr] (rf) at (7.7,-1.5) {right\_foot};
+ \draw[->,thick] (map)--(odom); \draw[->,thick] (odom)--(base);
+ \draw[->,thick] (base)--(cam); \draw[->,thick] (cam)--(opt);
+ \draw[->,thick] (base)--(imu); \draw[->,thick] (base)--(lf); \draw[->,thick] (base)--(rf);
+\end{tikzpicture}
+\captionof{figure}{A frame tree. Each frame has exactly \emph{one} parent. The arrow from parent to child is a transform that some node publishes: localisation publishes \texttt{map}$\to$\texttt{odom}, odometry \texttt{odom}$\to$\texttt{base\_link}, the \texttt{robot\_state\_publisher} (from the robot description) the fixed and joint-dependent links.}\label{fig:ros4_tree}
+\end{center}
+The frames form a \textbf{tree}: one parent per frame, no loops. If two nodes publish a different parent for the same frame, the tree breaks; the error appears as ``frame jumps'' in the visualisation.
+
+\section*{A worked example: from pixel to field}
+\begin{example}
+\textbf{Where is the ball?} The camera has $f_\text{px}=554$, the image centre is $(c_x,c_y)=(320,240)$. The detector finds the ball (diameter $0.13$\,m) with the centre at the pixel $(u,v)=(400,300)$ and a diameter of $24$ pixels.\\
+\emph{1. Distance} (Chapter~\ref{ch:hw4}): $Z=f_\text{px}\,D/d_\text{px}=554\cdot0.13/24=3.00$\,m.\\
+\emph{2. Optical frame}: $X=(u-c_x)Z/f_\text{px}=80\cdot3.00/554=0.433$\,m (right), $Y=(v-c_y)Z/f_\text{px}=0.325$\,m (down), $Z=3.00$\,m.\\
+\emph{3. To \verb!camera_link!} (body convention): $(x,y,z)=(Z,-X,-Y)=(3.00,-0.433,-0.325)$.\\
+\emph{4. To \verb!base_link!}: the camera sits at $(0.1,0,0.5)$\,m on the robot, pitched down by $20^\circ$ ($R_y(20^\circ)$ in this sign convention): $\vv p_\text{base}=R_y(20^\circ)\,\vv p_\text{cam}+(0.1,0,0.5)=(2.81,-0.43,-0.83)$\,m. The ball is $2.84$\,m away on the ground, at a bearing of $-8.8^\circ$ (to the right). The $z$ value $-0.83$\,m is a useful check: with \verb!base_link! at the pelvis, $0.83$\,m above the floor, the ball lies on the floor, as it should.\\
+\emph{5. To \verb!map!}: the robot stands at $(2,1)$ and looks along $+y$ (yaw $90^\circ$): $\vv p_\text{map}=R_z(90^\circ)\,\vv p_\text{base}+(2,1,0)=(2.43,3.81,-0.83)$. The ball is at $x=2.43$, $y=3.81$ on the field (the $z$ differs from $0$ only by the assumed pelvis height).\\
+Check the inverse: the map point $(2,4,0)$ lies $3$\,m straight ahead of the robot, in its frame $(3,0,0)$, as expected from yaw $90^\circ$ and position $(2,1)$.
+\end{example}
+\begin{center}
+\begin{tikzpicture}[scale=0.95,>={Stealth[length=2.5mm]}]
+ \draw[help lines,gray!40] (-0.5,-0.5) grid (5.5,5.5);
+ \draw[->,thick] (0,0)--(1,0) node[right,font=\scriptsize]{$x_\text{map}$};
+ \draw[->,thick] (0,0)--(0,1) node[above,font=\scriptsize]{$y_\text{map}$};
+ \node[below left,font=\scriptsize] at (0,0) {map};
+ \begin{scope}[shift={(2,1)},rotate=90]
+  \draw[->,very thick,red!70!black] (0,0)--(1,0) node[above,font=\scriptsize]{$x_\text{base}$};
+  \draw[->,very thick,green!50!black] (0,0)--(0,1) node[left,font=\scriptsize]{$y_\text{base}$};
+  \fill[blue!60] (0,0) circle (2pt);
+ \end{scope}
+ \node[font=\scriptsize,right] at (2.1,0.8) {base\_link at $(2,1)$, yaw $90^\circ$};
+ \fill[orange] (2.43,3.81) circle (3pt) node[left=3pt,font=\scriptsize]{ball $(2.43,\,3.81)$};
+ \draw[dashed,orange!70!black] (2,1)--(2.43,3.81);
+\end{tikzpicture}
+\captionof{figure}{The example in the map frame (top view). The robot looks along $+y$; the ball is $2.8$\,m ahead and slightly to the right.}
+\end{center}
+\begin{verbatim}
+import numpy as np
+def T(R, t):
+    M = np.eye(4); M[:3, :3] = R; M[:3, 3] = t; return M
+def Rz(a):
+    c, s = np.cos(a), np.sin(a)
+    return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+def Ry(a):
+    c, s = np.cos(a), np.sin(a)
+    return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
+T_map_base = T(Rz(np.pi / 2), [2, 1, 0])
+T_base_cam = T(Ry(np.radians(20)), [0.1, 0, 0.5])
+p_cam = np.array([3.001, -0.433, -0.325, 1.0])
+print(np.round(T_map_base @ T_base_cam @ p_cam, 2))
+# [ 2.43  3.81 -0.83  1.  ]
+\end{verbatim}
+
+\section*{tf2 in ROS~2}
+\subsection*{Broadcasting}
+Transforms travel on two topics, \verb!/tf! (changing, e.g.\ odometry) and \verb!/tf_static! (fixed, published once with transient-local QoS, see Chapter~\ref{ch:ros2}, so that a late node still receives it). A fixed mounting is published from the command line or the launch file:
+\begin{verbatim}
+$ ros2 run tf2_ros static_transform_publisher \
+      --x 0.1 --y 0 --z 0.5 --pitch 0.349 \
+      --frame-id base_link --child-frame-id camera_link
+\end{verbatim}
+(The option names of this tool changed between releases; \verb!--help! tells you.) For the many fixed and moving links of a whole robot, you do not write transforms by hand: you describe the robot in a \textbf{URDF} file (links, joints, axes, limits, masses) and the node \verb!robot_state_publisher! turns the \verb!/joint_states! into all link transforms. A moving frame is published from a node with a \verb!TransformBroadcaster!:
+\begin{verbatim}
+from geometry_msgs.msg import TransformStamped
+from tf2_ros import TransformBroadcaster
+
+self.br = TransformBroadcaster(self)
+t = TransformStamped()
+t.header.stamp = self.get_clock().now().to_msg()
+t.header.frame_id = "odom"            # parent
+t.child_frame_id = "base_link"        # child
+t.transform.translation.x = x
+t.transform.translation.y = y
+t.transform.rotation.z = math.sin(yaw / 2)
+t.transform.rotation.w = math.cos(yaw / 2)
+self.br.sendTransform(t)
+\end{verbatim}
+\subsection*{Looking up and transforming}
+\begin{verbatim}
+from tf2_ros import Buffer, TransformListener
+import tf2_geometry_msgs                         # registers PointStamped etc.
+
+self.buf = Buffer()
+self.listener = TransformListener(self.buf, self)
+...
+pt = PointStamped()
+pt.header.frame_id = "camera_link"
+pt.header.stamp = msg.header.stamp               # time of the image!
+pt.point.x, pt.point.y, pt.point.z = x, y, z
+try:
+    pt_map = self.buf.transform(pt, "map",
+                                timeout=Duration(seconds=0.1))
+except Exception as e:                           # lookup/extrapolation
+    self.get_logger().warn(f"tf failed: {e}")
+\end{verbatim}
+The buffer stores about ten seconds of history. Therefore tf2 can answer for the \emph{time of the image}, not for ``now'': the camera image is $60$\,ms old when the detector finishes (Chapter~\ref{ch:hw4}), and during these $60$\,ms the head of a walking robot has moved. Using the \emph{current} transform for an \emph{old} measurement creates a systematic error: a ball seen $0.06$\,s ago at a head rotation of $50^\circ$/s is displaced by $0.06\cdot50=3^\circ$, about $0.16$\,m at $3$\,m distance. Typical error messages and their causes:
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{5.2cm}p{7.4cm}}
+\textbf{Message} & \textbf{Usual cause}\\ \hline
+\verb!frame does not exist! & nobody publishes this frame (typo, node not started, wrong namespace or \verb!frame_id!)\\
+\verb!extrapolation into the future! & the data is newer than the newest transform: wait (\verb!timeout!) or use the transform from a bit earlier\\
+\verb!extrapolation into the past! & the transform buffer no longer holds that time: data too old, or the clocks are wrong (sim time versus wall time)\\
+\verb!two or more unconnected trees! & two parts of the robot are not linked through a common parent\\
+\end{tabular}
+\end{center}
+\subsection*{Tools}
+\begin{verbatim}
+$ ros2 run tf2_ros tf2_echo map base_link    # prints the transform
+$ ros2 run tf2_tools view_frames             # writes frames.pdf (the tree)
+$ ros2 topic echo /tf_static --once
+\end{verbatim}
+In \verb!rviz2! (Chapter~\ref{ch:ros5}) the display ``TF'' draws all frames as coloured axes (red $=x$, green $=y$, blue $=z$); setting the \emph{Fixed Frame} to \verb!map! shows how everything moves relative to the field.
+
+\begin{keyidea}[Debug frames with three checks]
+(1) \verb!view_frames!: is it one tree, with the parents you expect? (2) \verb!tf2_echo A B! for a case you can verify with a ruler: does the translation have the right sign and size, does a $90^\circ$ turn give the right quaternion? (3) Put a known object (the ball on the centre spot) in front of the robot and check the coordinates in the map. Check signs with simple cases: forward means $+x$, left means $+y$.
+\end{keyidea}
+
+\begin{aibox}[Frames and learned perception]
+A neural network that detects the ball gives \emph{pixels}. Everything the robot does with the detection (kick direction, walk target, a team-wide map of the ball) happens in other frames, so the quality of the \textbf{calibration} (camera intrinsics, mounting of the camera on the head, zero positions of the head joints) is as important as the network: a $2^\circ$ error in the camera pitch is $0.1$\,m of distance error at $3$\,m. The calibration values belong in a parameter file (Chapter~\ref{ch:ros3}), not in the code.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A robot stands at $(1,2)$ in the map and is rotated by $30^\circ$. Write $T_\text{map,base}$ (the $4\times4$ matrix, numbers rounded to $3$ decimals).
+  \item Using the robot of problem 1, a ball is at $(1.0,0.0)$ in the base frame. Where is it in the map frame?
+  \item The robot of problem 1 sees a ball in the map at $(4,3)$. Compute its position in the base frame with the inverse transform, and the distance and bearing.
+  \item Give the quaternion for a yaw of $-90^\circ$ and for a yaw of $180^\circ$. What is wrong with the quaternion $(0,0,0,0)$?
+  \item The camera is mounted $0.08$\,m forward and $0.35$\,m above \verb!base_link!, looking straight ahead. A ball appears at $(x,y,z)=(2,0.5,-0.3)$ in \verb!camera_link!. Where is it in \verb!base_link!?
+  \item In the optical frame a ball is at $(X,Y,Z)=(0.2,-0.1,2.0)$ (right, down, forward). Convert it to \verb!camera_link! (forward, left, up).
+  \item Why must the tree of frames have one parent per frame? What would be a symptom of two nodes publishing \verb!odom!$\to$\verb!base_link!?
+  \item A head rotates at $60^\circ$/s and the image processing takes $80$\,ms. What angular error arises if you transform the detection with the current instead of the image time stamp, and how large is the position error at $2.5$\,m?
+  \item A detection is stamped with the camera's clock, which runs $0.5$\,s ahead of the robot computer's clock. What error message do you expect from \verb!tf2!, and what is the fix (Chapter~\ref{ch:hw2})?
+  \item[\textbf{\thechapter.10}$\star$] Write a function \verb!pixel_to_map(u, v, d_px, T_map_base, T_base_cam)! that returns the ball position in the map frame from the pixel measurement (ball diameter $0.13$\,m, $f_\text{px}=554$, $c=(320,240)$), reproducing the worked example. Add a check that rejects detections with $z_\text{map}$ more than $0.15$\,m from the expected ball height; what error does this check catch?
+\end{enumerate}

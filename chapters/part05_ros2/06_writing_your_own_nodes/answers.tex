@@ -1,0 +1,36 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \verb!"kicker = my_robot_vision.kicker:main",! inside the list \verb!console_scripts! of \verb!entry_points! in \verb!setup.py!, followed by a rebuild.
+  \item A callback of $120$\,ms blocks the single thread, so the timer runs late: the behaviour publishes only about every $120$--$170$\,ms (some timer ticks are dropped or delayed), $\approx6$ to $8$\,Hz instead of $20$\,Hz, in bursts. Remedies: make the image callback fast (store and process in another thread or node), or use a \verb!MultiThreadedExecutor! with separate callback groups for the timer and the image callback; best: put the vision in its own node/process.
+  \item The stamp would then be the time of the \emph{end} of processing. \verb!tf2! would look up the head pose for that later time, but the image was taken earlier ($\approx$ capture plus processing delay, e.g.\ $60$--$100$\,ms): with a moving head the ball position in the map is wrong by the head motion in this time (Problem 4.8: $\approx0.2$\,m).
+  \item (1) Testable without ROS and without a camera (pytest with a saved or synthetic image, in milliseconds); (2) reusable and replaceable (other scripts, a notebook, another framework, a neural network instead of colour thresholds) and the logic is easier to read. (Also: no start-up of ROS in the tests, so the tests run in CI.)
+  \item At $0.8$\,s the ball is still valid: the robot steers towards it. After $1.0$\,s without messages it searches (turns with $0.4$\,rad/s) and logs it, \emph{forever}, also when the camera node has crashed (the age grows to $60$\,s and more): the robot keeps turning and never stops. Whether this is acceptable depends: for a soccer search it is ok, but there should be a second, separate rule: if \emph{no sensor data at all} arrives (camera \emph{and} IMU), stop and report an error; and the robot should only turn if its joints are controlled, i.e.\ the walk node must be alive (watchdog in the driver, Chapter~\ref{ch:hw8}).
+  \item $\operatorname{atan2}(1,2)=0.4636$\,rad; $\omega=1.5\cdot0.4636=0.695$\,rad/s (below the limit). With clipping: \verb!w = max(-1.0, min(1.0, 1.5 * math.atan2(b.y, b.x)))!.
+  \item
+\begin{verbatim}
+MAX_DX = 0.5 * 0.05            # m/s change per 20 Hz step
+target = cmd.linear.x
+cmd.linear.x = max(self.prev_x - MAX_DX,
+                   min(self.prev_x + MAX_DX, target))
+self.prev_x = cmd.linear.x
+\end{verbatim}
+  with \verb!self.prev_x = 0.0! in the constructor. Stop when there is no valid \verb!tf!: \verb!try: ... except Exception: cmd = Twist()! around the transform of the ball (zero command, a throttled warning, and the ramp brings $x$ to zero at the allowed rate; for an \emph{emergency} stop a faster ramp or an immediate zero is defined separately).
+  \item The spinning node is already inside \verb!spin!; \verb!spin_until_future_complete! tries to run the executor again from within a callback: it can dead-lock (the callback waits for a result that only the blocked executor can deliver) or raise an error. Call the service with \verb!call_async! and attach \verb!future.add_done_callback(...)!; or make the callbacks run in different groups of a multi-threaded executor.
+  \item \verb!self.count += 1! is a read, an add and a write; two threads may read the same old value, both add one and write: one increment is lost (a race condition). Use a \verb!threading.Lock! around the update (\verb!with self.lock: self.count += 1!), or avoid shared state (one writer), or put both callbacks in the same mutually exclusive group.
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+import cv2, numpy as np
+from my_robot_vision.ball_logic import find_ball
+
+def test_finds_orange_circle():
+    img = np.zeros((120, 160, 3), np.uint8)
+    orange = (0, 128, 255)       # BGR; hue 15 in OpenCV's 0-179 scale
+    cv2.circle(img, (100, 60), 10, orange, -1)
+    u, v, d = find_ball(img)
+    assert abs(u - 100) < 1 and abs(v - 60) < 1
+    assert 18 <= d <= 22
+
+def test_empty_image():
+    assert find_ball(np.zeros((120, 160, 3), np.uint8)) is None
+\end{verbatim}
+  (Check that the chosen BGR colour lies inside the hue range of the detector, here $5$ to $20$ with saturation $\ge120$; \verb!(0,128,255)! has the hue $\approx15$ in OpenCV's $0$--$179$ scale.)
+\end{enumerate}
