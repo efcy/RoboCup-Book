@@ -1,0 +1,184 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $x=2+0.3\cos90^{\circ}-0.1\sin90^{\circ}=2-0.1=1.9$; $y=1+0.3\sin90^{\circ}+0.1\cos90^{\circ}=1.3$; $\theta=90^{\circ}-10^{\circ}=80^{\circ}$. The pose is $(1.9,\,1.3,\,80^{\circ})$: ``forward'' for a robot facing $+y$ is $+y$, ``left'' is $-x$.
+  \item $\hat r=\sqrt{9+9}=4.243$\,m; $\hat b=\operatorname{atan2}(3,3)-90^{\circ}=45^{\circ}-90^{\circ}=-45^{\circ}$. The negative bearing means \emph{to the right} of the heading (positive is to the left).
+  \item $\hat r=2.154$, $\hat b=0.1805$: $(2.00-2.154)/0.25=-0.616$ and $(0.25-0.1805)/0.08=0.869$; $w=\exp(-\tfrac12(0.379+0.755))=\exp(-0.567)=0.567$. This measurement fits the pose \emph{better} than that of the example ($0.508$): its errors ($-0.15$\,m and $+0.07$\,rad) are slightly smaller in units of $\sigma$ than those ($0.15$\,m and $-0.08$\,rad).
+  \item $9/0.05=180$, $6/0.05=120$, $360$ headings: $180\cdot120\cdot360=7\,776\,000$ cells. $1000$ particles are $0.013\%$ of this. A particle filter works because the particles do not cover the space uniformly: after the first observations they concentrate where the probability is, and the many cells of improbable poses are never visited. The price is the possibility to lose all particles of the correct region (this happens occasionally with only $50$ particles, see the table).
+  \item $N_{\text{eff}}=1/(4\cdot0.0625)=4$; $1/(0.25+0.25)=2$; $1/(0.49+0.03)=1.92$. With the threshold $N/2=2$ one resamples only in the third case ($1.92<2$); the second case is exactly at the threshold.
+  \item The points are $0.1,\ 0.35,\ 0.6,\ 0.85$ and the cumulative weights $0.1,\ 0.3,\ 0.7,\ 1.0$. Point $0.1$ belongs to particle~1 (the border counts to it), $0.35$ to particle~3 (it lies in $(0.3,0.7]$), $0.6$ to particle~3, $0.85$ to particle~4. The new set is $(1,3,3,4)$: particle~3, the heaviest, is copied, particle~2 is dropped.
+  \item $30\sin2^{\circ}=1.05$\,m. With a growing heading error $0.01\,t$ at the speed $0.3$\,m/s, the lateral error is $\int_0^{100}0.3\sin(0.01\,t)\,\dd t=0.3\,(1-\cos1)/0.01=13.8$\,m: the position is useless; a heading error is the most dangerous odometry error since it grows into a lateral one with the distance.
+  \item The robot sees only one post at $3$\,m, but it may be either goal: the weights are large for particles on a ring of radius $3$\,m around the post in the \emph{left} goal \emph{and} for the corresponding particles around the post in the right goal (rotated by $180^{\circ}$): two clouds, both explaining the observation equally well. Information that breaks the symmetry: (1) the robot starts at a known side of the field, and the initial particles are only there; (2) the colour or marking of the goals (if the rules give them different colours), or a different feature visible around them; (3) the compass, or the orientation from the IMU relative to the start; (4) the position of the ball or other robots, or the state of the game communicated by the referee (kick-off side).
+  \item
+\begin{verbatim}
+import math
+
+def wrap(a):
+    return (a + math.pi) % (2 * math.pi) - math.pi
+
+def likelihood(pose, landmark, r, b, sr=0.25, sb=0.08):
+    x, y, th = pose
+    dx, dy = landmark[0] - x, landmark[1] - y
+    rh = math.hypot(dx, dy)
+    bh = wrap(math.atan2(dy, dx) - th)
+    er, eb = (r - rh) / sr, wrap(b - bh) / sb
+    return math.exp(-0.5 * (er ** 2 + eb ** 2))
+
+print(round(likelihood((2.5, 0.5, 0.2), (4.5, 1.3), 2.30, 0.10), 3))
+best = (0, -1)
+above = []
+for i in range(401):
+    x = 0.5 + i * 0.01
+    w = likelihood((x, 0.5, 0.2), (4.5, 1.3), 2.30, 0.10)
+    if w > best[1]:
+        best = (x, w)
+    if w > 0.6:
+        above.append(x)
+print("max at x = %.2f, w = %.3f" % best)
+print("w > 0.6 for x from %.2f to %.2f" % (above[0], above[-1]))
+\end{verbatim}
+prints \verb!0.508!, \verb!max at x = 2.27, w = 0.825! and \verb!w > 0.6 for x from 2.09 to 2.45!. The maximum is at $x=2.27$\,m, the position for which the predicted range $\hat r=\sqrt{(4.5-x)^2+0.8^2}$ is, together with the bearing term, the best compromise with the measurement $r=2.30$\,m (with the bearing and $y$ fixed); the high-weight region is only $0.36$\,m wide. One observation of a single landmark constrains the pose in one direction only (a ring around the landmark); more landmarks are needed to fix the position.
+  \item
+\begin{verbatim}
+use std::f64::consts::PI;
+
+struct Rng(u64);
+impl Rng {
+    fn next(&mut self) -> f64 {              // uniform in [0, 1)
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        (self.0 >> 11) as f64 / (1u64 << 53) as f64
+    }
+    fn gauss(&mut self, sigma: f64) -> f64 {         // Box-Muller
+        let (u, v) = (self.next().max(1e-12), self.next());
+        sigma * (-2.0 * u.ln()).sqrt() * (2.0 * PI * v).cos()
+    }
+}
+
+fn wrap(a: f64) -> f64 {
+    (a + PI).rem_euclid(2.0 * PI) - PI
+}
+
+#[derive(Clone, Copy)]
+struct Pose { x: f64, y: f64, th: f64 }
+
+impl Pose {
+    fn moved(self, v: f64, w: f64, dt: f64) -> Pose {
+        let mid = self.th + 0.5 * w * dt;
+        Pose { x: self.x + v * dt * mid.cos(),
+               y: self.y + v * dt * mid.sin(),
+               th: wrap(self.th + w * dt) }
+    }
+}
+
+const LANDMARKS: [(f64, f64); 11] = [
+    (-4.5, -1.3), (-4.5, 1.3), (4.5, -1.3), (4.5, 1.3), (-3.0, 0.0),
+    (3.0, 0.0), (0.0, 0.0), (-4.5, -3.0), (-4.5, 3.0), (4.5, -3.0),
+    (4.5, 3.0),
+];
+
+/// Range and bearing from `p` to landmark `i`.
+fn range_bearing(p: Pose, i: usize) -> (f64, f64) {
+    let (dx, dy) = (LANDMARKS[i].0 - p.x, LANDMARKS[i].1 - p.y);
+    (dx.hypot(dy), wrap(dy.atan2(dx) - p.th))
+}
+
+fn run(seed: u64, inject: f64) -> Option<f64> {
+    let mut rng = Rng(seed * 88172645463325252 + 1);
+    let (n, dt, steps) = (1000, 0.2, 500);
+    let (v, w) = (0.3, 0.12);          // what the robot really does
+    let mut truth = Pose { x: -2.0, y: -1.0, th: 0.0 };
+    let mut odo = truth;
+    let mut ps: Vec<Pose> = (0..n).map(|_| Pose {
+        x: -4.5 + 9.0 * rng.next(),
+        y: -3.0 + 6.0 * rng.next(),
+        th: -PI + 2.0 * PI * rng.next(),
+    }).collect();
+    let mut wt = vec![1.0 / n as f64; n];
+    let (mut good, mut recovered) = (0, None);
+
+    for k in 0..steps {
+        truth = truth.moved(v, w, dt);
+        if k == 200 {              // somebody carries the robot away
+            truth = Pose { x: 3.0, y: 2.0, th: PI };
+        }
+        // odometry: 8 % too fast, a turning bias, noise
+        let vo = v * 1.08 + rng.gauss(0.03);
+        let wo = w + 0.01 + rng.gauss(0.05);
+        odo = odo.moved(vo, wo, dt);
+        // predict: every particle moves with its own noise
+        for p in ps.iter_mut() {
+            let (dv, dw) = (rng.gauss(0.04), rng.gauss(0.05));
+            *p = p.moved(vo + dv, wo + dw, dt);
+        }
+        // weight: compare what the particle would see with what we saw
+        for i in 0..LANDMARKS.len() {
+            let (r, b) = range_bearing(truth, i);
+            if r > 5.0 || b.abs() > 40f64.to_radians() { continue; }
+            let (zr, zb) = (r + rng.gauss(0.15), b + rng.gauss(0.04));
+            for (p, w) in ps.iter().zip(wt.iter_mut()) {
+                let (pr, pb) = range_bearing(*p, i);
+                let (er, eb) = ((zr - pr) / 0.25, wrap(zb - pb) / 0.08);
+                *w *= (-0.5 * (er * er + eb * eb)).exp() + 1e-12;
+            }
+        }
+        let sum: f64 = wt.iter().sum();
+        wt.iter_mut().for_each(|w| *w /= sum);
+        // resample (systematic) if only few particles matter
+        let neff = 1.0 / wt.iter().map(|w| w * w).sum::<f64>();
+        if neff < n as f64 / 2.0 {
+            let mut new = Vec::with_capacity(n);
+            let (mut c, mut j) = (wt[0], 0);
+            let u0 = rng.next() / n as f64;
+            for m in 0..n {
+                let u = u0 + m as f64 / n as f64;
+                while u > c && j < n - 1 { j += 1; c += wt[j]; }
+                new.push(Pose { x: ps[j].x + rng.gauss(0.02),
+                                y: ps[j].y + rng.gauss(0.02),
+                                th: ps[j].th + rng.gauss(0.01) });
+            }
+            ps = new;
+            wt = vec![1.0 / n as f64; n];
+            for p in ps.iter_mut().take((inject * n as f64) as usize) {
+                *p = Pose { x: -4.5 + 9.0 * rng.next(),
+                            y: -3.0 + 6.0 * rng.next(),
+                            th: -PI + 2.0 * PI * rng.next() };
+            }
+        }
+        // estimate: weighted mean
+        let ex: f64 = ps.iter().zip(&wt).map(|(p, w)| p.x * w).sum();
+        let ey: f64 = ps.iter().zip(&wt).map(|(p, w)| p.y * w).sum();
+        let e = (ex - truth.x).hypot(ey - truth.y);
+        if k > 200 && recovered.is_none() {
+            good = if e < 0.5 { good + 1 } else { 0 };
+            if good == 10 { recovered = Some((k - 200) as f64 * dt); }
+        }
+    }
+    recovered
+}
+
+fn main() {
+    for inject in [0.0, 0.02, 0.1] {
+        let mut t: Vec<f64> = Vec::new();
+        for seed in 1..=20 {
+            if let Some(s) = run(seed, inject) {
+                t.push(s);
+            }
+        }
+        t.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let median = if t.is_empty() { f64::NAN }
+                     else { t[t.len() / 2] };
+        println!("inject {inject}: recovered {}/20, median {median:.1}",
+                 t.len());
+    }
+}
+\end{verbatim}
+prints
+\begin{center}\small\ttfamily
+\begin{tabular}{@{}l@{}}
+inject 0: recovered 0/20, median NaN\\
+inject 0.02: recovered 20/20, median 10.6\\
+inject 0.1: recovered 20/20, median 9.8
+\end{tabular}
+\end{center}
+Without random particles the filter never finds the robot again (it ends with a tight cloud at the old place, where all observations are inconsistent and the weights stay tiny). With $2\%$ random particles every run recovers, after about $10$\,s; $10\%$ is only slightly faster. A large fraction is harmful, since the particles that are thrown away every cycle are missing from the correct cloud: the estimate gets noisy, and in the extreme case the filter degenerates to a global search that never settles. A better scheme adds random particles only when the average likelihood is low, i.e.\ when the filter is probably lost.
+\end{enumerate}

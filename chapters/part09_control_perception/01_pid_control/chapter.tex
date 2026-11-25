@@ -1,0 +1,210 @@
+\bookchapter{PID control}\label{ch:ctl1}
+
+\section*{Explanation}
+A robot that only \emph{plays back} commands (``set the motor to $30\%$ for two seconds'') fails as soon as something is different from what the programmer expected: a lower battery voltage, a heavier arm, a slippery floor. The remedy is \textbf{feedback}: measure what really happens, compare it with what you want, and let the \emph{difference} decide the next command. Almost every motor, every joint and every balance routine of a robot is built on this idea, and the most common feedback controller is the \textbf{PID controller}. It is a short piece of code and an astonishingly useful one.
+
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.4mm]},bx/.style={draw,thick,rounded corners=2pt,minimum width=2.3cm,minimum height=0.95cm,font=\footnotesize,align=center}]
+ \node[circle,draw,thick,inner sep=1pt,font=\footnotesize] (sum) at (2.2,0) {$-$};
+ \node[bx,fill=blue!10] (ctl) at (5.2,0) {controller\\ (PID)};
+ \node[bx,fill=orange!15] (plant) at (9.6,0) {plant\\ (motor, joint)};
+ \node[bx,fill=green!10] (sen) at (7.4,-2.0) {sensor};
+ \draw[->,thick] (0,0)--node[above,font=\footnotesize]{setpoint $r$} (sum);
+ \draw[->,thick] (sum)--node[above,font=\footnotesize]{error $e$} (ctl);
+ \draw[->,thick] (ctl)--node[above,font=\footnotesize]{command $u$} (plant);
+ \draw[->,thick] (plant)--node[above,font=\footnotesize,pos=0.75]{output $y$}++(2.3,0);
+ \draw[->,thick] (11.4,0)|-(sen.east);
+ \draw[->,thick] (sen.west)-|(sum.south);
+ \node[font=\footnotesize,below] at (4.0,-2.0) {measurement};
+\end{tikzpicture}
+\captionof{figure}{A feedback loop. The controller sees only the error $e=r-y$ between the wish $r$ (the setpoint) and the measured result $y$.}
+\end{center}
+
+The three letters name the three ways in which the error is used. If $e(t)$ is the error at time $t$, the command is
+\[
+u(t)=\underbrace{K_p\,e(t)}_{\text{P: present}}+\underbrace{K_i\int_0^t e(s)\,\dd s}_{\text{I: past}}+\underbrace{K_d\,\der{e}{t}}_{\text{D: future}} .
+\]
+$K_p$, $K_i$, $K_d$ are numbers (the \textbf{gains}) that you choose. The derivative is the rate of change of Chapter~\ref{ch:derivative}; the integral is the running sum of the error, the area under the error curve: it \emph{adds up} the error over time.
+
+\section*{The test plant}
+To see what each term does we need something to control. Our \textbf{plant} is a motor that is asked to turn at a speed $y$ (in turns per second, say). It does not reach the commanded speed at once; it approaches it like a heavy flywheel:
+\[
+\tau\,\der{y}{t}=-y+u ,\qquad \tau=0.5\,\text{s}.
+\]
+A constant command $u$ gives, after some time, the speed $y=u$ (the plant has the gain $1$), and $\tau$ is the \textbf{time constant}: after $\tau$ seconds the motor has covered $63\%$ of the way. We simulate it on the computer in steps of $\Delta t=10$\,ms (a $100$\,Hz control loop) with the simplest method: $y\leftarrow y+\Delta t\,(-y+u)/\tau$. All curves in this chapter were produced in this way.
+
+\section*{P: the proportional term}
+The simplest controller is $u=K_p\,e$: the larger the error, the stronger the command. Let the setpoint be $r=1$ (a step at $t=0$). The motor is at $y=0$, so $e=1$ and $u=K_p$: it starts with a push proportional to the error, and the push fades as the error shrinks.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[width=0.82\linewidth,height=5.3cm,xlabel={time $t$ (s)},ylabel={speed $y$},xmin=0,xmax=4,ymin=0,ymax=1.15,legend pos=south east,grid=both,legend style={font=\footnotesize}]
+ \addplot[blue,thick] table[x=t,y=p1] {chapters/part09_control_perception/01_pid_control/p_step.dat};
+ \addplot[red,thick] table[x=t,y=p4] {chapters/part09_control_perception/01_pid_control/p_step.dat};
+ \addplot[green!50!black,thick] table[x=t,y=p16] {chapters/part09_control_perception/01_pid_control/p_step.dat};
+ \addplot[black,dashed] coordinates {(0,1)(4,1)};
+ \legend{$K_p=1$,$K_p=4$,$K_p=16$,setpoint}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{P control of the speed plant. A larger gain is faster, but the speed never reaches the setpoint: it ends at $0.5$, $0.8$ and $0.94$.}
+\end{center}
+
+The curves end below the setpoint, and one can compute where. In the final state nothing changes any more, so $\der{y}{t}=0$ and $y=u=K_p(r-y)$, thus
+\[
+y=\frac{K_p}{1+K_p}\,r,\qquad e=\frac{1}{1+K_p}\,r .
+\]
+With $K_p=4$ the speed settles at $0.8$ (measured in the simulation: $0.800$), with $K_p=16$ at $16/17=0.941$ (simulation: $0.941$). This remaining \textbf{steady-state error} is typical for P control: a P controller needs a non-zero error to produce any command at all. A very large $K_p$ makes the error small, but real motors and sensors have delays, and too much gain makes the loop oscillate (see below).
+
+\begin{example}
+A P controller with $K_p=9$ should hold the speed $r=2$. The speed settles at $y=\frac{9}{10}\cdot2=1.8$, the error is $0.2$. To get an error below $2\%$ of $r$ we need $\frac{1}{1+K_p}<0.02$, i.e.\ $K_p>49$.
+\end{example}
+
+\section*{I: the integral term}
+The remedy for the steady-state error is to remember the error. The integral term $K_i\int e\,\dd t$ grows as long as the error is not zero, so the command keeps increasing until the error \emph{is} zero. Only then does the integral stop growing, and it holds exactly the command that is needed. This is why a PI controller finds the right command for a load that you did not know: a heavier arm, a headwind, a motor that is weaker than the model says.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[width=0.82\linewidth,height=5.3cm,xlabel={time $t$ (s)},ylabel={speed $y$},xmin=0,xmax=5,ymin=0,ymax=1.2,legend pos=south east,grid=both,legend style={font=\footnotesize}]
+ \addplot[red,thick] table[x=t,y=p] {chapters/part09_control_perception/01_pid_control/dist.dat};
+ \addplot[blue,thick] table[x=t,y=pi] {chapters/part09_control_perception/01_pid_control/dist.dat};
+ \addplot[black,dashed] coordinates {(0,1)(5,1)};
+ \draw[gray,dotted,thick] (axis cs:2,0)--(axis cs:2,1.2);
+ \node[font=\scriptsize,gray,anchor=south west] at (axis cs:2.05,0.02) {load $0.5$ added};
+ \legend{P: $K_p=4$,{PI: $K_p=4,\,K_i=8$},setpoint}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{At $t=2$\,s a load (a constant braking force of $0.5$ in the units of the command) is added. P control sinks to $0.70$; with the integral term the speed returns to the setpoint.}
+\end{center}
+
+In the figure the P controller ends at $(4\cdot1-0.5)/5=0.70$, the PI controller at $0.9996$ and still creeping towards $1$. The price of the integral term is that it can make the loop slower to settle and more oscillating, because it keeps pushing for a while after the error has already become zero.
+
+\section*{D: the derivative term}
+Consider a robot joint that is to move to an angle $\theta=1$ (radians). Now the plant is a motor whose \emph{speed} follows the command with time constant $\tau=0.2$\,s and whose \emph{angle} is the integral of the speed: $\dot\theta=\omega$, $\tau\dot\omega=-\omega+u$. With a P controller $u=K_p(1-\theta)$ the joint arrives with speed and cannot stop: it overshoots, comes back, overshoots again. The derivative term acts as a brake: it looks at \emph{how fast the error is changing} and pushes against a fast approach. Because the setpoint is constant, the speed of the error is just $-\omega$, and the controller becomes $u=K_p(1-\theta)-K_d\,\omega$ (a \textbf{PD controller}).
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[width=0.82\linewidth,height=5.3cm,xlabel={time $t$ (s)},ylabel={angle $\theta$},xmin=0,xmax=3,ymin=0,ymax=1.65,legend pos=north east,grid=both,legend style={font=\footnotesize}]
+ \addplot[red,thick] table[x=t,y=d0] {chapters/part09_control_perception/01_pid_control/servo.dat};
+ \addplot[orange,thick] table[x=t,y=d2] {chapters/part09_control_perception/01_pid_control/servo.dat};
+ \addplot[blue,thick] table[x=t,y=d5] {chapters/part09_control_perception/01_pid_control/servo.dat};
+ \addplot[black,dashed] coordinates {(0,1)(3,1)};
+ \legend{$K_d=0$,$K_d=2$,$K_d=5$,setpoint}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{A joint with $K_p=20$. Without D the angle overshoots to $1.52$ and rings; with $K_d=2$ the overshoot is $3.6\%$; with $K_d=5$ there is none, but the approach is slower.}
+\label{fig:ctl1servo}
+\end{center}
+
+For this plant we can say more. Insert the controller into $\tau\dot\omega=-\omega+u$ and use $\omega=\dot\theta$:
+\[
+\tau\ddot\theta+(1+K_d)\,\dot\theta+K_p\,\theta=K_p .
+\]
+This is the equation of a damped spring: $K_p$ is the \emph{stiffness} of a spring that pulls the joint to the target, $1+K_d$ is the \emph{damping}. The oscillation is critically damped, with no overshoot, when $(1+K_d)^2=4\tau K_p$. For $\tau=0.2$ and $K_p=20$ this gives $(1+K_d)^2=16$, so $K_d=3$ (the simulation: peak $1.0000$). A PD controller is therefore not a mystery: it is a spring with a damper, and the gains are the stiffness and the damping you want.
+
+\begin{aibox}[PD controllers inside the robot]
+Many motor drivers of walking robots run a PD loop themselves: the high-level program sends a target angle together with the two gains, and the driver does the rest, at a rate much higher than the program's own control loop. A larger $K_p$ makes the joint stiff, a larger $K_d$ makes it smooth. Which gains the K1 uses, and how they are sent, is described in the K1 chapters and in the manual of the robot; the principle is the one of this chapter.
+\end{aibox}
+
+\subsection*{Derivative of the measurement, not of the error}
+If the setpoint jumps, the error jumps, and the derivative of a jump is huge (for one control step: $\Delta e/\Delta t=1/0.01=100$, the \textbf{derivative kick}). Because we do not want the motor to receive a violent command each time the setpoint changes, the derivative is taken of the \emph{measurement}: $-K_d\,\dot y$ instead of $K_d\,\dot e$. This is what we did above (the term $-K_d\,\omega$). The second problem of the derivative is \textbf{noise}: a noisy sensor that jitters by $\pm0.01$ between two samples at $100$\,Hz has a derivative of $\pm1$ in each step, much larger than the signal. In practice the speed is therefore either taken from a sensor that measures it directly (a motor encoder gives angle and speed) or the derivative is low-pass filtered; the next chapters show better ways to get a clean speed from noisy data (Chapters~\ref{ch:ctl3} and~\ref{ch:ctl4}).
+
+\section*{The controller in code}
+In a computer the integral becomes a sum and the derivative a difference. One step of a PID controller, with measured value $y$, its rate $\dot y$ and the loop time $\Delta t$:
+\[
+e=r-y,\qquad I\leftarrow I+e\,\Delta t,\qquad u=K_p\,e+K_i\,I-K_d\,\dot y .
+\]
+
+\begin{example}
+$K_p=2$, $K_i=1$, $K_d=0.5$, $\Delta t=0.1$\,s, $r=1$. The measurement is $y=0.2$, a moment ago $0.1$, and the integral so far is $I=0.3$. Then $e=0.8$, $\dot y\approx(0.2-0.1)/0.1=1$, $I=0.3+0.8\cdot0.1=0.38$ and
+\[
+u=2\cdot0.8+1\cdot0.38-0.5\cdot1=1.48 .
+\]
+\end{example}
+
+\section*{Windup: when the motor cannot do what you ask}
+Every real motor has a maximum command (voltage, current, torque). If the controller asks for more, the command is \textbf{saturated}, cut at the limit. The integral does not know this: during a long saturated phase the error stays large, the integral grows and grows, and when the speed finally reaches the setpoint the integral is so large that the controller keeps pushing: a large overshoot. This is called \textbf{integrator windup}. The simplest cure is \textbf{clamping}: do not add to the integral while the output is saturated.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[width=0.82\linewidth,height=5.3cm,xlabel={time $t$ (s)},ylabel={speed $y$},xmin=0,xmax=4,ymin=0,ymax=1.6,legend pos=north east,grid=both,legend style={font=\footnotesize}]
+ \addplot[red,thick] table[x=t,y=plain] {chapters/part09_control_perception/01_pid_control/windup.dat};
+ \addplot[blue,thick] table[x=t,y=clamp] {chapters/part09_control_perception/01_pid_control/windup.dat};
+ \addplot[black,dashed] coordinates {(0,1.2)(4,1.2)};
+ \legend{plain integral,with clamping,setpoint}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{The command is limited to $\pm1.5$. $K_p=3$, $K_i=12$, setpoint $1.2$. Without anti-windup the speed overshoots to $1.46$ ($22\%$) and needs about $2.5$\,s to settle within $2\%$; with clamping the peak is $1.206$ and it settles after $0.9$\,s.}
+\end{center}
+
+Here is the whole controller in Rust, together with the simulated plant, to show that it really works. The program uses only the standard library.
+%rs:pid
+\begin{verbatim}
+struct Pid {
+    kp: f64,
+    ki: f64,
+    kd: f64,
+    limit: f64,     // the command is kept within -limit..limit
+    integral: f64,
+}
+
+impl Pid {
+    fn new(kp: f64, ki: f64, kd: f64, limit: f64) -> Pid {
+        Pid { kp, ki, kd, limit, integral: 0.0 }
+    }
+
+    /// One step. `rate` is the measured speed of the measurement.
+    fn update(&mut self, setpoint: f64, measured: f64,
+              rate: f64, dt: f64) -> f64 {
+        let e = setpoint - measured;
+        let new_integral = self.integral + e * dt;
+        let u = self.kp * e + self.ki * new_integral - self.kd * rate;
+        let limited = u.clamp(-self.limit, self.limit);
+        if limited == u {
+            self.integral = new_integral;   // anti-windup: clamping
+        }
+        limited
+    }
+}
+
+fn main() {
+    let (dt, tau) = (0.01, 0.5);
+    let mut pid = Pid::new(3.0, 12.0, 0.0, 1.5);
+    let mut y = 0.0;
+    let mut peak = 0.0_f64;
+    for _ in 0..=600 {
+        let u = pid.update(1.2, y, 0.0, dt);
+        y += dt * (-y + u) / tau;       // the plant
+        peak = peak.max(y);
+    }
+    println!("peak {peak:.3}, final {y:.4}");
+}
+\end{verbatim}
+prints \verb!peak 1.206, final 1.2000!, the same numbers as the Python simulation of the figure. Three details are worth noticing. The controller keeps its state (the integral) in a struct, the same pattern as every filter in the following chapters. The time step \verb!dt! is a parameter: the gains $K_i$ and $K_d$ only have a meaning together with the loop time, and a loop that does not run at the rate you assumed (Chapter~\ref{ch:rust6}: threads and timing) is a common source of strange behaviour. And the command is limited \emph{inside} the controller, where it can be used to stop the windup.
+
+\section*{Tuning}
+Choosing the three numbers is called \textbf{tuning}. A manual procedure that works for most joints:
+\begin{enumerate}[nosep]
+  \item Set $K_i=K_d=0$. Increase $K_p$ until the joint reacts quickly and starts to oscillate a little; then use about half of that value.
+  \item Increase $K_d$ until the oscillation is gone. If the motion becomes noisy or buzzes, $K_d$ is too large (or the speed measurement is too noisy).
+  \item Add $K_i$ only if a steady error remains, and keep it small.
+  \item Test with a step, a load, and the worst case (the arm stretched out), not only with a gentle test.
+\end{enumerate}
+A classical rule is the \textbf{Ziegler--Nichols method}: with $K_i=K_d=0$ increase $K_p$ until the output oscillates steadily; call this gain $K_u$ and the period of the oscillation $T_u$. Then use $K_p=0.6K_u$, $K_i=K_p/T_i$ with $T_i=T_u/2$, and $K_d=K_pT_d$ with $T_d=T_u/8$. The result is an aggressive first guess, which often needs to be softened, not a final answer.
+
+\begin{keyidea}[Control checklist]
+Is the loop rate constant and known? Is the command limited, and is the integral protected against windup? Is the derivative taken of a clean measurement? Was the controller tested with a load and at the limits? A controller that is only tested in the calm case fails in the competition.
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A P controller with $K_p=3$ controls the speed plant of this chapter (gain $1$) with the setpoint $r=2$. Where does the speed settle, and how large is the error?
+  \item For the same plant, what $K_p$ is needed so that the steady-state error is below $1\%$ of the setpoint? Why would one not simply use that gain?
+  \item One step of a PID controller: $K_p=2$, $K_i=1.5$, $K_d=0.4$, $\Delta t=0.05$\,s, setpoint $1$, measurement $0.6$, measurement one step before $0.5$, integral so far $0.2$. Compute $u$ (derivative of the measurement).
+  \item The Ziegler--Nichols experiment gives $K_u=8$ and $T_u=0.5$\,s. Compute $K_p$, $T_i$, $T_d$, $K_i$ and $K_d$.
+  \item A P controller with $K_p=4$ holds the speed $y\approx0.8$ for the setpoint $1$. A load of $0.5$ is added. Where does the speed settle? Where does it settle for $K_p=9$? Where with an added integral term?
+  \item The setpoint jumps from $0$ to $1$ and the derivative is taken of the \emph{error} with $K_d=0.5$ and $\Delta t=0.01$\,s. How large is the derivative term in this one step? Compare with the term if the derivative is taken of the measurement (which is still $0$ in this step).
+  \item Explain integrator windup in your own words. Why does it lead to a \emph{larger} overshoot, and why does clamping help? Name one situation on a robot in which a motor saturates.
+  \item Write a Python program that simulates the speed plant ($\tau=0.5$, $\Delta t=0.01$) with a P controller and prints the final speed after $4$\,s for $K_p=1,4,16$. Compare with $K_p/(1+K_p)$.
+  \item A joint has $\tau=0.2$\,s and $K_p=20$. Compute the damping ratio $\zeta=\dfrac{1+K_d}{2\sqrt{\tau K_p}}$ for $K_d=0$ and $K_d=2$, and the overshoot $\exp\!\bigl(-\pi\zeta/\sqrt{1-\zeta^2}\bigr)$ for both. Compare with the angle curves of this chapter.
+  \item[\textbf{\thechapter.10}$\star$] A joint with $\tau=0.2$\,s is to be controlled by a PD controller as a ``spring and damper''. (a) For $K_p=45$, find the $K_d$ for critical damping and the natural frequency $\omega_0=\sqrt{K_p/\tau}$. (b) Simulate the step response in Python (or Rust) for this $K_d$ and for $K_d$ reduced by one third, and report the peak. (c) The real controller runs at $50$\,Hz instead of $100$\,Hz, and the sensor delivers the angle $40$\,ms late. Add this delay to your simulation and describe what happens to the response with the critical $K_d$. What would you change?
+\end{enumerate}

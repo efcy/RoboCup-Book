@@ -1,0 +1,103 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $K=\frac{4}{4+1}=0.8$; $\hat x=10+0.8\cdot(12-10)=11.6$; $P=(1-0.8)\cdot4=0.8$.
+  \item $K=\frac{4}{4+36}=0.1$; $\hat x=10+0.1\cdot2=10.2$; $P=0.9\cdot4=3.6$. A bad measurement moves the estimate hardly ($10.2$ instead of $11.6$) and reduces the uncertainty only a little ($3.6$ instead of $0.8$).
+  \item $\sigma/\sqrt n<0.5$ gives $\sqrt n>4$, so $n>16$: $17$ measurements ($16$ give exactly $0.5$\,cm). In the last step the gain is about $1/n=1/17=0.059$ (the filter is a running mean).
+  \item $0.25,\ 0.4375,\ 0.578125,\ 0.68359$. The estimate approaches the true value $1$ only slowly: after $4$ steps the error is still $32\%$.
+  \item $v\,\Delta t=1.5/60=2.5$\,cm per frame; the lag is $2.5\cdot(1-\alpha)/\alpha=2.5\cdot9=22.5$\,cm. For a lag below $1$\,cm: $(1-\alpha)/\alpha<0.4$, i.e.\ $\alpha>1/1.4=0.714$: practically no averaging is left.
+  \item The state becomes $(1.0+0.1\cdot2.0,\ 2.0)=(1.2,\ 2.0)$. For $P$: $P_{00}'=0.01+0.1\cdot(0+0)+0.01\cdot0.04=0.0104$, $P_{01}'=P_{10}'=0+0.1\cdot0.04=0.004$, $P_{11}'=0.04$. So $P=\begin{pmatrix}0.0104&0.004\\0.004&0.04\end{pmatrix}$: the uncertainty of the position has grown (the speed is uncertain, and one moves with it), and position and speed are now \emph{correlated}.
+  \item The model $F$ says that the position of the next step is the position plus speed times $\Delta t$, so after the prediction the uncertainty of the position includes the uncertainty of the speed, and the covariance $P$ has an off-diagonal entry that links the two. When a measurement shows that the ball is further than predicted, the filter knows that, among the explanations, ``the speed is larger than assumed'' is probable, and the gain $K_1$ for the speed corrects the estimate of the speed; with every further measurement the speed is checked again.
+  \item Only predictions are made, without updates. The estimate moves on with the last speed; $P$ grows with every step (the position variance grows roughly with the square of the time, because the speed is not known exactly). When the ball appears again, the innovation is large, but the predicted uncertainty $S$ is large as well, so the gain is large and the estimate jumps to the new position, and the speed estimate is corrected too. A filter that keeps the last measurement would keep the ball at the point where it vanished and would not know the speed.
+  \item $0.35/0.06=5.8$ standard deviations: it is outside the $3\sigma$ gate and rejected. A correct measurement is rejected with probability $0.27\%$, which is one in $370$ measurements: with $30$ per second about one every $12$ seconds. If this is too much, widen the gate to $4\sigma$ or $5\sigma$.
+  \item The program below uses the filter of the chapter (new: a flag \verb!gate! and the counter \verb!rejected!).
+\begin{verbatim}
+struct Kalman {
+    x: [f64; 2],
+    p: [[f64; 2]; 2],
+    sa: f64,
+    r: f64,
+    rejected: u32,                    // measurements rejected in a row
+}
+
+impl Kalman {
+    fn new(z0: f64, sigma: f64, sa: f64) -> Kalman {
+        Kalman {
+            x: [z0, 0.0],
+            p: [[sigma * sigma, 0.0], [0.0, 4.0]],
+            sa,
+            r: sigma * sigma,
+            rejected: 0,
+        }
+    }
+
+    fn predict(&mut self, dt: f64) {
+        self.x[0] += dt * self.x[1];
+        let p = self.p;
+        let a = p[0][0] + dt * (p[1][0] + p[0][1]) + dt * dt * p[1][1];
+        let b = p[0][1] + dt * p[1][1];
+        let c = p[1][0] + dt * p[1][1];
+        let q = self.sa * self.sa;
+        self.p = [
+            [a + q * dt.powi(4) / 4.0, b + q * dt.powi(3) / 2.0],
+            [c + q * dt.powi(3) / 2.0, p[1][1] + q * dt * dt],
+        ];
+    }
+
+    /// Returns false if the measurement was rejected by the gate.
+    fn update(&mut self, z: f64, gate: bool) -> bool {
+        let p = self.p;
+        let s = p[0][0] + self.r;
+        let innovation = z - self.x[0];
+        if gate && innovation.abs() > 3.0 * s.sqrt() {
+            self.rejected += 1;
+            if self.rejected >= 5 {          // the ball really jumped
+                *self = Kalman::new(z, self.r.sqrt(), self.sa);
+            }
+            return false;
+        }
+        self.rejected = 0;
+        let k = [p[0][0] / s, p[1][0] / s];
+        self.x[0] += k[0] * innovation;
+        self.x[1] += k[1] * innovation;
+        self.p = [
+            [p[0][0] - k[0] * p[0][0], p[0][1] - k[0] * p[0][1]],
+            [p[1][0] - k[1] * p[0][0], p[1][1] - k[1] * p[0][1]],
+        ];
+        true
+    }
+}
+
+fn run(z: &[f64], gate: bool) -> (f64, f64) {
+    let dt = 1.0 / 30.0;
+    let mut kf = Kalman::new(z[0], 0.05, 1.0);
+    for &zk in &z[1..] {
+        kf.predict(dt);
+        kf.update(zk, gate);
+    }
+    (kf.x[0], kf.x[1])
+}
+
+fn main() {
+    let mut z = vec![0.200, 0.242, 0.240, 0.235, 0.284,
+                     0.284, 0.363, 0.454, 0.389, 0.409];
+    z[5] = 1.5;                               // a false detection
+    let (a, va) = run(&z, false);
+    let (b, vb) = run(&z, true);
+    println!("no gate: x {a:.4} v {va:.4}");
+    println!("gate:    x {b:.4} v {vb:.4}");
+    // the ball is picked up and put down at 2.0 m
+    let mut w = vec![0.2, 0.24, 0.25, 0.27, 0.30];
+    w.extend([2.0, 2.01, 1.99, 2.0, 2.02, 2.01, 2.0, 1.99]);
+    let (c, _) = run(&w, true);
+    println!("after the jump: x {c:.3}");
+}
+\end{verbatim}
+prints
+\begin{center}\small\ttfamily
+\begin{tabular}{@{}l@{}}
+no gate: x 0.5806 v 0.9693\\
+gate:\ \ \ \ x 0.4337 v 0.7950\\
+after the jump: x 1.992
+\end{tabular}
+\end{center}
+The true position after the ten steps is $0.2+0.8\cdot9/30=0.44$\,m: without the gate the single false detection spoils the estimate by $14$\,cm and the speed by $0.17$\,m/s, with the gate the error is $0.6$\,cm. Without the second rule the gate would reject the correct measurements after the ball has been moved: every new measurement would be $>3\sigma$ away from the old estimate, the filter would never accept one, and the estimate would stay at the old position for ever. With both rules a single outlier is ignored, but a consistent new position (five in a row) is accepted: after the jump the estimate is $1.992$\,m. The number five is a compromise; at $30$ frames per second it is $0.17$\,s.
+\end{enumerate}

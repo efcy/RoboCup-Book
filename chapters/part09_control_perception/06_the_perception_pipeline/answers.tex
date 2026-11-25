@@ -1,0 +1,102 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $f=\dfrac{W/2}{\tan(\alpha/2)}=\dfrac{960}{\tan35^{\circ}}=\dfrac{960}{0.7002}=1371$ pixels.
+  \item $(0.3,0.1,2.0)$: $u=640+640\cdot0.3/2=736$, $v=360+640\cdot0.1/2=392$. $(-0.5,0,1.0)$: $u=640+640\cdot(-0.5)/1=320$, $v=360$: the point is $320$ pixels to the left of the centre, in the row of the centre.
+  \item $b=(300-360)/640=-0.09375$, $a=0$: $x=0.55\,(\cos25^{\circ}+0.09375\sin25^{\circ})/(\sin25^{\circ}-0.09375\cos25^{\circ})=0.55\cdot0.9459/0.3376=1.54$\,m, $y=0$ (straight ahead). For $3$\,m the row is $193.2$ (as in the program; the formula for the row is the one of the code in the chapter), and the width is $640\cdot0.14/\sqrt{9.3025}=89.6/3.050=29.4$ pixels.
+  \item Range $=640\cdot0.14/20=4.48$\,m, ground distance $\sqrt{4.48^2-0.55^2}=4.45$\,m. With $19$ pixels: range $4.716$\,m, ground distance $4.684$\,m: one pixel changes the result by $0.24$\,m ($5\%$). The size method is imprecise for small objects.
+  \item The weights are $1/0.01=100$ and $1/0.09=11.1$: $\hat d=(100\cdot2.0+11.1\cdot2.3)/111.1=2.03$\,m and $\sigma=\sqrt{1/111.1}=0.095$\,m. The first estimate is nine times more precise (in variance), so it dominates.
+  \item The angle error is $90\cdot0.08=7.2^{\circ}$. At $3$\,m the position error is about $2\cdot3\sin(3.6^{\circ})=0.38$\,m (or $3\tan7.2^{\circ}=0.38$\,m): more than twice the diameter of the ball. The head turns faster than the body, so this is a real effect for a robot that looks around.
+  \item The depression angle is $\arctan(0.55/3)=10.39^{\circ}$. With $+1^{\circ}$: $d=0.55/\tan(11.39^{\circ})=2.73$\,m ($-27$\,cm); with $-1^{\circ}$: $d=0.55/\tan(9.39^{\circ})=3.33$\,m ($+33$\,cm). Compare with the $4$\,cm that a one-pixel error causes at this distance.
+  \item The distance $x=H(\cos\varphi-b\sin\varphi)/(\sin\varphi+b\cos\varphi)$ goes to infinity when the denominator goes to zero (the horizon). One pixel then changes the result by metres; the ground contact point is also very small and hard to see exactly. A good pipeline does not report a precise number: it gives the distance \emph{with a large uncertainty} (growing with the square of the distance), or uses another source (the size of the ball) or only the \emph{direction}, which is still precise, and lets the tracker treat the measurement with a small weight.
+  \item
+\begin{verbatim}
+import math
+
+H, PHI = 0.55, math.radians(25)
+F, CX, CY = 640.0, 640.0, 360.0
+
+def to_pixel(x, y):
+    dz = -H
+    cam_x = -y
+    cam_y = -math.sin(PHI) * x - math.cos(PHI) * dz
+    cam_z = math.cos(PHI) * x - math.sin(PHI) * dz
+    return CX + F * cam_x / cam_z, CY + F * cam_y / cam_z
+
+def to_ground(u, v):
+    a, b = (u - CX) / F, (v - CY) / F
+    den = math.sin(PHI) + b * math.cos(PHI)
+    x = H * (math.cos(PHI) - b * math.sin(PHI)) / den
+    return x, -H * a / den
+
+worst = 0.0
+for i in range(12):
+    for j in range(9):
+        x, y = 0.5 + 0.5 * i, -2.0 + 0.5 * j
+        u, v = to_pixel(x, y)
+        x2, y2 = to_ground(u, v)
+        worst = max(worst, abs(x - x2), abs(y - y2))
+print("largest error: %.2e m" % worst)
+print(to_ground(640, 300))
+\end{verbatim}
+prints \verb!largest error: 4.44e-15 m! (the rounding error of floating point numbers) and \verb!(1.5408191888107488, -0.0)! for the last line. The two functions are exact inverses of each other for points on the ground.
+  \item
+\begin{verbatim}
+struct History {
+    stamps: Vec<f64>,
+    angles: Vec<f64>,
+}
+
+impl History {
+    fn push(&mut self, t: f64, angle: f64) {
+        self.stamps.push(t);
+        self.angles.push(angle);
+    }
+
+    /// Heading at time t, interpolated between the two nearest entries.
+    fn at(&self, t: f64) -> Option<f64> {
+        let i = self.stamps.partition_point(|&s| s <= t);
+        if i == 0 || i == self.stamps.len() {
+            return None;                         // outside the buffer
+        }
+        let (t0, t1) = (self.stamps[i - 1], self.stamps[i]);
+        let f = (t - t0) / (t1 - t0);
+        let (a0, a1) = (self.angles[i - 1], self.angles[i]);
+        Some(a0 + f * (a1 - a0))
+    }
+}
+
+/// Field position of the ball, seen from the robot at the origin.
+fn ball_in_field(bearing: f64, range: f64, heading: f64) -> (f64, f64) {
+    let a = heading + bearing;
+    (range * a.cos(), range * a.sin())
+}
+
+fn main() {
+    let rate = 60f64.to_radians();           // the robot turns 60 deg/s
+    let mut h = History { stamps: vec![], angles: vec![] };
+    for k in 0..=200 {
+        let t = k as f64 * 0.01;
+        h.push(t, rate * t);
+    }
+    let ball = (3.0_f64, 0.5_f64);
+    let range = ball.0.hypot(ball.1);
+    let direction = ball.1.atan2(ball.0);
+    let t0 = 1.000;                          // moment of the exposure
+    let bearing = direction - rate * t0;         // what the camera saw
+    let now = t0 + 0.1;                  // when the detection is ready
+    for (name, heading) in [("current heading", h.at(now).unwrap()),
+                            ("heading at t0", h.at(t0).unwrap())] {
+        let (x, y) = ball_in_field(bearing, range, heading);
+        println!("{name:16} ball ({x:.3}, {y:.3}), error {:.3} m",
+                 (x - ball.0).hypot(y - ball.1));
+    }
+}
+\end{verbatim}
+prints
+\begin{center}\small\ttfamily
+\begin{tabular}{@{}l@{}}
+current heading  ball (2.931, 0.811), error 0.318 m\\
+heading at t0    ball (3.000, 0.500), error 0.000 m
+\end{tabular}
+\end{center}
+With the current heading the ball seems to be $0.32$\,m from its place (the heading changed by $6^{\circ}$ during the $0.1$\,s). With the heading at the time of the exposure the error is zero (to the printed precision); because the heading here is linear in time, the interpolation between the $10$\,ms entries is exact. The buffer must be long enough for the largest delay ($\ge$ latency, say $0.5$\,s), and \verb!at! returns \verb!None! outside of it, so a detection that is too old is not used by mistake.
+\end{enumerate}

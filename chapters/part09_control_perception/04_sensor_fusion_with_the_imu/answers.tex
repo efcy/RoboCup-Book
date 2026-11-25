@@ -1,0 +1,65 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $\theta=\operatorname{atan2}(1.7,\,9.66)=\arctan(0.176)=9.98^{\circ}\approx10^{\circ}$; $|a|=\sqrt{1.7^2+9.66^2}=\sqrt{96.21}=9.81$\,m/s$^2$: at rest the length is $g$, as it must be.
+  \item $0.3\cdot10=3^{\circ}$; $0.3\cdot120=36^{\circ}$; $0.3\cdot600=180^{\circ}$. Pure integration of a gyroscope is only usable for seconds.
+  \item (a) $\alpha=\tau/(\tau+\Delta t)=0.5/0.505=0.990$. (b) $\tau=\alpha\Delta t/(1-\alpha)=0.99\cdot0.01/0.01=0.99$\,s.
+  \item $b\tau=0.03\cdot0.4=0.012$\,rad $=0.69^{\circ}$. For $0.1^{\circ}=0.001745$\,rad one needs $\tau<0.001745/0.03=0.058$\,s. A very small $\tau$ means that the filter follows the accelerometer, with its vibration and its errors during accelerations, almost directly: one gets the drift out, and the noise in.
+  \item $\hat\theta=0.97\,(0.2-0.4\cdot0.01)+0.03\cdot0.15=0.97\cdot0.196+0.0045=0.19012+0.0045=0.19462$\,rad.
+  \item $|a|=\sqrt{9+96.236}=10.26$\,m/s$^2$, which deviates from $g$ by $0.45>0.3$: the reading is \emph{not} used. The filter then continues with the gyroscope alone (the prediction step), which is good for short times, and returns to the accelerometer when $|a|$ is near $g$ again.
+  \item Yaw is a rotation about the vertical axis, and this does not change the direction of gravity, the only thing the accelerometer sees. Other sources: a magnetometer (compass), the camera that recognises the field lines or goals (the position and heading on the field, Chapter~\ref{ch:ctl5}); also the heading may be defined at the start of the game and corrected by the walking odometry.
+  \item
+\begin{verbatim}
+import random, math
+random.seed(1)
+N, sigma = 400, 0.01
+samples = [0.02 + random.gauss(0, sigma) for _ in range(N)]
+bias = sum(samples) / N
+print(round(bias, 4), "expected std", sigma / math.sqrt(N))
+err = math.degrees(abs(bias - 0.02) * 60)
+print("error after 60 s:", round(err, 2), "deg")
+\end{verbatim}
+prints \verb!0.0207 expected std 0.0005! and an error of $2.47^{\circ}$ after one minute (this random run was $1.4$ standard deviations away from the true bias; the expected error is $0.0005\cdot60=0.03$\,rad $=1.7^{\circ}$). With a longer calibration (more samples, $N=4000$) the error shrinks by $\sqrt{10}$; it never disappears, which is why the filter needs the accelerometer too.
+  \item The code sees $90$\,rad/s instead of $1.571$\,rad/s, a factor of $57.3$ too much: after one second the angle is $90$\,rad ($5157^{\circ}$) instead of $90^{\circ}$. The timing error: $\omega\,\Delta(\Delta t)=3\cdot0.001=0.003$\,rad $=0.17^{\circ}$ per step; since jitter is random, it averages out partly, but a loop that is on average $20\%$ too slow gives a systematic error of $20\%$ of every rotation. Use the time stamps of the samples.
+  \item
+\begin{verbatim}
+const G: f64 = 9.81;
+
+struct Comp {
+    angle: f64,
+    tau: f64,
+}
+
+impl Comp {
+    fn update(&mut self, gyro: f64, acc: [f64; 3], dt: f64,
+              gate: bool) {
+        let alpha = self.tau / (self.tau + dt);
+        let norm = acc.iter().map(|a| a * a).sum::<f64>().sqrt();
+        let trusted = !gate || (norm - G).abs() < 0.5;
+        let predicted = self.angle + gyro * dt;
+        // without a trusted accelerometer the gyroscope alone decides
+        let acc_angle =
+            if trusted { acc[0].atan2(acc[2]) } else { predicted };
+        self.angle = alpha * predicted + (1.0 - alpha) * acc_angle;
+    }
+}
+
+fn run(gate: bool) -> f64 {
+    let (dt, tilt, bias) = (0.005, 0.10, 0.0);
+    let mut f = Comp { angle: tilt, tau: 0.245 };
+    let mut worst = 0.0_f64;
+    for k in 0..1000 {
+        let t = k as f64 * dt;
+        let push = if (2.0..2.5).contains(&t) { 8.0 } else { 0.0 };
+        let acc = [G * tilt.sin() + push, 0.0, G * tilt.cos()];
+        f.update(bias, acc, dt, gate);
+        worst = worst.max((f.angle - tilt).abs());
+    }
+    worst
+}
+
+fn main() {
+    println!("worst error without gate: {:.3} rad", run(false));
+    println!("worst error with gate:    {:.3} rad", run(true));
+}
+\end{verbatim}
+prints \verb!worst error without gate: 0.558 rad! and \verb!worst error with gate: 0.000 rad!. Without the check the push is read as a tilt of $\operatorname{atan2}(8.98,\,9.76)=0.74$\,rad and the estimate is pulled to it; with the check the gyroscope (here exact) carries the filter through the push. Weaknesses: (1) a push or a sequence of steps that lasts long keeps the gate closed, so the gyroscope drifts uncorrected (while walking $|a|$ is almost never close to $g$; the threshold must be tuned on real data, or the weight of the accelerometer reduced smoothly instead of switching it off); (2) accelerations below the threshold pass: a sideways acceleration of $0.4$\,m/s$^2$ (the length changes by only $0.008$\,m/s$^2$) still tilts the computed angle by $\arctan(0.4/9.81)=2.3^{\circ}$, since the length of a vector grows only quadratically with a perpendicular addition, while the angle changes linearly: the length is a weak test for small sideways accelerations.
+\end{enumerate}

@@ -1,0 +1,180 @@
+\bookchapter{Sensor fusion with the IMU}\label{ch:ctl4}
+
+\section*{Explanation}
+Is the robot upright? In which direction is it falling, how fast, and is it turning? The answer comes from the \textbf{IMU} (inertial measurement unit), a small chip with two sensors that you know from every phone:
+\begin{itemize}[nosep]
+  \item the \textbf{gyroscope} measures the \emph{angular velocity}: how fast the chip turns around each of its three axes, in rad/s (or degrees per second, check the datasheet);
+  \item the \textbf{accelerometer} measures the \emph{specific force}: acceleration minus gravity. A chip at rest does not measure ``zero'' but $g=9.81$\,m/s$^2$ pointing \emph{up} (the reaction of the table), and this is what tells us where ``down'' is.
+\end{itemize}
+Neither alone gives a good angle, and the way they are combined, \textbf{sensor fusion}, is the subject of this chapter. This is exactly the situation of the Kalman filter of Chapter~\ref{ch:ctl3}: two imperfect sources with different weaknesses.
+
+\section*{The gyroscope: smooth, but it drifts}
+To get an angle from a gyroscope, we integrate the angular velocity: $\theta\leftarrow\theta+\omega\,\Delta t$ in every step. This is very good for short times (fast, smooth, hardly any noise), but every gyroscope has a small constant error, the \textbf{bias} $b$: it reads $\omega+b$ even when it is not turning. After the time $t$ the angle is wrong by $b\,t$.
+
+\begin{example}
+A bias of only $0.5^{\circ}$/s (a typical order of magnitude for a cheap chip) gives an error of $0.5\cdot60=30^{\circ}$ after one minute. The robot would believe that it stands tilted by $30^{\circ}$ although it stands straight.
+\end{example}
+
+\section*{The accelerometer: correct on average, but nervous}
+At rest, or moving gently, the accelerometer measures gravity, and from its direction we get the tilt. If the chip is tilted by $\theta$ around the $y$ axis (a common convention: $x$ forward, $y$ left, $z$ up), it measures $a_x=g\sin\theta$ and $a_z=g\cos\theta$, so
+\[
+\theta_{\text{acc}}=\operatorname{atan2}(a_x,\,a_z).
+\]
+(The sign depends on how the chip is mounted: check it on the robot.) This estimate has no drift: it is right on average for all times. But it is only right if the chip \emph{does not accelerate}. When the robot takes a step, kicks or is pushed, the acceleration of the motion adds to gravity and the computed angle is wrong, by tens of degrees. In addition the walking vibration makes the signal noisy. The accelerometer is good at low frequencies (slow tilt), bad at high frequencies.
+
+\begin{center}
+\begin{tabular}{l c c}
+\hline
+ & gyroscope & accelerometer\\\hline
+short times (fast changes) & excellent & poor (vibration, accelerations)\\
+long times & drifts (bias) & correct (gravity)\\\hline
+\end{tabular}
+\end{center}
+
+\section*{The complementary filter}
+The two weaknesses are opposite. The idea of the \textbf{complementary filter} is to use each sensor where it is good: the gyroscope for fast changes, the accelerometer for the slow ones. One line of code does this:
+\[
+\hat\theta_k=\alpha\,\bigl(\hat\theta_{k-1}+\omega_k\,\Delta t\bigr)+(1-\alpha)\,\theta_{\text{acc},k},\qquad \alpha=\frac{\tau}{\tau+\Delta t}.
+\]
+The first part continues with the gyroscope; the second pulls the estimate slowly towards the accelerometer. The number $\tau$ is the \textbf{time constant}: changes that are faster than $\tau$ come from the gyroscope, slower ones from the accelerometer. With the loop time $\Delta t=5$\,ms (200\,Hz) the value $\alpha=0.98$ means $\tau=\alpha\Delta t/(1-\alpha)=0.245$\,s.
+
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.4mm]},bx/.style={draw,thick,rounded corners=2pt,minimum width=2.4cm,minimum height=0.9cm,font=\footnotesize,align=center}]
+ \node[bx,fill=blue!10] (g) at (0,1.2) {gyroscope\\ $\omega$};
+ \node[bx,fill=blue!10] (i) at (3.6,1.2) {integrate\\ $\int\omega\,\dd t$};
+ \node[bx,fill=yellow!20] (hp) at (7.2,1.2) {high-pass\\ (fast part)};
+ \node[bx,fill=green!10] (a) at (0,-0.6) {accelerometer\\ $\theta_{\text{acc}}$};
+ \node[bx,fill=yellow!20] (lp) at (7.2,-0.6) {low-pass\\ (slow part)};
+ \node[circle,draw,thick,font=\footnotesize,inner sep=1pt] (s) at (10.2,0.3) {$+$};
+ \draw[->,thick] (g)--(i); \draw[->,thick] (i)--(hp); \draw[->,thick] (a)--(lp);
+ \draw[->,thick] (hp)-|(s); \draw[->,thick] (lp)-|(s);
+ \draw[->,thick] (s)--++(1.1,0) node[right,font=\footnotesize]{$\hat\theta$};
+\end{tikzpicture}
+\captionof{figure}{The complementary filter in two views. The angle of the gyroscope passes a high-pass filter, the angle of the accelerometer a low-pass filter, and the two add up to the whole signal.}
+\end{center}
+
+A short calculation shows what the filter does with the bias. For a robot that stands still at the angle $\theta$, the gyroscope reads only $b$, and the estimate settles where the pull of the accelerometer balances the drift of the gyroscope: with an error of $b\,\tau$. With $b=0.02$\,rad/s and $\tau=0.245$\,s the error is $0.005$\,rad $=0.28^{\circ}$: small and constant instead of growing for ever.
+
+\begin{example}
+One step: $\alpha=0.98$, $\Delta t=0.01$\,s. The estimate is $\hat\theta=0.10$\,rad, the gyroscope reads $\omega=0.5$\,rad/s, the accelerometer gives $\theta_{\text{acc}}=0.12$\,rad. Then
+\[
+\hat\theta=0.98\,(0.10+0.5\cdot0.01)+0.02\cdot0.12=0.1029+0.0024=0.1053\ \text{rad}.
+\]
+\end{example}
+
+\section*{A simulation}
+We simulate a trunk that nods sinusoidally by $\pm8.6^{\circ}$ (one nod every $2$\,s), for $20$\,s at $200$\,Hz. The gyroscope has a bias of $0.02$\,rad/s and noise of $0.01$\,rad/s; the accelerometer angle has noise of $0.03$\,rad and, as a model of the vibration of walking, an additional oscillation of $0.1$\,rad ($5.7^{\circ}$) at $2$\,Hz. (All numbers are assumptions of this example.)
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[width=0.85\linewidth,height=5.4cm,xlabel={time $t$ (s)},ylabel={angle error (degrees)},xmin=0,xmax=20,ymin=-12,ymax=26,grid=both,legend style={font=\scriptsize,at={(0.5,1.03)},anchor=south,legend columns=2}]
+ \addplot[red,thick] table[x=t,y=gyro] {chapters/part09_control_perception/04_sensor_fusion_with_the_imu/err1.dat};
+ \addplot[gray,thin] table[x=t,y=acc] {chapters/part09_control_perception/04_sensor_fusion_with_the_imu/err1.dat};
+ \addplot[blue,very thick] table[x=t,y=comp] {chapters/part09_control_perception/04_sensor_fusion_with_the_imu/err1.dat};
+ \legend{gyroscope only,accelerometer only,complementary $\alpha=0.98$}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{Error of the angle estimate. The gyroscope drifts linearly ($23^{\circ}$ after $20$\,s), the accelerometer is correct on average but oscillates by $\pm$ a few degrees, the complementary filter has neither problem.}
+\end{center}
+
+\begin{center}\small
+\begin{tabular}{l c}
+\hline
+ & RMS error of the angle\\\hline
+gyroscope only (whole run) & $13.4^{\circ}$ (end of run: $23.2^{\circ}$)\\
+accelerometer only & $4.4^{\circ}$\\
+complementary filter, $\alpha=0.9$ ($\tau=0.045$\,s) & $3.5^{\circ}$\\
+complementary filter, $\alpha=0.98$ ($\tau=0.245$\,s) & $1.3^{\circ}$\\
+complementary filter, $\alpha=0.999$ ($\tau=5$\,s) & $4.8^{\circ}$\\
+Kalman filter, $Q$ from the sensor specification & $1.5^{\circ}$\\
+Kalman filter, $Q$ for the gyroscope reduced $10\times$ & $0.57^{\circ}$\\\hline
+\end{tabular}
+\end{center}
+(The filters are evaluated after the first two seconds, when they have settled.) The complementary filter has one number to choose, and the table shows the compromise: a too small $\tau$ lets the vibration of the accelerometer pass, a too large $\tau$ lets the bias of the gyroscope grow before the accelerometer corrects it.
+
+\section*{A Kalman filter with a bias state}
+Instead of choosing $\tau$ we can make the filter \emph{learn the bias}. The state is $(\theta,b)$; the model of the prediction uses the gyroscope as input, and the accelerometer angle is the measurement:
+\[
+\theta\leftarrow\theta+(\omega-b)\,\Delta t,\qquad b\leftarrow b,\qquad z=\theta_{\text{acc}},\qquad
+F=\begin{pmatrix}1&-\Delta t\\0&1\end{pmatrix},\quad H=(1\ \ 0).
+\]
+The filter equations are those of Chapter~\ref{ch:ctl3}. If the estimate of $\theta$ is, on average, below the accelerometer angle, the filter concludes that the gyroscope must have read too little, and moves $b$.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[width=0.85\linewidth,height=4.8cm,xlabel={time $t$ (s)},ylabel={estimated bias (rad/s)},xmin=0,xmax=20,ymin=0,ymax=0.12,grid=both]
+ \addplot[blue,very thick] table[x=t,y=b] {chapters/part09_control_perception/04_sensor_fusion_with_the_imu/bias.dat};
+ \addplot[black,dashed] coordinates {(0,0.02)(20,0.02)};
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{The Kalman filter estimates the bias of the gyroscope while the robot is moving (dashed: the true bias $0.02$\,rad/s). After one second the estimate is $0.10$, after five seconds $0.026$, at the end $0.022$.}
+\end{center}
+
+An honest remark about the table: with the values $Q$ that follow from the specification of the sensors, the Kalman filter ($1.5^{\circ}$) is \emph{not} better than the complementary filter ($1.3^{\circ}$). The reason is that the theory assumes the errors of the accelerometer to be independent from sample to sample, while the vibration of walking is a slow oscillation, the same for many samples. By telling the filter to trust the gyroscope more ($Q$ ten times smaller) the error falls to $0.57^{\circ}$. This is how real filters are tuned: from recorded data of the real robot walking, not from the data sheet alone.
+
+\section*{From one angle to three}
+The robot turns in three dimensions. The orientation is stored as a rotation matrix or, more compactly, a \textbf{quaternion}, and filters such as the Mahony or Madgwick filter apply the complementary idea to all three axes: the gyroscope turns the orientation, and the direction of gravity from the accelerometer corrects \emph{roll and pitch}. The third angle, \textbf{yaw} (the direction in which the robot looks), cannot be corrected by gravity, since it does not change the direction of gravity. It drifts, and has to be corrected by other sources: a magnetometer (unreliable near motors), a camera that sees the field lines (Chapter~\ref{ch:ctl5}), or it is simply defined relative to the start of the game.
+
+\begin{keyidea}[Practical rules for IMU data]
+(1) Calibrate the gyroscope bias at rest, as the mean over a second or two. (2) Use the time stamp of each sample for $\Delta t$, not the nominal loop time; with $\omega=3$\,rad/s a timing error of $1$\,ms is an angle error of $0.003$\,rad in one step. (3) Check the units (rad/s or $^{\circ}$/s, $g$ or m/s$^2$) and the axes and signs on the real robot by tilting it by hand. (4) Do not trust the accelerometer when $\bigl|\,|a|-g\,\bigr|$ is large: then the robot accelerates and the tilt computed from it is wrong.
+\end{keyidea}
+
+\section*{In code}
+The complementary filter with a calibration at rest and the effect of the calibration:
+%rs:comp
+\begin{verbatim}
+struct Complementary {
+    angle: f64,      // estimated tilt in rad
+    tau: f64,        // time constant of the filter in s
+}
+
+impl Complementary {
+    fn update(&mut self, gyro: f64, acc_angle: f64, dt: f64) {
+        let alpha = self.tau / (self.tau + dt);
+        self.angle = alpha * (self.angle + gyro * dt)
+                   + (1.0 - alpha) * acc_angle;
+    }
+}
+
+/// Mean of the gyroscope while the robot stands still.
+fn gyro_bias(samples: &[f64]) -> f64 {
+    samples.iter().sum::<f64>() / samples.len() as f64
+}
+
+fn main() {
+    let dt = 0.005;
+    let true_tilt = 0.10;           // the robot leans by 0.10 rad
+    let bias = 0.02;                // the gyro reads 0.02 rad/s too much
+    // 1. calibration at rest: the real turning rate is 0
+    let rest = vec![bias; 400];
+    let b = gyro_bias(&rest);
+    // 2. filter without and with the bias correction, 5 seconds
+    let mut raw = Complementary { angle: 0.0, tau: 0.245 };
+    let mut cal = Complementary { angle: 0.0, tau: 0.245 };
+    for _ in 0..1000 {
+        raw.update(bias, true_tilt, dt);
+        cal.update(bias - b, true_tilt, dt);
+    }
+    println!("without calibration: {:.4} rad", raw.angle);
+    println!("with calibration:    {:.4} rad", cal.angle);
+}
+\end{verbatim}
+prints \verb!without calibration: 0.1049 rad! and \verb!with calibration:    0.1000 rad!: the error without calibration is the predicted $b\,\tau=0.0049$\,rad. (In this synthetic test the gyroscope has no noise, so the calibration is exact; on the robot the mean of $N$ samples has the error $\sigma/\sqrt N$.)
+
+\begin{aibox}[IMU data and neural networks]
+Learned walking policies (Part on reinforcement learning, and the K1 chapters) usually receive the filtered orientation of the trunk (the direction of gravity in the frame of the body) and the angular velocity of the gyroscope as observations. Whatever the filter delivers in the simulation must also be delivered, with the same noise and delay, on the real robot, otherwise the policy sees a different world.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A robot stands still and the accelerometer reads $(a_x,a_y,a_z)=(1.7,\,0,\,9.66)$\,m/s$^2$. Compute the tilt $\theta=\operatorname{atan2}(a_x,a_z)$ in degrees, and the length $|a|$ of the vector.
+  \item A gyroscope has a bias of $0.3^{\circ}$/s. How large is the angle error after $10$\,s, $2$ minutes and $10$ minutes if the angle is obtained by pure integration?
+  \item Compute $\alpha$ and $\tau$: (a) $\tau=0.5$\,s at $\Delta t=0.005$\,s, (b) $\alpha=0.99$ at $\Delta t=0.01$\,s.
+  \item With a bias of $b=0.03$\,rad/s and $\tau=0.4$\,s, how large is the steady error $b\,\tau$ of the complementary filter, in degrees? Which $\tau$ keeps it below $0.1^{\circ}$ (and why would one not choose a very small $\tau$)?
+  \item One step of the complementary filter: $\alpha=0.97$, $\Delta t=0.01$\,s, $\hat\theta=0.2$\,rad, $\omega=-0.4$\,rad/s, $\theta_{\text{acc}}=0.15$\,rad. Compute the new estimate.
+  \item The robot is kicked and the accelerometer reads $(3.0,\,0,\,9.81)$\,m/s$^2$ for a moment. Compute $|a|$. If the filter rejects accelerometer data when $\bigl||a|-g\bigr|>0.3$\,m/s$^2$ (with $g=9.81$), is this reading used? What does the filter do instead?
+  \item Why can the accelerometer not correct the yaw angle? Name two other sources of information for yaw.
+  \item Write a Python function that computes the gyroscope bias from $400$ samples with noise $\sigma=0.01$\,rad/s (generate them with a random generator), and compute the expected standard deviation $\sigma/\sqrt N$ of the bias. How large is the angle error that remains after one minute because of it?
+  \item The gyroscope reports $90^{\circ}$/s, but the code assumes rad/s. What angular velocity does the code see, and what is wrong with the angle after one second? The loop is intended to run every $5$\,ms, but each step has a jitter of up to $1$\,ms. How large is the angle error of a single step at $\omega=3$\,rad/s if the code assumes $5$\,ms, but $6$\,ms have passed?
+  \item[\textbf{\thechapter.10}$\star$] Extend the complementary filter in Rust so that it takes the accelerometer vector $(a_x,a_y,a_z)$ and only uses the accelerometer if $\bigl||a|-g\bigr|<0.5$\,m/s$^2$. Test it with a robot that stands tilted by $0.10$\,rad, a gyroscope without bias and a push that adds $8$\,m/s$^2$ to $a_x$ between $t=2.0$\,s and $2.5$\,s ($\tau=0.245$\,s, $\Delta t=5$\,ms, $5$\,s in total). Report the worst angle error with and without the check. What is the weakness of the check when the push lasts a long time?
+\end{enumerate}

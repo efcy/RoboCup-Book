@@ -1,0 +1,40 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $y=\frac{K_p}{1+K_p}\,r=\frac34\cdot2=1.5$, so the error is $0.5$.
+  \item $\frac{1}{1+K_p}<0.01$ gives $K_p>99$. A gain that large makes the loop sensitive to delays and noise (it starts to oscillate), and the first command after a step, $K_p\cdot e$, is far above what the motor can deliver, so the command saturates all the time. The integral term is the better way to remove the steady-state error.
+  \item $e=0.4$; $\dot y\approx(0.6-0.5)/0.05=2$; $I=0.2+0.4\cdot0.05=0.22$. Then $u=2\cdot0.4+1.5\cdot0.22-0.4\cdot2=0.8+0.33-0.8=0.33$.
+  \item $K_p=0.6\cdot8=4.8$, $T_i=0.5/2=0.25$\,s, $T_d=0.5/8=0.0625$\,s, $K_i=K_p/T_i=4.8/0.25=19.2$, $K_d=K_pT_d=4.8\cdot0.0625=0.3$.
+  \item In the final state $y=(K_p\,r-d)/(1+K_p)$ with $d=0.5$: for $K_p=4$: $(4-0.5)/5=0.70$; for $K_p=9$: $(9-0.5)/10=0.85$. With an integral term the speed returns to $1$, because the integral grows until the error is zero. (A larger gain reduces the effect of the load, but never removes it.)
+  \item The error jumps by $1$ within one step: $\Delta e/\Delta t=1/0.01=100$, and the term is $K_d\cdot100=50$, a violent command (clamped at the limit by a real motor). The measurement does not change in this step, so its derivative is $0$ and the term is $0$; it grows smoothly while the motor starts to move.
+  \item While the command is saturated the motor does not react to a larger command, but the error stays large and the integral keeps adding up, so it becomes much larger than the value that is needed in the final state. When the speed reaches the setpoint, the error is $0$ but the large integral still produces a large command: the speed overshoots and the integral only slowly decreases, because the error must become negative for a long time. Clamping stops the growth while saturated, so the integral has the right size when the saturation ends. Examples: a knee motor that has to lift the whole body when the robot gets up (current limit), a joint that pushes against an obstacle or against the end of its range, a robot that is held by a referee.
+  \item
+\begin{verbatim}
+dt, tau = 0.01, 0.5
+for kp in (1, 4, 16):
+    y = 0.0
+    for _ in range(401):             # 4 seconds
+        u = kp * (1.0 - y)
+        y += dt * (-y + u) / tau
+    print(kp, round(y, 4), round(kp / (1 + kp), 4))
+\end{verbatim}
+prints \verb!1 0.5 0.5!, \verb!4 0.8 0.8! and \verb!16 0.9412 0.9412!: after $4$\,s ($8\tau$) the simulation has converged to the formula.
+  \item $\sqrt{\tau K_p}=\sqrt{4}=2$. For $K_d=0$: $\zeta=\frac{1}{4}=0.25$ and the overshoot is $\exp(-\pi\cdot0.25/\sqrt{1-0.0625})=\exp(-0.811)=0.444$, i.e.\ $44\%$. For $K_d=2$: $\zeta=\frac{3}{4}=0.75$, overshoot $\exp(-\pi\cdot0.75/0.661)=\exp(-3.56)=0.028$, i.e.\ $2.8\%$. The $100$\,Hz simulation of the figure shows $52\%$ and $3.6\%$: the formula is for the continuous system, and the simple step method with $10$\,ms adds a little energy (a shorter simulation step moves the result towards the formula: $45\%$ and $2.9\%$ with $1$\,ms).
+  \item (a) $(1+K_d)^2=4\tau K_p=4\cdot0.2\cdot45=36$, so $1+K_d=6$ and $K_d=5$; $\omega_0=\sqrt{45/0.2}=15$\,rad/s. (b) With $K_d=5$ the peak is $1.0000$ (no overshoot); with $K_d=10/3\approx3.33$ the damping ratio is $\zeta=4.33/6=0.72$, the overshoot $3.8\%$ by the formula, and the simulation (step $1$\,ms, loop $100$\,Hz) shows a peak of $1.042$. (c) The program below simulates the plant with a $1$\,ms step, the controller at a given rate and the measurements delayed:
+\begin{verbatim}
+def sim(kp, kd, tau=0.2, fs=100, delay=0.0, T=3.0, h=0.001):
+    th = w = u = 0.0
+    nd = int(round(delay / h))
+    hist = [(0.0, 0.0)] * (nd + 1)
+    every = int(round(1 / (fs * h)))
+    peak = 0.0
+    for k in range(int(T / h)):
+        hist.append((th, w))
+        if k % every == 0:
+            ths, ws = hist[-1 - nd]      # old measurement
+            u = kp * (1 - ths) - kd * ws
+        peak = max(peak, th)
+        th += h * w
+        w += h * (-w + u) / tau
+    return peak, th
+\end{verbatim}
+For $K_p=45$, $K_d=5$: $100$\,Hz without delay, peak $1.000$; $50$\,Hz without delay, peak $1.000$; $50$\,Hz with a $40$\,ms delay, peak $1.206$ ($21\%$ overshoot), and with $K_d=3.33$ the peak is $1.42$. With a delay of $80$\,ms the loop is unstable: the angle oscillates with growing amplitude. The controller acts on old information and brakes too late. A delay is therefore as dangerous as a too large gain. Remedies: reduce $K_p$ (and with it the speed of the joint), take the angle \emph{and the speed} from a faster, less delayed source (the motor driver), or predict the present state from the delayed measurement (Chapter~\ref{ch:ctl3}).
+\end{enumerate}

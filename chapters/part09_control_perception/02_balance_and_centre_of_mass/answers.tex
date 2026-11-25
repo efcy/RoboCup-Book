@@ -1,0 +1,55 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $M=5$\,kg; $x=(4\cdot0+1\cdot0.30)/5=0.06$\,m, $z=(4\cdot0.20+1\cdot0.60)/5=0.28$\,m. The CoM is at $(0.06,\,0.28)$.
+  \item With both feet the polygon is the rectangle $x\in[-0.10,0.10]$, $y\in[-0.13,0.13]$ (it includes the gap between the feet). $A$ is inside, $B$ is outside ($x>0.10$), $C$ is outside ($y>0.13$). With only the right foot the polygon is $x\in[-0.10,0.10]$, $y\in[0.05,0.13]$: $A$ is \emph{outside} ($y=0.02<0.05$; the robot would tip over to the left), $B$ and $C$ are outside as well. This is why the weight must be shifted over the supporting foot before the other one is lifted.
+  \item $T_c=0.175$\,s for $h=0.3$\,m, $0.286$\,s for $0.8$\,m, $0.319$\,s for $1.0$\,m. The tall robot has more time: it falls more slowly (this is why a tall person is easier to catch than a short one, and why a small robot needs a faster control loop).
+  \item $\cosh(t/T_c)=\dfrac{0.20}{0.02}=10$, so $t=T_c\cdot2.993=0.226\cdot2.993=0.676$\,s.
+  \item $\xi=0.02+0.15\cdot0.226=0.0539$\,m $=5.4$\,cm $>L=5$\,cm: the ankles cannot stop the robot, it must step. For $v=0.10$\,m/s: $\xi=0.02+0.0226=0.0426$\,m $=4.3$\,cm, inside the foot, but with only $0.7$\,cm margin (less than the $80\%$ rule: $4.3>4.0$\,cm, so the program of the chapter would also step here).
+  \item $T_c=0.286$\,s, $v_{\max}=L/T_c=0.08/0.286=0.28$\,m/s.
+  \item Robot 1: $T_c=0.226$\,s, $v_{\max}=0.05/0.226=0.22$\,m/s. Robot 2: $T_c=0.319$\,s, $v_{\max}=0.10/0.319=0.31$\,m/s. The larger robot falls more slowly ($T_c$ larger by $\sqrt2$), so its controller has more time for each reaction, and it can absorb the faster push, because its feet are larger. (A fall of the large robot is also much more expensive: it has eight times the mass.)
+  \item $\tau=mgx=10\cdot9.81\cdot0.03=2.94$\,N\,m. With a limit of $3$\,N\,m: $x=3/(10\cdot9.81)=0.0306$\,m, i.e.\ $3.1$\,cm. Heavier robots and larger offsets need much more torque, which is why robots stand with the CoM above the ankles.
+  \item
+\begin{verbatim}
+import math
+tc = math.sqrt(0.5 / 9.81)
+h = 0.001
+x, v, t = 0.01, 0.0, 0.0
+while x < 0.05:
+    a = x / tc**2
+    x += h * v
+    v += h * a
+    t += h
+print(round(t, 3), round(tc * math.acosh(5), 3))
+\end{verbatim}
+prints \verb!0.519 0.518!, the simulation and the formula agree within the step size.
+  \item
+\begin{verbatim}
+fn recovers(v0: f64, h: f64, l: f64) -> bool {
+    let tc = (h / 9.81).sqrt();
+    let (mut x, mut v) = (0.0_f64, v0);
+    let dt = 0.001;
+    for _ in 0..3000 {
+        let xi = x + tc * v;
+        let p = (1.5 * xi).clamp(-l, l);
+        let a = (x - p) / (tc * tc);
+        x += dt * v;
+        v += dt * a;
+        if x.abs() > 0.5 {
+            return false;
+        }
+    }
+    true
+}
+
+fn main() {
+    let (h, l) = (0.5, 0.05);
+    let (mut lo, mut hi) = (0.0, 0.5);
+    for _ in 0..30 {
+        let mid = 0.5 * (lo + hi);
+        if recovers(mid, h, l) { lo = mid } else { hi = mid }
+    }
+    let limit = l / (h / 9.81_f64).sqrt();
+    println!("largest v0 {lo:.4}, L/Tc {limit:.4}");
+}
+\end{verbatim}
+prints \verb!largest v0 0.2215, L/Tc 0.2215!: the bisection finds the limit of the formula to four digits (the controller saves the robot exactly when the starting capture point is inside the foot). With a delayed sensor the controller acts on the \emph{old} capture point: at the moment it reacts the true $\xi$ has already grown by a factor $e^{0.05/T_c}\approx1.25$, and the ankle torque is applied too late, so the largest recoverable push is \emph{smaller} (the same effect as in the delayed joint of Chapter~\ref{ch:ctl1}); one compensates by a margin, such as the $80\%$ rule, and by predicting forward the state that has been measured (Chapter~\ref{ch:ctl3}).
+\end{enumerate}

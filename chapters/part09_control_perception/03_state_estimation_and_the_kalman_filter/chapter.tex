@@ -1,0 +1,187 @@
+\bookchapter{State estimation and the Kalman filter}\label{ch:ctl3}
+
+\section*{Explanation}
+The controllers of Chapter~\ref{ch:ctl1} assumed that we know the state of the robot exactly: the angle of the joint, the speed, the position of the ball. In reality we have only \textbf{measurements}, and they are noisy, delayed, sometimes missing and sometimes wrong. The \textbf{state} is what we want to know (position and velocity of the ball); \textbf{state estimation} is the art of computing the best guess of the state from all measurements so far and from what we know about how the world moves. The standard tool is the \textbf{Kalman filter}, found in nearly every robot, phone and aircraft.
+
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.4mm]},bx/.style={draw,thick,rounded corners=2pt,minimum width=3.0cm,minimum height=1.0cm,font=\footnotesize,align=center}]
+ \node[bx,fill=blue!10] (pr) at (0,0) {\textbf{predict}\\ move the estimate\\ with the model};
+ \node[bx,fill=orange!15] (up) at (5.5,0) {\textbf{update}\\ correct with the\\ new measurement};
+ \draw[->,thick] (pr) -- node[above,font=\scriptsize]{uncertainty grows} (up);
+ \draw[->,thick] (up.south) -- ++(0,-0.9) -| node[below,font=\scriptsize,pos=0.25]{uncertainty shrinks} (pr.south);
+ \draw[<-,thick] (up.north) -- ++(0,0.8) node[above,font=\scriptsize]{measurement $z$};
+\end{tikzpicture}
+\captionof{figure}{The two steps of a Kalman filter. The filter alternates between predicting and correcting, and it always knows \emph{how sure} it is.}
+\end{center}
+
+\section*{Noise and two simple filters}
+A camera sees the ball $30$ times per second. Each measurement is the true position plus an error; in this chapter we assume the error to be random with standard deviation $\sigma=5$\,cm (an assumed example, not a property of any particular camera). The simplest way to reduce noise is to \textbf{average}. For a constant quantity, the mean of $n$ measurements has the standard deviation $\sigma/\sqrt n$: $100$ measurements give $5\,\text{cm}/10=0.5$\,cm. But a ball \emph{moves}, and an average of old positions lags behind.
+
+A popular compromise is the \textbf{exponential moving average} (low-pass filter):
+\[
+\hat x_k=\hat x_{k-1}+\alpha\,(z_k-\hat x_{k-1}),\qquad 0<\alpha\le1 .
+\]
+It moves the estimate by the fraction $\alpha$ towards each new measurement. With $\alpha=1$ it ignores the past and passes the noise, with small $\alpha$ it is smooth but slow: for an object that moves $v$ per second with measurements every $\Delta t$, the estimate stays behind by about $v\,\Delta t\,(1-\alpha)/\alpha$. For $v=0.8$\,m/s, $\Delta t=1/30$\,s: $\alpha=0.5$ lags by $2.7$\,cm, $\alpha=0.2$ by $10.7$\,cm, $\alpha=0.05$ by $50$\,cm. One number cannot be both quiet and fast, and it also says nothing about the \emph{velocity}.
+
+\section*{The idea of the Kalman filter}
+Suppose the estimate so far is $\hat x$ with the \textbf{variance} $P$ (the square of the standard deviation, Chapters~\ref{ch:rv} and~\ref{ch:normal}: how unsure we are), and a measurement $z$ arrives, with the variance $R$. Two uncertain pieces of information about the same quantity are combined by a weighted average, and the sensible weights are \emph{inverse to the variances}: trust the one that is more certain. This gives
+\[
+K=\frac{P}{P+R},\qquad \hat x\leftarrow\hat x+K\,(z-\hat x),\qquad P\leftarrow(1-K)\,P .
+\]
+$K$ is the \textbf{Kalman gain} between $0$ and $1$. If the measurement is very uncertain ($R\gg P$) then $K\approx0$ and the estimate hardly moves; if the estimate is very uncertain ($P\gg R$) then $K\approx1$ and the estimate jumps to the measurement. The new $P$ is always \emph{smaller}: every measurement adds information. The difference $z-\hat x$ is the \textbf{innovation}, the part of the measurement that was a surprise.
+
+\begin{example}
+We measure a distance that does not change, with $R=1$ (a standard deviation of $1$\,m). We know nothing at the start: $\hat x=0$, $P=100$. The measurements are $5.2,\ 4.7,\ 5.1,\ 4.9$.
+\begin{center}\small
+\begin{tabular}{c c c c c}
+\hline
+step & $z$ & $K$ & $\hat x$ & $P$\\\hline
+1 & 5.2 & 0.990 & 5.149 & 0.990\\
+2 & 4.7 & 0.498 & 4.925 & 0.498\\
+3 & 5.1 & 0.332 & 4.983 & 0.332\\
+4 & 4.9 & 0.249 & 4.963 & 0.249\\\hline
+\end{tabular}
+\end{center}
+Step 1: $K=100/101=0.990$, $\hat x=0+0.990\cdot5.2=5.149$, $P=0.01\cdot100=0.990$. The first measurement is almost fully trusted, then the gain falls as $1/k$: $K=0.5,\,0.33,\,0.25$. For a constant quantity the filter is the \emph{running mean}, the gain $1/k$ makes every measurement count equally. With $P=0.249$ the standard deviation of the estimate is $0.5$\,m, half of that of one measurement.
+\end{example}
+
+\section*{The predict step and the moving ball}
+A ball (or a joint, or a robot) moves, and between two measurements the estimate must be moved, too, with the \emph{model} of the motion. We use the state $s=(x,v)$ (position and velocity) and the simplest model, a constant velocity over the time step $\Delta t$:
+\[
+x\leftarrow x+v\,\Delta t,\qquad v\leftarrow v ,\qquad\text{in matrix form}\quad s\leftarrow F s,\quad F=\begin{pmatrix}1&\Delta t\\0&1\end{pmatrix}.
+\]
+The model is not exact: the ball slows down, someone kicks it. We express this by assuming that in every step the velocity gets a random change of the size $\sigma_a\Delta t$ ($\sigma_a$: the standard deviation of the acceleration), which gives the \textbf{process noise} $Q$. The uncertainty is not a single number any more, but a $2\times2$ matrix $P$ (the \textbf{covariance}: variances of $x$ and $v$ on the diagonal, how they belong together off the diagonal). The complete filter is
+\begin{align*}
+\text{predict:}\quad & s\leftarrow Fs,\qquad P\leftarrow FPF^{\top}+Q,\quad
+Q=\sigma_a^{2}\begin{pmatrix}\Delta t^4/4&\Delta t^3/2\\ \Delta t^3/2&\Delta t^2\end{pmatrix},\\
+\text{update:}\quad & S=P_{00}+R,\qquad K=\frac{1}{S}\begin{pmatrix}P_{00}\\P_{10}\end{pmatrix},\qquad s\leftarrow s+K\,(z-s_0),\qquad P\leftarrow P-K\,(P_{00}\ \ P_{01}).
+\end{align*}
+We measure only the position, $R=\sigma^2$. Nothing is measured about the speed, and yet the filter estimates it: the correlation in $P$ says that a position that is larger than predicted means probably a larger speed, and the second entry of the gain, $K_1$, applies this correction.
+
+\paragraph{A simulation.} A ball moves at $v=0.8$\,m/s from $x_0=0.2$\,m for $3$\,s; the camera delivers $30$ measurements per second with $\sigma=5$\,cm (noise from a random generator with a fixed seed). The filter uses $\sigma_a=1$\,m/s$^2$, starts with the first measurement, speed $0$ and an initial velocity uncertainty of $2$\,m/s. Results over the whole run:
+\begin{center}\small
+\begin{tabular}{l c c}
+\hline
+ & position error (RMS) & velocity error (RMS)\\\hline
+raw measurement / finite difference & 4.3\,cm & 181\,cm/s\\
+exponential average, $\alpha=0.5$ & 4.3\,cm & 74\,cm/s\\
+exponential average, $\alpha=0.2$ & 11.2\,cm & 29\,cm/s\\
+Kalman filter & 2.2\,cm & 10\,cm/s\\
+Kalman filter, after the first second & 1.6\,cm & 4.6\,cm/s\\\hline
+\end{tabular}
+\end{center}
+The velocity from the difference of two measurements, $(z_k-z_{k-1})/\Delta t$, is wrong by $1.8$\,m/s although the true speed is only $0.8$\,m/s: the noise of $5$\,cm is divided by $33$\,ms. The Kalman filter finds the speed with an error of $5$\,cm/s once it has settled.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[width=0.85\linewidth,height=5.2cm,xlabel={time $t$ (s)},ylabel={position error (cm)},xmin=0,xmax=3,ymin=-14,ymax=14,grid=both,legend style={font=\scriptsize,at={(0.5,1.03)},anchor=south,legend columns=2}]
+ \addplot[gray,thin] table[x=t,y=raw] {chapters/part09_control_perception/03_state_estimation_and_the_kalman_filter/pos.dat};
+ \addplot[orange,thick] table[x=t,y=ema] {chapters/part09_control_perception/03_state_estimation_and_the_kalman_filter/pos.dat};
+ \addplot[blue,very thick] table[x=t,y=kf] {chapters/part09_control_perception/03_state_estimation_and_the_kalman_filter/pos.dat};
+ \legend{raw measurement,average $\alpha=0.2$,Kalman filter}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{Error (estimate minus truth) of the position of the moving ball. The average with $\alpha=0.2$ is smooth but lags $11$\,cm behind; the Kalman filter has less error than the raw measurement and no lag.}
+\end{center}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[width=0.85\linewidth,height=5.2cm,xlabel={time $t$ (s)},ylabel={velocity (m/s)},xmin=0,xmax=3,ymin=-4,ymax=5,grid=both,legend style={font=\scriptsize,at={(0.5,1.03)},anchor=south,legend columns=2}]
+ \addplot[gray,thin] table[x=t,y=fd] {chapters/part09_control_perception/03_state_estimation_and_the_kalman_filter/vel.dat};
+ \addplot[blue,very thick] table[x=t,y=kf] {chapters/part09_control_perception/03_state_estimation_and_the_kalman_filter/vel.dat};
+ \addplot[black,dashed] coordinates {(0,0.8)(3,0.8)};
+ \legend{difference of measurements,Kalman filter,true speed}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{The velocity. The difference of two measurements jumps by $\pm2$\,m/s; the filter, which never measured a velocity, settles within about half a second.}
+\end{center}
+
+\section*{Q and R: whom do you trust?}
+The filter has two knobs that carry physical meaning. $R$ is the variance of the measurement noise: it can be measured by recording the sensor while the object does not move. $Q$ (here $\sigma_a$) describes how much the world departs from the model: a smaller $\sigma_a$ makes a smoother, more model-trusting filter that reacts slowly when the ball is kicked; a larger one follows the measurements closely. In the end the ratio of $Q$ and $R$ decides the steady-state gain. In the simulation it settles at $K_0=0.19$ for the position and $K_1=0.60$ (per metre, in $\mathrm{m/s}$) for the speed. A good practice: choose $R$ from a measurement, choose $\sigma_a$ from the largest acceleration that you really expect, and check with recorded data.
+
+\subsection*{What the covariance gives you for free}
+\begin{itemize}[nosep]
+  \item \textbf{Missing measurement}: skip the update. The prediction continues, $P$ grows, the filter becomes less sure, and when the ball appears again the larger gain pulls the estimate back to it.
+  \item \textbf{Outliers}: compute the innovation $z-\hat x$ and its expected standard deviation $\sqrt S$ and ignore the measurement if $|z-\hat x|>3\sqrt S$ (a \emph{gate}). A single false detection of the ball in the audience then does not throw the estimate away.
+  \item \textbf{Delay}: if the camera image is $80$\,ms old when it arrives, run the predict step for $80$\,ms in addition, to learn where the ball is \emph{now}; or keep a short history and re-apply the measurement at its original time.
+\end{itemize}
+
+\section*{The filter in Rust}
+The whole filter for position and speed is about thirty lines. We keep the $2\times2$ matrices as arrays and write out the products by hand, no library is needed.
+%rs:kf2
+\begin{verbatim}
+struct Kalman {
+    x: [f64; 2],        // position and velocity
+    p: [[f64; 2]; 2],   // covariance: how unsure we are
+    sa: f64,            // assumed acceleration noise
+    r: f64,             // variance of one position measurement
+}
+
+impl Kalman {
+    fn new(z0: f64, sigma: f64, sa: f64) -> Kalman {
+        Kalman {
+            x: [z0, 0.0],
+            p: [[sigma * sigma, 0.0], [0.0, 4.0]],
+            sa,
+            r: sigma * sigma,
+        }
+    }
+
+    fn predict(&mut self, dt: f64) {
+        self.x[0] += dt * self.x[1];
+        let p = self.p;
+        let a = p[0][0] + dt * (p[1][0] + p[0][1]) + dt * dt * p[1][1];
+        let b = p[0][1] + dt * p[1][1];
+        let c = p[1][0] + dt * p[1][1];
+        let q = self.sa * self.sa;
+        self.p = [
+            [a + q * dt.powi(4) / 4.0, b + q * dt.powi(3) / 2.0],
+            [c + q * dt.powi(3) / 2.0, p[1][1] + q * dt * dt],
+        ];
+    }
+
+    fn update(&mut self, z: f64) {
+        let p = self.p;
+        let s = p[0][0] + self.r;
+        let k = [p[0][0] / s, p[1][0] / s];
+        let innovation = z - self.x[0];
+        self.x[0] += k[0] * innovation;
+        self.x[1] += k[1] * innovation;
+        self.p = [
+            [p[0][0] - k[0] * p[0][0], p[0][1] - k[0] * p[0][1]],
+            [p[1][0] - k[1] * p[0][0], p[1][1] - k[1] * p[0][1]],
+        ];
+    }
+}
+
+fn main() {
+    let z = [0.200, 0.242, 0.240, 0.235, 0.284,
+             0.284, 0.363, 0.454, 0.389, 0.409];
+    let dt = 1.0 / 30.0;
+    let mut kf = Kalman::new(z[0], 0.05, 1.0);
+    for &zk in &z[1..] {
+        kf.predict(dt);
+        kf.update(zk);
+    }
+    println!("x {:.4} m, v {:.4} m/s", kf.x[0], kf.x[1]);
+}
+\end{verbatim}
+prints \verb!x 0.4283 m, v 0.7886 m/s!, the same numbers as the NumPy version, which were computed from the same ten measurements. The structure to remember is: a struct with the state and its uncertainty, a \verb!predict(dt)! that is called every loop, and an \verb!update(z)! that is called \emph{only when a measurement arrives}. With a different model (more states, more sensors) only the matrices change; for those the \verb!nalgebra! library is the usual choice, with the same two steps.
+
+\begin{aibox}[Where Kalman filters appear on the robot]
+The ball tracker of the camera (Chapter~\ref{ch:ctl6}), the estimate of the orientation of the trunk from gyroscope and accelerometer (Chapter~\ref{ch:ctl4}), the position of the robot on the field (Chapter~\ref{ch:ctl5}, there as a particle filter) and the speed of a joint from its angle encoder are all state estimation problems, and for each one you have to decide what the state is, what the model predicts and what the measurement is.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item An estimate has $\hat x=10$ with $P=4$. A measurement $z=12$ with $R=1$ arrives. Compute $K$, the new $\hat x$ and the new $P$.
+  \item Same estimate ($\hat x=10$, $P=4$), but the measurement is much worse: $z=12$ with $R=36$. Compute the new estimate and $P$ and say in words how the result differs from Problem~1.
+  \item You measure a constant with $\sigma=2$\,cm per measurement. How many measurements must you average so that the standard deviation of the mean is below $0.5$\,cm? What is the Kalman gain in the last step, if the filter was started with a very large $P$?
+  \item The exponential average $\hat x_k=\hat x_{k-1}+\alpha(z_k-\hat x_{k-1})$ with $\alpha=0.25$ starts at $\hat x_0=0$ and receives the measurements $1,1,1,1$. Compute the four estimates.
+  \item A ball moves at $1.5$\,m/s, the camera delivers $60$ frames per second. By how many centimetres does an exponential average with $\alpha=0.1$ lag? What $\alpha$ keeps the lag below $1$\,cm?
+  \item The prediction step of the $2$-state filter with $\Delta t=0.1$\,s for $s=(1.0,\ 2.0)$ gives which new state? If the covariance is $P=\mathrm{diag}(0.01,\,0.04)$ and $\sigma_a=0$, compute the new $P=FPF^{\top}$.
+  \item Why does the Kalman filter estimate the speed of the ball although the camera measures only positions? Explain with the matrix $F$ and the covariance $P$ in your own words (two or three sentences).
+  \item The ball is hidden for $10$ frames behind a robot. What does the filter do in these frames, what happens to $P$, and what happens when the ball appears again? What would a filter do that simply keeps the last measurement?
+  \item The innovation of a measurement is $z-\hat x=0.35$\,m, and the predicted uncertainty of the measurement is $\sqrt S=0.06$\,m. How many standard deviations is that? Does a $3\sigma$ gate accept it? What is the probability that a \emph{correct} measurement is rejected by a $3\sigma$ gate (for Gaussian noise: $0.27\%$)?
+  \item[\textbf{\thechapter.10}$\star$] Extend the Rust (or Python) filter of the chapter by a \emph{gate} that skips measurements with $|z-\hat x|>3\sqrt S$, and test it with the ten measurements of the chapter, in which you replace the sixth measurement by $1.5$ (a false detection). Report the final position with and without the gate. Then add a second kind of robustness: if $5$ measurements in a row are rejected, re-initialise the filter at the last measurement (the ball really has jumped, because someone has picked it up). Explain why both rules are needed.
+\end{enumerate}

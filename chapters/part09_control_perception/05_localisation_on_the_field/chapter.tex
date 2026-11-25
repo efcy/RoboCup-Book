@@ -1,0 +1,259 @@
+\bookchapter{Localisation on the field}\label{ch:ctl5}
+
+\section*{Explanation}
+A soccer robot must know three things at every moment: \emph{where am I on the field, which way am I facing, and where is the goal?} The three numbers $(x,y,\theta)$ are the \textbf{pose} of the robot, and finding them is \textbf{localisation}. For this chapter the field is a rectangle of $9\times6$\,m with its origin in the centre, the $x$ axis pointing to the opponent's goal. (These are the dimensions we use in all examples; the real field and its markings are described in the rules, Chapter~\ref{ch:rc1}.) The robot has two kinds of information:
+\begin{itemize}[nosep]
+  \item \textbf{Odometry}: from its own walking the robot knows how far it has moved. This is available at every step, smooth, but errors add up. Like the gyroscope of Chapter~\ref{ch:ctl4} it drifts.
+  \item \textbf{Observations}: the camera sees things whose position on the field is known: goal posts, the penalty marks, the corners and the lines. Each observation is noisy and sees only a part of the field, but it is \emph{absolute}: it does not drift. (This is the accelerometer of Chapter~\ref{ch:ctl4}.)
+\end{itemize}
+The task has the same form as before, but the state $(x,y,\theta)$ and the observations are not linear, so the Kalman filter does not fit well, and one uses a different method, the \textbf{particle filter} (Monte Carlo localisation).
+
+\section*{Odometry: moving the pose}
+Walking gives a motion \emph{in the frame of the robot}: it moved $\Delta x$ forward, $\Delta y$ to the left and turned by $\Delta\theta$. To add this to the pose on the field, the step is rotated by the current heading:
+\[
+x\leftarrow x+\Delta x\cos\theta-\Delta y\sin\theta,\qquad
+y\leftarrow y+\Delta x\sin\theta+\Delta y\cos\theta,\qquad
+\theta\leftarrow\theta+\Delta\theta .
+\]
+(The rotation matrix of Chapter~\ref{ch:rotation}, applied to the step.)
+
+\begin{example}
+A robot stands at $(-1,\,0.5)$ facing $\theta=-90^{\circ}$ (towards the right edge of the picture, $-y$) and walks $0.4$\,m forward ($\Delta x=0.4$, $\Delta y=0$), while turning by $+15^{\circ}$. The new position is
+$x=-1+0.4\cos(-90^{\circ})=-1$, $y=0.5+0.4\sin(-90^{\circ})=0.1$, and the heading is $-75^{\circ}$. ``Forward'' for a robot facing $-y$ means going down the field.
+\end{example}
+
+Odometry is never exact: the feet slip, the steps are a little shorter than the model says, a turn is a little less than commanded. Our simulated robot has \emph{typical} errors: the speed is $8\%$ too high, the turning has a constant bias of $0.01$\,rad/s and each step has random noise. It walks $100$\,s along a circle of radius $2.5$\,m, and if we only trust the odometry, the estimated position drifts away by $3.5$\,m (the average error over the second half of the run is $2.8$\,m).
+
+\section*{Observations: what should I see from here?}
+Take a landmark at the known position $(l_x,l_y)$. If the robot were at the pose $(x,y,\theta)$, it would see the landmark at the \textbf{range} and \textbf{bearing}
+\[
+\hat r=\sqrt{(l_x-x)^2+(l_y-y)^2},\qquad
+\hat b=\operatorname{atan2}(l_y-y,\ l_x-x)-\theta .
+\]
+The range is the distance, the bearing the angle to the left of the robot's heading. The camera measures $(r,b)$ with errors. The difference between what is measured and what the pose predicts tells how \emph{plausible} the pose is, and for Gaussian errors with standard deviations $\sigma_r$ and $\sigma_b$ the likelihood is
+\[
+w\ \propto\ \exp\!\Bigl(-\frac12\Bigl(\frac{r-\hat r}{\sigma_r}\Bigr)^{2}-\frac12\Bigl(\frac{b-\hat b}{\sigma_b}\Bigr)^{2}\Bigr).
+\]
+
+\begin{example}
+A landmark stands at $(4.5,\,1.3)$. For the pose $(2.5,\,0.5,\,\theta=0.2)$ the differences are $\Delta x=2$, $\Delta y=0.8$, so $\hat r=2.154$\,m and $\hat b=\operatorname{atan2}(0.8,2)-0.2=0.3805-0.2=0.1805$\,rad ($10.3^{\circ}$). The camera measures $r=2.30$\,m and $b=0.10$\,rad. With $\sigma_r=0.25$\,m and $\sigma_b=0.08$\,rad:
+\[
+\Bigl(\frac{2.30-2.154}{0.25}\Bigr)=0.584,\quad \Bigl(\frac{0.10-0.1805}{0.08}\Bigr)=-1.006,\quad
+w=\exp\bigl(-\tfrac12(0.341+1.013)\bigr)=0.508 .
+\]
+A pose that predicted the measurement exactly would get $w=1$; one that is far off gets a $w$ close to $0$.
+\end{example}
+
+\section*{The particle filter}
+Where is the robot? Instead of one pose with an error ellipse (the Kalman filter) the particle filter keeps a \emph{cloud of guesses}: $N$ \textbf{particles}, each one a complete pose $(x,y,\theta)$, together with a \textbf{weight} that says how well the particle explains the observations. The cloud can have any shape; it can contain two separate groups when the situation is ambiguous. One cycle has three steps:
+
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.4mm]},bx/.style={draw,thick,rounded corners=2pt,minimum width=3.2cm,minimum height=1.1cm,font=\footnotesize,align=center}]
+ \node[bx,fill=blue!10] (a) at (0,0) {\textbf{1. predict}\\ move every particle with\\ the odometry $+$ noise};
+ \node[bx,fill=orange!15] (b) at (5,0) {\textbf{2. weight}\\ compare with what the\\ camera sees};
+ \node[bx,fill=green!10] (c) at (10,0) {\textbf{3. resample}\\ copy the good, drop\\ the bad particles};
+ \draw[->,thick] (a)--(b); \draw[->,thick] (b)--(c);
+ \draw[->,thick] (c.south)--++(0,-0.7)-|(a.south);
+\end{tikzpicture}
+\captionof{figure}{One cycle of Monte Carlo localisation.}
+\end{center}
+
+\begin{enumerate}[nosep]
+  \item \textbf{Predict.} Every particle is moved by the odometry of the step, but with its own random noise added to speed and turn. The cloud spreads out: after a while the particles show how much the robot may have drifted.
+  \item \textbf{Weight.} For each landmark that the camera has seen, multiply the weight of every particle by the likelihood above. Particles in the right place keep a large weight, the others lose it.
+  \item \textbf{Resample.} After a few observations, a handful of particles carry nearly all the weight, and the others are wasted. The number of particles that really count is measured by $N_{\text{eff}}=1/\sum_i w_i^2$ ($N$ for equal weights, $1$ if one particle has everything). If $N_{\text{eff}}<N/2$ we draw $N$ new particles from the old ones, with probability proportional to the weight: heavy particles are copied several times, light ones vanish, and all weights are equal again. Systematic resampling does this with one random number: place $N$ equally spaced points, with a random offset, on the cumulative sum of the weights.
+\end{enumerate}
+The estimate of the pose is the weighted mean of the particles ($x$ and $y$ directly, the heading via $\operatorname{atan2}$ of the mean of $\sin\theta$ and $\cos\theta$).
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[name=A,width=0.36\linewidth,height=0.30\linewidth,xmin=-5,xmax=5,ymin=-3.6,ymax=3.6,xtick=\empty,ytick=\empty,title={\footnotesize after the first image},axis equal image=false]
+ \draw[thick] (axis cs:-4.5,-3) rectangle (axis cs:4.5,3);
+ \addplot[only marks,mark=*,mark size=0.6pt,blue] table[x=x,y=y] {chapters/part09_control_perception/05_localisation_on_the_field/snap0.dat};
+ \addplot[only marks,mark=x,mark size=3pt,red,very thick] coordinates {(-1.94,-1.0)};
+\end{axis}
+\begin{axis}[at={(A.east)},anchor=west,xshift=0.2cm,width=0.36\linewidth,height=0.30\linewidth,xmin=-5,xmax=5,ymin=-3.6,ymax=3.6,xtick=\empty,ytick=\empty,title={\footnotesize after the second},axis equal image=false]
+ \draw[thick] (axis cs:-4.5,-3) rectangle (axis cs:4.5,3);
+ \addplot[only marks,mark=*,mark size=0.6pt,blue] table[x=x,y=y] {chapters/part09_control_perception/05_localisation_on_the_field/snap1.dat};
+ \addplot[only marks,mark=x,mark size=3pt,red,very thick] coordinates {(-1.88,-1.0)};
+\end{axis}
+\begin{axis}[at={(A.east)},anchor=west,xshift=5.7cm,width=0.36\linewidth,height=0.30\linewidth,xmin=-5,xmax=5,ymin=-3.6,ymax=3.6,xtick=\empty,ytick=\empty,title={\footnotesize after 4 seconds},axis equal image=false]
+ \draw[thick] (axis cs:-4.5,-3) rectangle (axis cs:4.5,3);
+ \addplot[only marks,mark=*,mark size=0.6pt,blue] table[x=x,y=y] {chapters/part09_control_perception/05_localisation_on_the_field/snap20.dat};
+ \addplot[only marks,mark=x,mark size=3pt,red,very thick] coordinates {(-0.79,-0.69)};
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{The particles ($1000$ in the filter, $150$ drawn, positions only) of one simulated run. At the start the robot knows nothing and the particles cover the whole field. The first image, in which two landmarks are visible, already removes most of them, the second (a fifth of a second later) concentrates them around the true position (red cross), and after four seconds the cloud is only a few centimetres wide.}
+\end{center}
+
+\section*{What the simulation shows}
+The simulation uses $11$ landmarks (the four goal posts, the three marks on the middle line and the penalty marks and the four corners), each recognised with its identity, seen only within $5$\,m and within $\pm40^{\circ}$ of the viewing direction, with noise $0.15$\,m and $0.04$\,rad. The filter assumes slightly larger noise ($0.25$\,m, $0.08$\,rad), to be on the safe side. These are assumptions of the example; in the real robot the identities of the landmarks are one of the hard problems, see below.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[width=0.86\linewidth,height=5.4cm,xlabel={time $t$ (s)},ylabel={position error (m)},xmin=0,xmax=100,ymin=0,ymax=4,grid=both,legend style={font=\scriptsize,at={(0.5,1.03)},anchor=south,legend columns=2}]
+ \addplot[red,thick] table[x=t,y=odo] {chapters/part09_control_perception/05_localisation_on_the_field/err.dat};
+ \addplot[blue,thick] table[x=t,y=pf] {chapters/part09_control_perception/05_localisation_on_the_field/err.dat};
+ \addplot[orange,thick] table[x=t,y=bad] {chapters/part09_control_perception/05_localisation_on_the_field/err.dat};
+ \legend{odometry only,particle filter $N=1000$,particle filter $N=50$ (slowest of $20$ runs)}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{Position error against time. Odometry alone keeps drifting ($3.5$\,m after $100$\,s). The particle filter with $1000$ particles stays at about $15$\,cm from the first second on. With only $50$ particles the slowest of $20$ runs needed $53$\,s to find the position and had large errors later.}
+\end{center}
+
+Over $20$ runs with different random numbers (global start: the robot is anywhere on the field) I measured the time until the error stays below $0.5$\,m for ten consecutive steps ($2$\,s), the mean error after $20$\,s and the largest error after that time:
+\begin{center}\small
+\begin{tabular}{r c c c}
+\hline
+particles $N$ & time to settle (median / slowest) & mean error & largest error afterwards\\\hline
+50 & $6.1$\,s / $53$\,s & $0.42$\,m & $3.8$\,m\\
+200 & $2.0$\,s / $5.4$\,s & $0.15$\,m & $1.0$\,m\\
+1000 & $0.2$\,s / $4.0$\,s & $0.13$\,m & $0.57$\,m\\\hline
+\end{tabular}
+\end{center}
+For comparison, odometry alone has a mean error of about $1.9$\,m over the same period. \emph{More particles make the filter faster and more reliable, but cost computing time}: with $50$ particles the cloud occasionally loses the robot (the worst run was $3.8$\,m off at some moment), with $1000$ it hardly does. The same Rust program as below needs $0.1$\,s for the whole $100$\,s run with $1000$ particles (release build on the two-core computer of this book), so about $0.2$\,ms per step.
+
+\begin{keyidea}[The three parts of an estimate]
+A localisation result consists of \emph{where}, \emph{how sure} and \emph{whether to trust it}. The mean of the cloud is the first, its spread the second. For the third, use the weight before normalising: if the best particle explains the camera badly, the robot is probably lost, and the behaviour should drive it to a position where it sees something useful.
+\end{keyidea}
+
+\section*{In code}
+A complete particle filter in Rust, with its own small random number generator (so that the program needs no library). It reproduces the scenario of the simulation (but, with other random numbers, other individual values).
+%rs:pf
+\begin{verbatim}
+use std::f64::consts::PI;
+
+struct Rng(u64);
+impl Rng {
+    fn next(&mut self) -> f64 {                      // uniform in [0, 1)
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        (self.0 >> 11) as f64 / (1u64 << 53) as f64
+    }
+    fn gauss(&mut self, sigma: f64) -> f64 {         // Box-Muller
+        let (u, v) = (self.next().max(1e-12), self.next());
+        sigma * (-2.0 * u.ln()).sqrt() * (2.0 * PI * v).cos()
+    }
+}
+
+fn wrap(a: f64) -> f64 {
+    (a + PI).rem_euclid(2.0 * PI) - PI
+}
+
+#[derive(Clone, Copy)]
+struct Pose { x: f64, y: f64, th: f64 }
+
+impl Pose {
+    fn moved(self, v: f64, w: f64, dt: f64) -> Pose {
+        let mid = self.th + 0.5 * w * dt;
+        Pose { x: self.x + v * dt * mid.cos(),
+               y: self.y + v * dt * mid.sin(),
+               th: wrap(self.th + w * dt) }
+    }
+}
+
+const LANDMARKS: [(f64, f64); 11] = [
+    (-4.5, -1.3), (-4.5, 1.3), (4.5, -1.3), (4.5, 1.3), (-3.0, 0.0),
+    (3.0, 0.0), (0.0, 0.0), (-4.5, -3.0), (-4.5, 3.0), (4.5, -3.0),
+    (4.5, 3.0),
+];
+
+/// Range and bearing from `p` to landmark `i`.
+fn range_bearing(p: Pose, i: usize) -> (f64, f64) {
+    let (dx, dy) = (LANDMARKS[i].0 - p.x, LANDMARKS[i].1 - p.y);
+    (dx.hypot(dy), wrap(dy.atan2(dx) - p.th))
+}
+
+fn main() {
+    let mut rng = Rng(88172645463325252);
+    let (n, dt, steps) = (1000, 0.2, 500);
+    let (v, w) = (0.3, 0.12);                 // what the robot really does
+    let mut truth = Pose { x: -2.0, y: -1.0, th: 0.0 };
+    let mut odo = truth;
+    let mut ps: Vec<Pose> = (0..n).map(|_| Pose {
+        x: -4.5 + 9.0 * rng.next(),
+        y: -3.0 + 6.0 * rng.next(),
+        th: -PI + 2.0 * PI * rng.next(),
+    }).collect();
+    let mut wt = vec![1.0 / n as f64; n];
+    let (mut err_pf, mut err_odo, mut count) = (0.0, 0.0, 0);
+
+    for k in 0..steps {
+        truth = truth.moved(v, w, dt);
+        // odometry: 8 % too fast, a turning bias, noise
+        let vo = v * 1.08 + rng.gauss(0.03);
+        let wo = w + 0.01 + rng.gauss(0.05);
+        odo = odo.moved(vo, wo, dt);
+        // predict: every particle moves with its own noise
+        for p in ps.iter_mut() {
+            *p = p.moved(vo + rng.gauss(0.04), wo + rng.gauss(0.05), dt);
+        }
+        // weight: compare what the particle would see with what we saw
+        for i in 0..LANDMARKS.len() {
+            let (r, b) = range_bearing(truth, i);
+            if r > 5.0 || b.abs() > 40f64.to_radians() { continue; }
+            let (zr, zb) = (r + rng.gauss(0.15), b + rng.gauss(0.04));
+            for (p, w) in ps.iter().zip(wt.iter_mut()) {
+                let (pr, pb) = range_bearing(*p, i);
+                let (er, eb) = ((zr - pr) / 0.25, wrap(zb - pb) / 0.08);
+                *w *= (-0.5 * (er * er + eb * eb)).exp() + 1e-12;
+            }
+        }
+        let sum: f64 = wt.iter().sum();
+        wt.iter_mut().for_each(|w| *w /= sum);
+        // resample (systematic) if only few particles matter
+        let neff = 1.0 / wt.iter().map(|w| w * w).sum::<f64>();
+        if neff < n as f64 / 2.0 {
+            let (mut new, mut c, mut j) = (Vec::with_capacity(n), wt[0], 0);
+            let u0 = rng.next() / n as f64;
+            for m in 0..n {
+                let u = u0 + m as f64 / n as f64;
+                while u > c && j < n - 1 { j += 1; c += wt[j]; }
+                new.push(Pose { x: ps[j].x + rng.gauss(0.02),
+                                y: ps[j].y + rng.gauss(0.02),
+                                th: ps[j].th + rng.gauss(0.01) });
+            }
+            ps = new;
+            wt = vec![1.0 / n as f64; n];
+        }
+        // estimate: weighted mean
+        let ex: f64 = ps.iter().zip(&wt).map(|(p, w)| p.x * w).sum();
+        let ey: f64 = ps.iter().zip(&wt).map(|(p, w)| p.y * w).sum();
+        if k >= 100 {
+            err_pf += (ex - truth.x).hypot(ey - truth.y);
+            err_odo += (odo.x - truth.x).hypot(odo.y - truth.y);
+            count += 1;
+        }
+    }
+    println!("mean error after 20 s: filter {:.2} m, odometry {:.2} m",
+             err_pf / count as f64, err_odo / count as f64);
+}
+\end{verbatim}
+prints (in the release build, the value of the odometry differs from the Python run because of the random numbers) \verb!mean error after 20 s: filter 0.15 m, odometry 0.96 m!. The structure is exactly the three steps of the figure: the loop over the particles for \emph{predict}, the double loop over the landmarks and particles for \emph{weight}, and the block with \verb!neff! for \emph{resample}.
+
+\section*{The hard parts in a real game}
+\begin{itemize}[nosep]
+  \item \textbf{Symmetry.} The field looks the same from both ends: the two goals are alike, and a robot that has seen only a corner cannot tell which. The particle filter then shows \emph{two clouds}. The ambiguity must be resolved by extra knowledge: the robot is put on the field at a known side at the start, the direction of play is known, a compass or the colour of the goal helps. This is one of the main reasons why a robot sometimes ``walks into its own goal'' in a game.
+  \item \textbf{Which landmark is it?} In the simulation every observation knows its identity. In reality a camera sees a line, a corner or a post, not a number. One has to \emph{associate}: for each observation, assume the nearest compatible landmark (per particle), or treat the likelihood as the distance to the closest line of the map, a table that can be computed in advance for all positions on the field.
+  \item \textbf{The robot is carried away} (a referee takes it off the field, or it falls and is lifted, the \textbf{kidnapped robot} problem). The particles are all in the old place and none is near the new place, so no weighting can save the filter. The usual remedy is to add a small fraction of random particles in each resampling step. In the Rust program of this chapter (the robot is moved to a different place at $t=40$\,s), with $N=1000$: without random particles the filter recovered in none of $20$ runs, with $2\%$ random particles in all $20$ runs, after a median of $10.6$\,s (Problem~\thechapter.10).
+  \item \textbf{Fusion with other sources.} The orientation from the IMU (Chapter~\ref{ch:ctl4}) is much better than the heading from the walking odometry, and goes into the prediction as $\Delta\theta$.
+\end{itemize}
+
+\begin{aibox}[Neural networks and localisation]
+A camera network (Chapter on object detection) often delivers the observations: it finds goal posts, lines and corners in the image, and the geometry of the camera (Chapter~\ref{ch:ctl6}) turns pixel positions into range and bearing. The particle filter is then the part that fuses these detections over time. Some teams train a network to output the pose directly; the filter still has the advantage that it knows how sure it is.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A robot at $(2,\,1)$ with heading $\theta=90^{\circ}$ walks $0.3$\,m forward ($\Delta x=0.3$) and $0.1$\,m sideways to the left ($\Delta y=0.1$) while turning by $-10^{\circ}$. Compute the new pose.
+  \item A robot at $(0,0)$ looks along the $y$ axis ($\theta=90^{\circ}$). A landmark is at $(3,3)$. Compute the range and the bearing (in degrees). On which side of the robot is the landmark?
+  \item The landmark of the example above is measured as $r=2.00$\,m, $b=0.25$\,rad. Compute the weight of the pose $(2.5,0.5,0.2)$ ($\sigma_r=0.25$\,m, $\sigma_b=0.08$\,rad), and compare with the weight $0.508$ of the example. Which measurement fits better?
+  \item Discretise the pose with $5$\,cm in $x$ and $y$ and $1^{\circ}$ in $\theta$ over the $9\times6$\,m field. How many cells are there? What fraction of the cells does a particle filter with $1000$ particles correspond to? Why is the particle filter nevertheless good enough?
+  \item Compute $N_{\text{eff}}$ for the weights $(0.25,0.25,0.25,0.25)$, $(0.5,0.5,0,0)$ and $(0.7,0.1,0.1,0.1)$. When would you resample (threshold $N/2$)?
+  \item Systematic resampling with the weights $(0.1,\,0.2,\,0.4,\,0.3)$, $N=4$ and the random offset $u_0=0.1$ (in $[0,1/N)$). The points are $u_m=u_0+m/N$. Which particles are chosen, and which are dropped?
+  \item The robot walks $30$\,m in a game. Its odometry has a heading error of $2^{\circ}$. How large is the lateral position error at the end? How much if the heading error grows with a bias of $0.01$\,rad/s over the $100$\,s that the walk lasts?
+  \item The two goals are identical. Describe, for the situation ``the robot sees a goal post at $3$\,m, nothing else'', how the particle cloud looks and which pieces of information from outside of the camera would break the symmetry (name three).
+  \item Write a Python function \verb!likelihood(pose, landmark, r, b)! that returns the weight of this chapter, and check that it returns $0.508$ for the example. Plot (or print as a table) the weight for $x$ from $0.5$ to $4.5$\,m (the other values of the example constant). Where is the maximum, and how wide is it (the range of $x$ with weight above $0.6$)?
+  \item[\textbf{\thechapter.10}$\star$] Start from the Rust program of the chapter. Move the robot (the true pose) to $(3,\,2,\,\pi)$ at $t=40$\,s (step $200$) without telling the filter, and measure the time until the error is below $0.5$\,m for $10$ consecutive steps, over $20$ different random seeds. Compare no random particles, $2\%$ and $10\%$. Describe what you observe, and why too many random particles would also be harmful.
+\end{enumerate}
