@@ -1,8 +1,149 @@
-\bookchapter{Convolutional networks}\label{ch:ai3}
-\begin{keyidea}[Planned content]
-This chapter is not written yet. It will cover:
+\bookchapter{Convolutional Networks}\label{ch:ai3}
+
+\section*{Explanation}
+In Chapter~\ref{ch:ai2} you saw why the simple network that flattens an image into a long list is a bad idea: it ignores which pixels are neighbours, it learns the same pattern again for every position, and it needs enormous numbers of weights. A \textbf{convolutional neural network} (CNN) fixes all three problems with one trick: a small set of weights, a \textbf{filter}, is slid over the whole image. The same filter that finds an edge in the top-left corner finds it in the bottom-right corner, too. CNNs are still the workhorse of vision on robots: small, fast and well understood, and the backbone of the detector of Chapter~\ref{ch:ai4}.
+
+\section*{The convolution}
+A filter (also \textbf{kernel}) is a small grid of numbers, usually $3\times3$. To compute one output pixel, place the filter on the image, multiply the nine numbers of the filter with the nine pixels below it and add the products: a dot product (Chapter~\ref{ch:dotproduct}) of the filter with a patch of the image. Then move one pixel and repeat.
+\[
+\text{out}[i,j]=\sum_{a=0}^{K-1}\sum_{b=0}^{K-1}\text{filter}[a,b]\cdot\text{image}[i+a,\,j+b]
+\]
+(Strictly speaking this is a \emph{cross-correlation}; neural-network libraries call it convolution, and since the filter is learned the difference does not matter.)
+\begin{example}
+\textbf{An edge detector by hand.} The image has five rows that are all $0\,0\,0\,9\,9$: dark on the left, bright on the right. The filter $\begin{pmatrix}1&0&-1\\1&0&-1\\1&0&-1\end{pmatrix}$ subtracts the right column of a patch from the left column. In a flat region this is $0$. At the edge, the patch columns are $(0,0,9)$ so the result is $3\cdot0-3\cdot9=-27$. Computed with code (below), the output is
+\[
+\begin{pmatrix}0&-27&-27\\0&-27&-27\\0&-27&-27\end{pmatrix}
+\]
+The large numbers mark \emph{where} the edge is; the sign says in which direction the brightness changes. A filter is a \textbf{pattern detector}: the output is large where the image looks like the filter.
+\end{example}
+\begin{verbatim}
+import numpy as np
+def conv2d(x, k, stride=1, pad=0):
+    if pad:
+        x = np.pad(x, pad)
+    kh, kw = k.shape
+    oh = (x.shape[0] - kh) // stride + 1
+    ow = (x.shape[1] - kw) // stride + 1
+    out = np.zeros((oh, ow))
+    for i in range(oh):
+        for j in range(ow):
+            patch = x[i*stride:i*stride+kh, j*stride:j*stride+kw]
+            out[i, j] = (patch * k).sum()
+    return out
+\end{verbatim}
+\begin{center}
+\includegraphics[width=\textwidth]{ai/cnn_featuremaps.png}
+\captionof{figure}{Left to right: a synthetic $64\times64$ image (a ball and a line), the response of a vertical-edge filter (blue and red = both directions of brightness change), the response of a horizontal-edge filter, the result after ReLU (negative responses set to $0$) and after $2\times2$ max-pooling (half the size). Computed with the code of this chapter and OpenCV.}\label{fig:ai3_feat}
+\end{center}
+\subsection*{The idea of learning the filters}
+In the example we chose the filter. In a CNN the nine numbers of every filter are \textbf{parameters}, trained by gradient descent and backpropagation (Chapters~\ref{ch:gd} and~\ref{ch:nn}) exactly like the weights of any other network. The first layers learn simple things (edges, colour blobs), the next layers combine them (corners, circles), the deeper layers combine these to whole objects (a ball, a robot's leg). Nobody tells the network what to look for.
+
+\section*{Size, padding, stride}
+For an input of width $W$, a filter of size $K$, \textbf{padding} $P$ (zeros added around the image) and \textbf{stride} $S$ (the step), the output width is
+\[
+W_\text{out}=\left\lfloor\frac{W+2P-K}{S}\right\rfloor+1.
+\]
+Without padding a $3\times3$ filter shrinks the image by $2$ pixels in each direction, so one usually uses $P=1$ (``same'' padding) to keep the size. A stride of $2$ halves it. For $W=640$: $K=3,P=1,S=1$ gives $640$; $K=3,P=1,S=2$ gives $320$; $K=5,P=2,S=1$ gives $640$ (checked with the code above on a small example: a $5\times5$ image with $P=1$ stays $5\times5$, with $S=2$ becomes $3\times3$).
+
+\section*{Many channels}
+A colour image has $3$ channels (Chapter~\ref{ch:ai2}). A filter then has the shape $K\times K\times C_\text{in}$: it looks at all input channels at once, and the products of all channels are summed into \emph{one} output number. A layer has $C_\text{out}$ such filters and so produces $C_\text{out}$ \textbf{feature maps} (output channels). The number of parameters of a convolutional layer is
+\[
+K\cdot K\cdot C_\text{in}\cdot C_\text{out}+C_\text{out}\quad(\text{the last term: one bias per filter}).
+\]
+\begin{example}
+\textbf{Why the flatten-network is hopeless.} A fully connected layer from a $640\times480$ colour image to only $1000$ neurons needs $640\cdot480\cdot3\cdot1000+1000=921\,601\,000$ weights (about $3.7$\,GB as 32-bit floats). A convolutional layer with $16$ filters of size $3\times3$ on the same image has $3\cdot3\cdot3\cdot16+16=448$ parameters, independent of the image size, and its second layer ($16\to32$ channels) has $3\cdot3\cdot16\cdot32+32=4640$.
+\end{example}
+Convolution uses two assumptions that are true for images: \textbf{locality} (a pixel's meaning depends on its neighbours) and \textbf{weight sharing} (the same pattern may appear anywhere). A consequence is \textbf{translation equivariance}: if the ball moves $10$ pixels to the right in the input, its feature map moves $10$ pixels to the right too.
+
+A special case is the $1\times1$ convolution: no neighbours, only a mixing of the channels at every pixel, like a small dense layer applied to each pixel. It is used to change the number of channels cheaply.
+
+\section*{Activation, pooling, receptive field}
+After each convolution comes a non-linear \textbf{activation}, nearly always \textbf{ReLU} $\max(0,x)$ (Chapter~\ref{ch:nn}); without it, several convolutions would collapse into a single one. \textbf{Max pooling} then keeps the largest value of every $2\times2$ block, which halves width and height, saves computation and makes the result less sensitive to the exact position. For
+\[
+\begin{pmatrix}1&3&2&1\\4&6&5&0\\7&2&9&8\\1&0&3&4\end{pmatrix}
+\ \longrightarrow\ \begin{pmatrix}6&5\\7&9\end{pmatrix}.
+\]
+Modern networks often use a convolution with stride $2$ instead of pooling. The \textbf{receptive field} of a neuron is the region of the input that can influence it. Two stacked $3\times3$ convolutions see $5\times5$ pixels, three see $7\times7$: with $L$ layers $2L+1$. Pooling or stride makes it grow much faster: the sequence conv--conv--pool--conv--conv--pool (all $3\times3$ filters, $2\times2$ pool) has a receptive field of $16\times16$ pixels. A neuron deep in the network therefore ``sees'' a large part of the picture, which is how a network recognises a whole robot, not just a patch of its texture.
+
+\section*{A complete small network}
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.5mm]},
+ fm/.style={draw,thick,fill=blue!8,minimum width=1.0cm},
+ lb/.style={font=\scriptsize,align=center}]
+ \node[fm,minimum height=2.4cm,fill=gray!15] (in) at (0,0) {};
+ \node[lb,below=2pt of in] {input\\ $1{\times}32{\times}32$};
+ \node[fm,minimum height=2.4cm,minimum width=1.5cm] (c1) at (2.2,0) {};
+ \node[lb,below=2pt of c1] {conv $3{\times}3$\\+ReLU\\ $8{\times}32{\times}32$};
+ \node[fm,minimum height=1.2cm,minimum width=1.5cm] (p1) at (4.2,0) {};
+ \node[lb,below=2pt of p1] {pool\\ $8{\times}16{\times}16$};
+ \node[fm,minimum height=1.2cm,minimum width=2.2cm] (c2) at (6.2,0) {};
+ \node[lb,below=2pt of c2] {conv $3{\times}3$\\+ReLU\\ $16{\times}16{\times}16$};
+ \node[fm,minimum height=0.6cm,minimum width=2.2cm] (p2) at (8.4,0) {};
+ \node[lb,below=2pt of p2] {pool\\ $16{\times}8{\times}8$};
+ \node[fm,minimum height=2.0cm,minimum width=0.25cm,fill=orange!15] (fl) at (10.2,0) {};
+ \node[lb,below=2pt of fl] {flatten\\ 1024};
+ \node[fm,minimum height=0.5cm,minimum width=0.25cm,fill=green!15] (out) at (11.6,0) {};
+ \node[lb,below=2pt of out] {dense\\ 2};
+ \foreach \a/\b in {in/c1,c1/p1,p1/c2,c2/p2,p2/fl,fl/out} \draw[->,thick] (\a)--(\b);
+\end{tikzpicture}
+\captionof{figure}{A small CNN for $32\times32$ grey patches (``ball'' or ``no ball''). Spatial size shrinks, channel count grows, and in the end the features are flattened and a normal dense layer decides.}\label{fig:ai3_net}
+\end{center}
+The parameters (computed with the formula above): first convolution $1\cdot9\cdot8+8=80$; second $8\cdot9\cdot16+16=1168$; the dense layer $1024\cdot2+2=2050$; total $\mathbf{3298}$ parameters, about $13$\,kB as float32. Most of the work is in the convolutions, most parameters are in the dense layer at the end. In PyTorch (not run when this book was written, PyTorch is not installed on the writing machine):
+\begin{verbatim}
+import torch.nn as nn
+net = nn.Sequential(
+    nn.Conv2d(1, 8, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
+    nn.Conv2d(8, 16, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
+    nn.Flatten(),
+    nn.Linear(16 * 8 * 8, 2),
+)
+\end{verbatim}
+The network ends with two numbers (logits) that a softmax turns into probabilities and cross-entropy compares with the label (Chapter~\ref{ch:prob}, the softmax chapter), exactly as in the tiny network of Chapter~\ref{ch:nn}.
+
+\section*{Famous architectures and what you learn from them}
 \begin{itemize}[nosep]
-  \item Convolution, pooling, feature maps
-  \item How a vision network is built
+\item \textbf{LeNet} (1998): the ancestor, for digits; two conv layers like above.
+\item \textbf{AlexNet} (2012) and \textbf{VGG} (2014): the same recipe, much deeper and wider; big and slow.
+\item \textbf{ResNet} (2015): the key invention is the \textbf{skip connection} (residual connection): the block computes $y=x+F(x)$, so it only has to learn the \emph{change} to its input. The gradient flows unchanged through the addition, which makes networks with $50$ or $100$ layers trainable. Today's detectors use this idea everywhere.
+\item \textbf{MobileNet}, \textbf{EfficientNet}: designed for small devices. The trick of MobileNet is the \textbf{depthwise separable convolution}: split the convolution into a $3\times3$ filter per channel (depthwise) followed by a $1\times1$ convolution that mixes the channels (pointwise).
 \end{itemize}
-\end{keyidea}
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.5mm]},bx/.style={draw,thick,rounded corners=2pt,minimum width=2.4cm,minimum height=0.6cm,font=\footnotesize,fill=blue!8}]
+ \node[bx] (a) at (0,0) {conv $3{\times}3$, ReLU};
+ \node[bx] (b) at (0,-1.1) {conv $3{\times}3$};
+ \node[draw,thick,circle,minimum size=0.6cm,font=\footnotesize] (p) at (0,-2.2) {$+$};
+ \node[bx,fill=none,draw=none] (r) at (0,-3.0) {ReLU};
+ \node (x) at (0,1.0) {$x$};
+ \draw[->,thick] (x)--(a); \draw[->,thick] (a)--(b); \draw[->,thick] (b)--(p); \draw[->,thick] (p)--(r);
+ \draw[->,thick,orange!70!black] (0,0.6) -- (-2.3,0.6) -- (-2.3,-2.2) -- (p) node[midway,above,font=\scriptsize,sloped]{};
+ \node[font=\scriptsize,orange!70!black,rotate=90] at (-2.6,-0.8) {skip connection ($x$)};
+ \node[font=\scriptsize,anchor=west] at (1.6,-0.55) {$F(x)$};
+ \node[font=\small,anchor=west] at (2.8,-1.1) {$y=\mathrm{ReLU}\big(x+F(x)\big)$};
+\end{tikzpicture}
+\captionof{figure}{A residual block. The input is added to the output of the two convolutions.}
+\end{center}
+\begin{example}
+\textbf{Depthwise separable convolution: how much do we save?} A normal $3\times3$ convolution from $64$ to $128$ channels has $3\cdot3\cdot64\cdot128=73\,728$ weights (plus $128$ biases: $73\,856$). Depthwise ($3\cdot3\cdot64=576$) plus pointwise ($64\cdot128=8192$) plus the biases gives $8960$ parameters: $8.4$ times fewer, and the number of multiplications falls by the same factor. The price is a little accuracy per layer, which one wins back by using more layers. This is why small, fast detectors for robots use it.
+\end{example}
+Two more ingredients appear in almost every modern network. \textbf{Batch normalisation} normalises the values of a layer over the batch (mean $0$, spread $1$, then a learned scale and shift) which makes training faster and more stable. \textbf{Global average pooling} averages every feature map to a single number, so that the network works for any image size and needs no giant dense layer at the end.
+
+\section*{What CNNs are good and bad at}
+Good: local patterns, textures, edges, shapes, with little data and little computation (see Chapter~\ref{ch:ai9} for the real numbers on a robot). Bad: long-range relations (``the ball is \emph{between} the two robots'') and reasoning about the whole scene, because the receptive field grows only slowly; and anything that is not a grid. They are not rotation- or scale-invariant: a ball that is $5$ times smaller (farther away) looks like a different pattern, so the training images must contain all sizes (Chapter~\ref{ch:ai5}). For the global view the transformers of Chapter~\ref{ch:ai7} are better, at a higher price.
+
+\begin{aibox}[CNNs on the robot]
+Every neural network that sees the soccer field is built of these blocks: the detector of the next chapter has a CNN backbone that produces feature maps at three scales; the segmentation of the field lines is an ``encoder-decoder'' of convolutions; even audio (the whistle, Chapter~\ref{ch:hw5}) can be classified by a CNN that looks at the spectrogram as if it were an image (Chapter~\ref{ch:ai2}). Learn the shapes: the most common bug is a wrong order of axes (HWC versus CHW) or a wrong number of channels.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Compute by hand the convolution (no padding, stride $1$) of the image $\begin{pmatrix}1&2&0\\0&1&3\\2&1&0\end{pmatrix}$ with the filter $\begin{pmatrix}1&0\\0&-1\end{pmatrix}$.
+  \item An input of $416\times416$ goes through: conv $3\times3$, $P=1$, $S=1$; conv $3\times3$, $P=1$, $S=2$; max-pool $2\times2$; conv $5\times5$, $P=0$, $S=1$. Give the width after each layer.
+  \item A convolutional layer has $C_\text{in}=32$, $C_\text{out}=64$ and a $3\times3$ filter. Compute the number of parameters. How many multiplications are needed for one $80\times80$ output map set (with padding, stride $1$)?
+  \item Apply $2\times2$ max-pooling to $\begin{pmatrix}2&1&0&3\\5&4&1&1\\0&2&7&6\\1&1&2&2\end{pmatrix}$.
+  \item Compute the receptive field of: four $3\times3$ convolutions with stride $1$ in a row; and of conv $3\times3$, pool $2\times2$, conv $3\times3$.
+  \item Replace the dense layer in the network of Figure~\ref{fig:ai3_net} (output $2$) by global average pooling and a $1\times1$ convolution to $2$ channels. How many parameters does the network have now? What size of input images can it process?
+  \item Compare the number of parameters of a normal and a depthwise separable $3\times3$ convolution for $C_\text{in}=C_\text{out}=256$. Give the factor.
+  \item The input image is shifted by $1$ pixel. Explain why the feature maps of the first layer shift by one pixel (equivariance) but the final class probabilities should hardly change (invariance). Which layers are responsible for the invariance?
+  \item A residual block computes $y=x+F(x)$. If the weights of $F$ are all $0$, what does the block do? Why does this make deep networks easier to train than plain stacks?
+  \item[\textbf{\thechapter.10}$\star$] Write a function \texttt{maxpool2(x)} for a numpy array of shape $(H,W)$ with even $H$ and $W$ \emph{without loops} (use \texttt{reshape}), and a second function that applies a bank of $F$ filters of shape $(F,K,K)$ to one image with the function \texttt{conv2d} of this chapter and stacks the results to an array of shape $(F,H',W')$. Test with the image and filter of the example.
+\end{enumerate}

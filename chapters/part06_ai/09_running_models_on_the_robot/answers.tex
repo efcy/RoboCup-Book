@@ -1,0 +1,34 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item float32: $3.2\cdot10^6\times4=12.8$\,MB; float16: $6.4$\,MB; int8: $3.2$\,MB. An int4 weight needs half a byte, so $3.2$\,MB hold $6.4$ million parameters (twice as many), ignoring the small overhead of the scales.
+  \item The largest absolute value is $1.30$, so $s=1.30/7=0.1857$. The integers are $\mathrm{round}(0.52/s,\,-1.30/s,\,0.07/s,\,0.91/s)=\mathrm{round}(2.80,\,-7,\,0.38,\,4.90)=(3,-7,0,5)$. Reconstructed: $(0.557,\,-1.300,\,0,\,0.929)$. Errors: $0.037,\,0,\,0.070,\,0.019$; the largest is $0.07$ (for the small weight, which was rounded to zero; the error is at most $s/2=0.093$).
+  \item Yes, for a classifier: the difference $10^{-4}$ is of the size of floating-point rounding (or a half-precision step) and the decision is the same. Automate: a test that runs a fixed set of inputs through both models and asserts \verb!np.allclose(a, b, atol=1e-3)! (or the tolerance you decided on) \emph{and} that the predicted classes (or boxes after NMS) are identical.
+  \item Scale $s=640/1920=1/3$; resized size $640\times360$; padding $(640-360)/2=140$ above and below, left offset $0$. The centre $(320,250)$ lies at $x=(320-0)/s=960$ and $y=(250-140)/s=330$, i.e.\ $(960,330)$ in the camera image.
+  \item (1) Letterbox or resize to the training size; (2) convert BGR to RGB; (3) convert to float32 and divide by $255$; (4) subtract $0.45$ and divide by $0.225$; (5) transpose from HWC to CHW; (6) add the batch axis, giving $(1,3,H,W)$; (7) make the array contiguous. The order of (3) and (4) matters: the mean refers to the $[0,1]$ values.
+  \item Latency: $9+3+14+2+1=29$\,ms. Stages in sequence: $1000/29\approx34.5$ results per second, so a camera with at most $34$\,fps (e.g.\ $30$\,fps) can be served. With overlapping stages (pipelining) the slowest stage, $14$\,ms, sets the rate ($71$\,fps), but the latency stays $29$\,ms or more.
+  \item Mean: $0.97\cdot18+0.03\cdot60=19.26$\,ms, which looks harmless. But one frame in about $33$ takes $60$\,ms, which is a visible hiccup every second at $30$\,fps, and the result of that frame is two frames late. Possible causes: garbage collection or memory allocation, another process using the CPU, a periodic task, the camera or USB transfer, the scheduler, the clock reduced by heat. Look at the percentiles (and a time plot of the single runs) instead of the mean.
+  \item Most likely thermal throttling: the processor gets hot and lowers its clock. Measures: measure the temperature and the clock during the run and reproduce it; improve the cooling or choose a different power mode; use a smaller model or a lower rate so that the sustained load fits; plan the budget with the \emph{hot} time, not with the first minute.
+  \item Not acceptable: the overall number hides that the quantised model loses a third of the small objects ($0.62\to0.41$), and small balls are exactly the case at $8$\,m. Options: calibrate with images that contain many small, far balls; use per-channel scales; keep the sensitive layers (first and last) in higher precision (mixed precision) or use float16; quantisation-aware training; or a higher input resolution. Then measure the small-object mAP again; the decision is made with this number.
+  \item[\textbf{\ansnum.10}$\star$]
+\begin{verbatim}
+import time, numpy as np
+
+def benchmark(fn, n=1000, warmup=50):
+    for _ in range(warmup):
+        fn()                                  # discarded (allocation, caches)
+    t = np.empty(n)
+    for i in range(n):
+        t0 = time.perf_counter(); fn()
+        t[i] = (time.perf_counter() - t0) * 1000.0
+    return dict(mean=t.mean(), median=np.median(t),
+                p95=np.percentile(t, 95), p99=np.percentile(t, 99),
+                max=t.max())
+
+def parity(model_a, model_b, inputs, tol=1e-4):
+    worst = max(np.abs(model_a(x) - model_b(x)).max() for x in inputs)
+    return worst <= tol, worst
+
+img = np.random.randint(0, 256, (720, 1280, 3), np.uint8)
+print(benchmark(lambda: preprocess(img), n=300))
+\end{verbatim}
+The function uses \verb!perf_counter! (a monotonic clock with high resolution), reports percentiles and the maximum next to the mean, and the parity function returns the \emph{worst} difference so that a failing test shows by how much it fails.
+\end{enumerate}

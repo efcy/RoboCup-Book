@@ -1,0 +1,100 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Good for a sensor stream: no waiting for resent data (the newest value is more important than a lost old one), and no connection set-up and no state (the robot sends to whoever listens, a client can come and go). Problems: packets get lost and arrive in the wrong order or twice, and the size of a message is limited. Solutions: a sequence number in every packet (the receiver counts losses and ignores old and double packets); messages below about $1400$ bytes, or an explicit splitting into parts with part numbers; for commands that must not be lost, acknowledgments and resending, or TCP.
+  \item $1472$ bytes ($1500-20-8$). $3000$ bytes are fragmented into three IP packets; if one fragment is lost the whole datagram is lost, and a receiver with a small buffer cuts it, so avoid it. $22$ angles in \verb!f32!: $22\cdot4=88$ bytes (plus the header); in JSON each number needs at least about $10$ characters with separator, so about $220$ bytes or more: roughly $2.5$ times as large and much slower to parse.
+  \item $0x1234$: little endian \verb!34 12!, big endian \verb!12 34!. $1_{u32}$: \verb!01 00 00 00! and \verb!00 00 00 01!. $258=0x00000102$: \verb!02 01 00 00! and \verb!00 00 01 02!. In Rust: \verb!0x1234u16.to_le_bytes()! gives \verb![0x34, 0x12]!, \verb!258u32.to_be_bytes()! gives \verb![0, 0, 1, 2]!.
+  \item
+%rs:a4
+\begin{verbatim}
+use std::net::UdpSocket;
+
+fn main() -> std::io::Result<()> {
+    let s = UdpSocket::bind("127.0.0.1:0")?;
+    s.send_to(b"hello", s.local_addr()?)?;
+    let mut buf = [0u8; 64];
+    let (n, from) = s.recv_from(&mut buf)?;
+    println!("{} from same socket: {}",
+             String::from_utf8_lossy(&buf[..n]), from == s.local_addr()?);
+    Ok(())
+}
+\end{verbatim}
+prints \verb!hello from same socket: true!. The datagram is queued in the socket's own receive buffer, so no second thread is needed.
+  \item Change: the constant \verb!LEN! ($32$), the struct (new field), \verb!encode! (four more bytes at the end, \verb!battery.to_le_bytes()!), and \verb!decode! (read them). The \verb!version! byte becomes $2$. A receiver that only knows version $1$ must reject version $2$ packets with the error \verb!BadVersion!, or, better, the decoder accepts both: version $2$ is version $1$ plus four bytes at the end, so an old receiver may read the first $28$ bytes and ignore the rest; this is the idea of \emph{extending without breaking}, which protobuf (Chapter~\ref{ch:rust8}) gives you systematically through numbered fields.
+  \item $10$: first packet, set last$=10$. $11$ and $12$: normal. $15$: step $3$, so $2$ packets lost ($13$, $14$), last$=15$. $15$ again: step $0$, duplicate, ignored. $14$: the step is negative (a huge unsigned number), late packet, ignored; it is never counted as received, the two ``lost'' packets stay counted (a small inaccuracy that one accepts). $16$: step $1$, normal. Result: $5$ counted received ($10,11,12,15,16$), $2$ lost.
+  \item
+%rs:a7
+\begin{verbatim}
+use std::io::ErrorKind;
+use std::net::UdpSocket;
+
+fn drain_latest(sock: &UdpSocket) -> Option<u32> {
+    let mut newest = None;
+    let mut buf = [0u8; 64];
+    loop {
+        match sock.recv_from(&mut buf) {
+            Ok((n, _)) if n >= 4 => {
+                newest = Some(u32::from_le_bytes(buf[..4].try_into().unwrap()));
+            }
+            Ok(_) => {}                                        // too short
+            Err(e) if e.kind() == ErrorKind::WouldBlock => return newest,
+            Err(_) => return newest,
+        }
+    }
+}
+
+fn main() -> std::io::Result<()> {
+    let rx = UdpSocket::bind("127.0.0.1:0")?;
+    rx.set_nonblocking(true)?;
+    let tx = UdpSocket::bind("127.0.0.1:0")?;
+    println!("{:?}", drain_latest(&rx));            // nothing yet
+    for seq in 5u32..9 { tx.send_to(&seq.to_le_bytes(), rx.local_addr()?)?; }
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    println!("{:?}", drain_latest(&rx));
+    println!("{:?}", drain_latest(&rx));
+    Ok(())
+}
+\end{verbatim}
+prints \verb!None!, \verb!Some(8)! and \verb!None!. With one packet per cycle, a loop that is slower than the sender gets \emph{older and older} data (the socket queue grows to its limit and the packets in it are stale); draining gives always the newest data and a bounded delay.
+  \item Keep the time of the last valid packet (a monotonic clock, \verb!Instant!). If the \verb!elapsed()! time is larger than a limit, the sender counts as gone, and the interface shows it. At $100$ packets per second the period is $10$\,ms; a limit of $200$ to $500$\,ms (20 to 50 periods) tolerates short losses and Wi-Fi hiccups but notices quickly. A limit of exactly $10$\,ms would trigger with every delayed or lost packet and make the indicator flicker (jitter alone is several ms on Wi-Fi). For safety-related commands, e.g.\ a walk command, the robot must stop when \emph{its} time-out expires, not wait for a message to say so.
+  \item In this order: (1) Is the program listening on the right address, not only on loopback? \verb!ss -ulpn! on the robot (must show \verb!0.0.0.0:9000!, not \verb!127.0.0.1:9000!). (2) Is there a route? \verb!ping robot! or \verb!ip a! on both sides, same subnet. (3) Does a packet leave and arrive? \verb!sudo tcpdump -i any -n udp port 9000! on the robot while the laptop sends (or \verb!nc -u robot 9000! and \verb!nc -u -l 9000!). (4) A firewall: \verb!sudo ufw status!, \verb!sudo ufw allow 9000/udp!. Another cause is Wi-Fi client isolation (the network does not forward packets between clients).
+  \item[\textbf{\ansnum.10}$\star$]
+%rs:a10
+\begin{verbatim}
+use std::net::UdpSocket;
+use std::thread;
+use std::time::{Duration, Instant};
+
+fn main() -> std::io::Result<()> {
+    let rx = UdpSocket::bind("127.0.0.1:0")?;
+    rx.set_read_timeout(Some(Duration::from_millis(300)))?;
+    let addr = rx.local_addr()?;
+    let robot = thread::spawn(move || {
+        let tx = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let mut next = Instant::now();
+        for seq in 0u32..100 {
+            tx.send_to(&seq.to_le_bytes(), addr).unwrap();
+            next += Duration::from_millis(10);
+            thread::sleep(next.saturating_duration_since(Instant::now()));
+        }
+    });
+    let (mut last, mut t_prev) = (None::<u32>, None::<Instant>);
+    let (mut got, mut lost) = (0, 0);
+    let mut gaps = Vec::new();
+    let mut buf = [0u8; 16];
+    while let Ok((n, _)) = rx.recv_from(&mut buf) {
+        let now = Instant::now();
+        if let Some(t) = t_prev { gaps.push((now - t).as_secs_f64() * 1e3); }
+        t_prev = Some(now);
+        let seq = u32::from_le_bytes(buf[..n.min(4)].try_into().unwrap());
+        if let Some(l) = last { lost += seq.wrapping_sub(l).saturating_sub(1); }
+        last = Some(seq);
+        got += 1;
+    }
+    robot.join().unwrap();
+    gaps.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    println!("packets {got}, lost {lost}, median {:.2} ms, max {:.2} ms",
+             gaps[gaps.len() / 2], gaps[gaps.len() - 1]);
+    Ok(())
+}
+\end{verbatim}
+In three release runs on an otherwise quiet computer the output was \verb!packets 100, lost 0, median 10.00 ms, max 10.13 ms! (the maxima were $10.13$ to $10.23$\,ms). Expected: a median of $10$\,ms, because the sender schedules every packet relative to the \emph{planned} time (\verb!next!), so oversleeping does not accumulate. The maximum becomes much larger when something else runs on the computer (the operating system gives the CPU to another process and the thread wakes late, a typical delay is a few ms and under heavy load tens of ms), in a debug build with heavy printing, with Wi-Fi in the path, or when the sleeping thread is moved between cores. The maximum, not the median, tells you whether a control loop that depends on this stream is safe.
+\end{enumerate}

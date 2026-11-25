@@ -1,0 +1,28 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $A\cap B=50\cdot50=2500$; union $10000+10000-2500=17500$; $\mathrm{IoU}=0.143$. $A$ and $C$ only touch along an edge: intersection $0$, $\mathrm{IoU}=0$.
+  \item $c_x=330$, $c_y=230$, $w=h=60$: \texttt{2 0.5156 0.4792 0.0938 0.1250}.
+  \item $64^2+32^2+16^2=4096+1024+256=5376$; the finest grid has $4096$, i.e.\ $76\,\%$.
+  \item Sorted: $b_1$ ($0.95$), $b_2$ ($0.90$), $b_3$ ($0.80$). Keep $b_1$. $\mathrm{IoU}(b_1,b_2)$: overlap $90\cdot90=8100$, union $10000+10000-8100=11900$, $0.68>0.5$: remove $b_2$. $b_3$ has no overlap: keep. Result: $b_1$ and $b_3$.
+  \item Different classes can have strongly overlapping boxes that are both correct: a ball in front of a robot's foot lies inside the box of the robot. NMS across classes would delete the lower-scoring one, so one real object disappears. (Some frameworks offer class-agnostic NMS; use it only if an object can have only one class.)
+  \item Recall: $0.2,0.2,0.4,0.6,0.6,0.8$; precision: $1,0.5,0.667,0.75,0.6,0.667$. Monotone precision to the right: $1,0.75,0.75,0.75,0.667,0.667$; at the points where recall increases: $0.2\cdot1+0.2\cdot0.75+0.2\cdot0.75+0.2\cdot0.667=0.633$. (The code of the chapter gives $0.6333$.)
+  \item $Z=f_\text{px}D/d_\text{px}=700\cdot0.13/8=11.4$\,m. For the half-size image $f_\text{px}=350$: $5.7$\,m: shrinking the image halves the distance at which the ball is as large as one cell.
+  \item The boxes are roughly right ($\mathrm{IoU}>0.5$) but not precise (they miss the $0.75$--$0.95$ thresholds). For the distance from the box width this matters: a box that is $10$--$20\,\%$ too large or too small gives a distance error of the same relative size.
+  \item $Z=554\cdot0.13/18=4.00$\,m. If the true width is $16$ pixels (the box is $2$ pixels too wide), the true distance is $554\cdot0.13/16=4.50$\,m: the estimate is $0.5$\,m too small, $11\,\%$ of the true distance (the ratio $16/18$).
+  \item[\textbf{\ansnum.10}] \texttt{average\_precision} is the function from the chapter's example (all-point interpolation). \texttt{match}:
+\begin{verbatim}
+def match(dets, gts, thr=0.5):
+    used, flags = set(), []
+    for box, score in sorted(dets, key=lambda d: -d[1]):
+        best, best_iou = None, thr
+        for k, g in enumerate(gts):
+            v = iou(box, g)
+            if k not in used and v >= best_iou:
+                best, best_iou = k, v
+        if best is None:
+            flags.append(0)
+        else:
+            used.add(best); flags.append(1)
+    return flags
+\end{verbatim}
+  With the two true boxes $(100,100,200,200)$ and $(300,150,360,210)$ and the three detections $((102,98,198,205),0.9)$, $((105,100,200,195),0.8)$, $((310,155,365,215),0.7)$ the flags are $[1,0,1]$ (the second detection is a duplicate of the first true box and counts as a false positive), and the AP is $0.833$: recall $0.5$ is reached with precision $1.0$, recall $1.0$ only after the false positive, with precision $2/3$, so $0.5\cdot1+0.5\cdot0.667=0.833$. The functions of the chapter, run on this example, give the same $0.8333$.
+\end{enumerate}

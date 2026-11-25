@@ -1,0 +1,145 @@
+\bookchapter{Language Models and LLMs}\label{ch:ai8}
+
+\section*{Explanation}
+A \textbf{language model} assigns a probability to the next piece of text. That is all. A \textbf{large language model} (LLM) does it with a transformer (Chapter~\ref{ch:ai7}) of billions of parameters that has read a large part of the written internet, and out of this simple task come answers, summaries, translations and code. This chapter explains how such a model works inside, what its numbers mean (size, memory, speed), how to use it in a program, and, most important for a robot builder, what you should and should not let it do. The experiments are real: we built the smallest possible language model from the text of this book.
+
+\section*{The next-token game}
+Text is cut into \textbf{tokens} (words or word pieces, Chapter~\ref{ch:ai2}). The model reads the tokens so far and outputs, for every token of its vocabulary, a probability that it comes next: a softmax over, say, $50\,000$ to $200\,000$ entries (Chapter~\ref{ch:prob}). To generate text we \textbf{sample} one token from this distribution, append it, and repeat: the autoregressive loop of Chapter~\ref{ch:ai1}. Training means: take a real text, hide the next token, let the model guess, and reduce the cross-entropy between its distribution and the true token by gradient descent (Chapters~\ref{ch:gd}, \ref{ch:nn}); billions of times. Nobody programs grammar or facts; they appear because they help to predict the next token.
+
+\subsection*{The smallest language model}
+Let us do it with counting instead of a neural network: a \textbf{character $n$-gram model}. We cut the text of Parts II to V of this book into letters, count for every context of the last $n-1$ characters how often each next character follows, and turn the counts into probabilities (with a little smoothing for unseen cases). To judge a model we use the \textbf{perplexity}: $2^{H}$, where $H$ is the average cross-entropy in bits per character. It is the ``effective number of equally likely choices'' the model has at every position: a model that knows nothing about the text has a perplexity of $29$ (the number of different characters here), a perfect one has $1$. We trained on $263\,622$ characters of $34$ chapters and tested on the other $22\,619$ characters (every tenth chapter was held back, Chapter~\ref{ch:ai5}):
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{rcc}
+\textbf{$n$ ($n-1$ letters of context)} & \textbf{perplexity, training text} & \textbf{perplexity, test text}\\ \hline
+1 (no context) & 18.3 & 18.5\\
+2 & 11.2 & 11.2\\
+3 & 6.6 & 7.2\\
+4 & 4.1 & 4.9\\
+5 & 3.2 & \textbf{4.7}\\
+6 & 3.0 & 5.7\\
+8 & 3.0 & 9.9\\
+\end{tabular}
+\end{center}
+More context helps up to $n=5$ (four preceding letters): the perplexity on text that the model has never seen falls from $18.5$ to $4.7$. Beyond that the model is \emph{overfitting} (Chapter~\ref{ch:ai5}): it memorises the training text (perplexity $3.0$) and fails on new text ($9.9$), because most long contexts never occurred before. Here is generated text, with the context ``the r'' and sampling with the original probabilities and with a sharpened distribution (temperature $0.5$, see below):
+\begin{quote}\small\ttfamily
+the roots build executore red, git runs can critical python feature less ,w of your work are simple may of chapter comple motor with rest.\\[2pt]
+the robot work of a small commit is the next to the same the starts after ch py explain a sound the enumera image of let the stores the other ch line is a stream starts on the robot happen the loss such as
+\end{quote}
+It looks like the book (``git'', ``commit'', ``python'', ``motor''), but means nothing. Four letters of context cannot know what a sentence is about. A table of counts cannot grow beyond this point: the number of possible contexts explodes. A neural model avoids the table: it represents the context by a vector (an \textbf{embedding}) in which similar contexts are close to each other, and so it can \emph{generalise} to contexts it has never seen. A transformer with attention over thousands of tokens is this idea at full scale.
+
+\section*{Sampling: temperature, top-$k$, top-$p$}
+The model outputs scores (logits) $z_j$; the probabilities are $p_j=\mathrm{softmax}(z_j/T)$ with the \textbf{temperature} $T$. For logits $(3,2,1,0,-1)$:
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{r|ccccc}
+$T$ & $p_1$ & $p_2$ & $p_3$ & $p_4$ & $p_5$\\ \hline
+0.5 & 0.865 & 0.117 & 0.016 & 0.002 & 0.000\\
+1.0 & 0.636 & 0.234 & 0.086 & 0.032 & 0.012\\
+2.0 & 0.429 & 0.260 & 0.158 & 0.096 & 0.058\\
+\end{tabular}
+\end{center}
+A low temperature makes the model safer and more repetitive (the limit $T\to0$ always picks the most likely token: \textbf{greedy} decoding, which is deterministic), a high temperature more varied and more error-prone. \textbf{Top-$k$} keeps only the $k$ most likely tokens; \textbf{top-$p$} (nucleus) keeps the smallest set whose probabilities add up to $p$ (for $p=0.9$ and $T=1$ above: the first three tokens, whose cumulative probability is $0.957$). For a robot that must act reliably use $T=0$ or a very low temperature.
+
+\section*{Size, cost and scaling}
+The size of an LLM is the number of parameters $N$; the amount of training text is the number of tokens $D$. The training cost is about
+\[
+\text{FLOPs}\approx6\,N\,D.
+\]
+For $N=7\cdot10^{9}$ and $D=2\cdot10^{12}$ tokens that is $8.4\cdot10^{22}$ floating-point operations: months of work for thousands of GPUs, which is why you will \emph{use} models, not train them. (A rule of thumb from scaling studies is that a model of a given compute budget is best when $D$ is of the order of $20\,N$; many recent models are trained on much more text than this, to be better for their size.)
+
+\textbf{Memory at run time.} The weights must be in the memory of the computer. Bytes per parameter: $4$ (float32), $2$ (float16/bfloat16), $1$ (int8), $0.5$ (int4, \textbf{quantisation}, Chapter~\ref{ch:ai9}).
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{rccc}
+\textbf{parameters} & \textbf{float16} & \textbf{int8} & \textbf{int4}\\ \hline
+1.5 billion & 3.0 GB & 1.5 GB & 0.75 GB\\
+7 billion & 14 GB & 7 GB & 3.5 GB\\
+13 billion & 26 GB & 13 GB & 6.5 GB\\
+\end{tabular}
+\end{center}
+In addition, the \textbf{KV cache}: for every token already processed, each layer stores its keys and values, so that attention does not have to recompute them. Its size is $2\times\text{layers}\times d\times\text{tokens}\times\text{bytes}$; for $32$ layers, $d=4096$, $4096$ tokens and float16 it is $2\cdot32\cdot4096\cdot4096\cdot2=2.1$\,GB, on top of the weights. A long context costs real memory.
+
+\textbf{Speed.} Generating one token needs the whole set of weights to be read once from memory, so the speed is mostly limited by memory bandwidth: tokens per second $\lesssim$ bandwidth / bytes of the weights. A $7$B model in int4 ($3.5$\,GB) on a device with $100$\,GB/s memory gives at most about $29$ tokens per second, with $50$\,GB/s about $14$ (an upper bound estimate; real systems are slower). A reply of $100$ tokens thus needs several seconds on small hardware: an LLM is a tool for decisions that may take seconds, never for a $50$\,Hz control loop (Chapters~\ref{ch:hw7} and~\ref{ch:ros6}).
+
+\section*{From a text predictor to an assistant}
+A model that was only pre-trained continues any text, it does not answer questions. Two more training stages give it manners: \textbf{instruction tuning} (supervised training on examples of instructions and good answers) and \textbf{preference tuning} (people or models rank several answers, and the model is trained to produce the preferred ones, by reinforcement learning from human feedback or by direct optimisation of the preferences, Part~\ref{part:rl} for the underlying ideas: the reward comes from a learned judge). The result follows instructions, but remains a statistical model of text.
+
+\section*{Using an LLM in a program}
+\begin{itemize}[nosep]
+\item \textbf{Prompt}: the text you give. A good one states the role, the task, the allowed output format and, if useful, a few \textbf{examples} (few-shot). Small changes can change the result: keep prompts in files under version control and test them like code (Chapter~\ref{ch:py11}).
+\item \textbf{Structured output}: ask for JSON in a fixed format; many interfaces can force the output to match a schema. \emph{Always validate} the answer in your own code (below).
+\item \textbf{Tool use} (function calling): the model does not compute or look up; it writes a call (``\texttt{get\_battery\_level()}''), your program executes it and returns the result to the model. This is how an LLM is connected to a robot, and the list of tools is the list of what it \emph{can} do.
+\item \textbf{Retrieval-augmented generation (RAG)}: the model knows only its training data and the prompt. To answer questions about \emph{your} documents (this book, the rules, your logs) you first \textbf{retrieve} the best matching passages and put them into the prompt. Retrieval can be a keyword search (TF-IDF, Chapter~\ref{ch:ai2}) or compare \emph{embedding vectors} with cosine similarity, which is the dot product of normalised vectors (Chapter~\ref{ch:dotproduct}).
+\end{itemize}
+\begin{example}
+\textbf{Retrieval over this book.} We cut the $38$ chapters of Parts II--V into $364$ passages of about $150$ words, computed TF-IDF vectors and answered five questions by the passages with the largest cosine similarity. Four of five found the right chapter at once: ``direction of a sound with two microphones'' $\to$ \emph{Microphones and Sound} (similarity $0.29$); ``lithium battery hot or swollen'' $\to$ \emph{Power and Safety}; ``ssh through a jump host'' $\to$ \emph{Remote Work with SSH} ($0.52$); ``pixel position of the ball to field coordinates'' $\to$ \emph{Coordinate Frames with tf2}. The fifth, ``why does the robot not see the topic on the other computer'', ranked a chapter about login and permissions first, and the two chapters that really answer it (\emph{ROS 2 Concepts}, \emph{DDS Under the Hood}) second and third. The words of the question (``see'', ``other computer'') do not occur in those passages; keyword search does not understand meaning, and embeddings from a neural network (which place ``not see the topic'' near ``discovery fails'') are the remedy. Always check what was retrieved.
+\end{example}
+\begin{verbatim}
+import json
+ALLOWED = {
+    "approach_ball": {},
+    "kick": {"direction_deg": (-90.0, 90.0), "power": (0.0, 1.0)},
+    "stop": {},
+    "say": {},
+}
+def validate(text):
+    """Return (ok, command_or_error). Never raises."""
+    try:
+        cmd = json.loads(text)
+    except ValueError:
+        return False, "not valid JSON"
+    if not isinstance(cmd, dict) or cmd.get("action") not in ALLOWED:
+        return False, "unknown action"
+    spec = ALLOWED[cmd["action"]]
+    args = cmd.get("args", {})
+    if not isinstance(args, dict) or set(args) - set(spec):
+        return False, "unexpected arguments"
+    for name, (lo, hi) in spec.items():
+        v = args.get(name)
+        if (not isinstance(v, (int, float)) or isinstance(v, bool)
+                or not lo <= v <= hi):
+            return False, f"argument {name} missing or out of range"
+    return True, cmd
+\end{verbatim}
+This is a \textbf{whitelist}: only the listed actions with arguments in the allowed ranges pass. We ran it on six model outputs: the valid \texttt{approach\_ball} and \texttt{kick} (direction $20^\circ$, power $0.6$) are accepted; a kick with power $5$, a kick with an extra argument, the invented action \texttt{walk\_into\_wall} and a reply with chatty text around the JSON (``Sure! Here is\dots'') are all rejected. A rejected command is not executed; the robot keeps its safe default behaviour.
+
+\section*{Vision-language models}
+If the image is cut into patches and embedded as tokens (Chapter~\ref{ch:ai7}), a language model can read them together with text: this is a \textbf{vision-language model} (VLM), which answers ``what is on the field?'' or ``is the goal free?''. They are slower and less exact than a detector (no precise boxes, no guaranteed frame rate), but flexible: you change the question, not the training data. Use them for rare, high-level questions, not for tracking the ball.
+
+\section*{Limits and risks}
+\begin{itemize}[nosep]
+\item \textbf{Hallucination}: the model produces plausible text, true or not; it has no sense of what it does not know. Verify facts, especially numbers, safety information and code.
+\item \textbf{Not deterministic and not repeatable} (unless $T=0$ and a fixed version); answers change with small changes of the prompt and with new model versions.
+\item \textbf{Latency}: seconds, and unpredictable.
+\item \textbf{Prompt injection}: text from the outside (a web page, a message, even words written on a sign that the camera reads) can contain instructions that the model follows. Everything that comes from outside is \emph{data}, never instructions; the whitelist and the safety layer must not depend on the model's good behaviour.
+\item \textbf{Privacy and rules}: data sent to an online service leaves your computer; check what you may send (pictures of people, school data). Competition rules about autonomy and communication limit what a robot may use during a game; read the rules of your league.
+\item \textbf{Licences}: models and their weights have their own licences (some are open, some restrict use).
+\end{itemize}
+
+\section*{What is a sensible role on a soccer robot?}
+\begin{enumerate}[nosep]
+\item \textbf{Development assistant}: explains error messages, writes first drafts of code and tests (which you read and run, Chapter~\ref{ch:py11}), summarises logs. No safety risk, large benefit.
+\item \textbf{Operator interface}: voice or text command $\rightarrow$ validated command from a fixed list, as above.
+\item \textbf{Offline analysis}: describe the video of a match, search the recordings, label data (Chapter~\ref{ch:ai5}).
+\item \textbf{High-level planning} (with a lot of care): propose which action to do next; every action is executed by deterministic, tested code that does its own safety checks (Chapters~\ref{ch:ros6} and~\ref{ch:hw8}).
+\end{enumerate}
+It does \emph{not} belong in the walking controller, the balance loop or the emergency stop.
+
+\begin{aibox}[The pattern to remember]
+LLM (proposes) $\rightarrow$ schema and whitelist (checks) $\rightarrow$ deterministic robot code (acts) $\rightarrow$ safety layer (can always stop). The language model is an advisor with no hands.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A character model has $29$ symbols. What is the perplexity of a model that gives every character the same probability? What is the perplexity if the model has an average cross-entropy of $2.2$ bits per character?
+  \item In the table of the chapter the training perplexity keeps falling but the test perplexity rises after $n=5$. Name the effect and two ways to improve the model without more text.
+  \item Compute softmax$(z/T)$ for $z=(2,0)$ and $T=1$ and $T=0.5$.
+  \item Logits give the probabilities $0.5,0.3,0.1,0.06,0.04$. Which tokens remain with top-$k=2$? With top-$p=0.85$? Renormalise the probabilities for top-$k=2$.
+  \item How many floating-point operations are needed to train a model with $N=1.3\cdot10^9$ parameters on $D=26\cdot10^9$ tokens ($D=20N$)? How long would it take at a sustained $2\cdot10^{14}$ FLOP/s?
+  \item Compute the memory for the weights of a $3$B model in float16, int8 and int4, and the KV cache for $24$ layers, $d=2560$, $2048$ tokens, float16.
+  \item A device has a memory bandwidth of $60$\,GB/s and runs a $3$B model in int4. Estimate the upper bound of tokens per second, and the time for a reply of $60$ tokens.
+  \item A user says ``kick the ball very hard to the left''. The model answers with a JSON command: action \verb!kick!, direction $-120$ degrees, power $1.0$. What does the validator of the chapter do, and why is this the desired behaviour? Which two changes would make the command acceptable?
+  \item Give an example of a prompt injection against a robot with a camera and a language model, and two defences.
+  \item[\textbf{\thechapter.10}$\star$] Write a function \texttt{sample(logits, T=1.0, top\_k=None, top\_p=None, rng=None)} that returns a token index. Test with the logits $(3,2,1,0,-1)$: with $T=1$ and $100\,000$ samples the frequencies should be close to $0.636,0.234,0.086,0.032,0.012$; with \texttt{top\_k=2} only the first two tokens may appear.
+\end{enumerate}

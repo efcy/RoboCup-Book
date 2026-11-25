@@ -1,0 +1,256 @@
+\bookchapter{Threads and Channels}\label{ch:rust6}
+
+\section*{Explanation}
+The robot does several things at the same time: it receives packets from the debug client, reads the camera, runs the control loop, writes a log. In a program this means several \textbf{threads}, sequences of instructions that the operating system runs side by side on the processor cores (or interleaved on one core). Threads are where most C and C++ programs get their worst bugs: two threads that touch the same data produce results that depend on timing, work for a year, and fail in the final of the competition. Rust turns the most dangerous of these bugs, the \textbf{data race}, into a compile error. This chapter shows how to start threads, how they exchange data safely, and a few patterns that fit a robot.
+
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.4mm]},bx/.style={draw,thick,rounded corners=2pt,minimum width=2.7cm,minimum height=0.95cm,font=\footnotesize,align=center}]
+ \node[bx,fill=blue!10] (net) at (0,2.2) {network thread\\ (UDP receive)};
+ \node[bx,fill=green!10] (vis) at (0,0) {vision thread\\ (camera, model)};
+ \node[bx,fill=orange!15] (ctl) at (6,1.1) {control loop\\ (200\,Hz)};
+ \node[bx,fill=yellow!20] (log) at (11.5,1.1) {log thread\\ (disk)};
+ \draw[->,thick] (net)--node[above,sloped,font=\scriptsize]{channel: commands} (ctl);
+ \draw[->,thick] (vis)--node[below,sloped,font=\scriptsize]{latest value} (ctl);
+ \draw[->,thick] (ctl)--node[above,font=\scriptsize]{channel} (log);
+\end{tikzpicture}
+\captionof{figure}{A typical structure: threads that never wait for each other except through channels and a ``latest value'' cell. The control loop is the most important thread and must never be blocked by a slow disk or a slow network.}
+\end{center}
+
+\section*{Starting threads}
+\verb!thread::spawn! starts a thread that runs a closure and returns a handle; \verb!join! waits for the end and returns the result of the closure.
+%rs:spawn
+\begin{verbatim}
+use std::thread;
+
+fn main() {
+    let mut handles = Vec::new();
+    for k in 0..4_u64 {
+        handles.push(thread::spawn(move || {
+            let lo = k * 250_000;
+            (lo..lo + 250_000).sum::<u64>()       // the partial sum
+        }));
+    }
+    let total: u64 = handles.into_iter().map(|h| h.join().unwrap()).sum();
+    println!("{total}");
+    println!("{}", (0..1_000_000_u64).sum::<u64>());
+}
+\end{verbatim}
+prints $499999500000$ twice. The keyword \verb!move! in front of the closure \emph{moves} the variables that it uses (here \verb!k!) into the thread: the thread owns them, and cannot outlive the data it uses. Without \verb!move! the closure only borrows \verb!k!, and the compiler rejects it, because the thread may still run when the function that owns \verb!k! has ended (\verb!error[E0373]: closure may outlive the current function!).
+
+\section*{The data race that cannot be written}
+Four threads count events in a shared counter. In C the following would compile and give wrong results from time to time. In Rust:
+%rsfail:race
+\begin{verbatim}
+use std::thread;
+
+fn main() {
+    let mut count = 0;
+    let mut hs = Vec::new();
+    for _ in 0..4 {
+        hs.push(thread::spawn(|| {
+            for _ in 0..1000 { count += 1; }
+        }));
+    }
+    for h in hs { h.join().unwrap(); }
+    println!("{count}");
+}
+\end{verbatim}
+does not compile: the closures borrow \verb!count! mutably, from several threads at once and for longer than the function (Chapter~\ref{ch:rust3}: one writer or many readers). The rules of ownership are \emph{the same rules} that prevent a data race: a race needs two threads, one of which writes, with no order between them. The compiler forbids exactly this situation. To share data you have to say \emph{how} access is coordinated.
+
+\section*{Sharing with a mutex}
+A \textbf{mutex} (``mutual exclusion'') lets only one thread at a time look at the data. \verb!Mutex<T>! contains the data; you get at it only by \verb!lock()!, which waits if somebody else holds the lock, and gives a guard that releases the lock when it goes out of scope. \verb!Arc<T>! (``atomically reference counted'') is a pointer that several owners may hold; the data is freed when the last \verb!Arc! is dropped (Python's reference counting, but only where you ask for it).
+%rs:mutex
+\begin{verbatim}
+use std::sync::{Arc, Mutex};
+use std::thread;
+
+fn main() {
+    let count = Arc::new(Mutex::new(0_u64));
+    let mut hs = Vec::new();
+    for _ in 0..4 {
+        let c = Arc::clone(&count);          // another owner of the same data
+        hs.push(thread::spawn(move || {
+            for _ in 0..100_000 {
+                *c.lock().unwrap() += 1;     // lock, change, unlock
+            }
+        }));
+    }
+    for h in hs { h.join().unwrap(); }
+    println!("{}", *count.lock().unwrap());
+}
+\end{verbatim}
+prints $400000$, every time. The data inside the mutex cannot be reached without the lock, so one \emph{cannot forget} to lock, a frequent bug in other languages where mutex and data are separate objects. Rules for locks: keep them short (copy the value out and release), never hold a lock while doing something slow (disk, network, sleeping), and never lock two mutexes in different orders in different threads (a \textbf{deadlock}: each waits for the other forever). If a thread panics while holding the lock the mutex is \emph{poisoned}; \verb!lock()! then returns an error, which \verb!unwrap()! turns into a panic of the next thread (the safe default; you can also recover the data). For a simple flag or counter, \textbf{atomic} types avoid the lock completely:
+%rs:atomic
+\begin{verbatim}
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
+
+fn main() {
+    let stop = Arc::new(AtomicBool::new(false));
+    let ticks = Arc::new(AtomicU64::new(0));
+    let (s, t) = (Arc::clone(&stop), Arc::clone(&ticks));
+    let worker = thread::spawn(move || {
+        while !s.load(Ordering::Relaxed) {
+            t.fetch_add(1, Ordering::Relaxed);
+            thread::sleep(Duration::from_millis(1));
+        }
+    });
+    thread::sleep(Duration::from_millis(50));
+    stop.store(true, Ordering::Relaxed);        // ask the worker to stop
+    worker.join().unwrap();
+    println!("worked: {}", ticks.load(Ordering::Relaxed) > 5);
+}
+\end{verbatim}
+prints \verb!worked: true!. This is the standard pattern for a clean shutdown of a thread (for example when the user presses \verb!q! in the terminal tool of Chapter~\ref{ch:rust9}). The argument \verb!Ordering::Relaxed! says that no ordering with other memory operations is needed; it is enough for independent flags and counters. If in doubt use \verb!Ordering::SeqCst!, the strictest and slowest choice.
+\begin{keyidea}[Send and Sync]
+Two traits, which the compiler checks automatically, decide what can be used across threads: a type is \textbf{Send} if it may be moved to another thread, and \textbf{Sync} if a shared reference to it may be used from several threads. Almost all types are both. The exceptions protect you: \verb!Rc! (the non-atomic cousin of \verb!Arc!, faster) is not \verb!Send!, so using it between threads is a compile error rather than a rare crash.
+\end{keyidea}
+
+\section*{Channels: sending messages instead of sharing}
+The alternative to shared memory is to send \textbf{messages}. A \textbf{channel} has a sending end and a receiving end. The sender moves the value into the channel, the receiver gets ownership: there is never an object that two threads use, so nothing can race. This is the preferred style for a robot: ``do not communicate by sharing memory; share memory by communicating''.
+%rs:channel
+\begin{verbatim}
+use std::sync::mpsc;
+use std::thread;
+
+fn main() {
+    let (tx, rx) = mpsc::channel::<f64>();
+    let producer = thread::spawn(move || {
+        for i in 0..5 {
+            tx.send(i as f64 * 0.5).unwrap();    // moves the value
+        }
+    });                                          // tx is dropped here
+    let mut sum = 0.0;
+    for v in rx {                       // ends when all senders are gone
+        println!("got {v}");
+        sum += v;
+    }
+    producer.join().unwrap();
+    println!("sum {sum}");
+}
+\end{verbatim}
+prints \verb!got 0!, \verb!got 0.5!, \verb!got 1!, \verb!got 1.5!, \verb!got 2! and \verb!sum 5!. The receiving loop ends by itself when all senders have been dropped (\verb!rx! sees that no sender exists), a clean way to say ``no more data''. Useful methods on the receiver: \verb!recv()! (wait), \verb!try_recv()! (do not wait, returns an error if empty), \verb!recv_timeout(d)! (wait at most \verb!d!). \verb!mpsc! means \emph{multiple producer, single consumer}: clone the sender for each producer.
+%rs:fanin
+\begin{verbatim}
+use std::sync::mpsc;
+use std::thread;
+
+#[derive(Debug)]
+enum Event { Sensor { id: u8, value: f64 }, Done(u8) }
+
+fn main() {
+    let (tx, rx) = mpsc::channel();
+    for id in 0..3_u8 {
+        let tx = tx.clone();
+        thread::spawn(move || {
+            for k in 0..2 {
+                let value = (id * 10 + k) as f64;
+                tx.send(Event::Sensor { id, value }).unwrap();
+            }
+            tx.send(Event::Done(id)).unwrap();
+        });
+    }
+    drop(tx);                                    // the original sender
+    let mut readings = Vec::new();
+    let mut done = 0;
+    for ev in rx {
+        match ev {
+            Event::Sensor { id, value } => readings.push((id, value)),
+            Event::Done(_) => done += 1,
+        }
+    }
+    readings.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    println!("{done} {readings:?}");
+}
+\end{verbatim}
+prints \verb!3 [(0, 0.0), (0, 1.0), (1, 10.0), (1, 11.0), (2, 20.0), (2, 21.0)]!. The order in which the events \emph{arrive} varies from run to run; we sort before printing. This is a general lesson of concurrent programs: the interleaving is not under your control, so tests must not depend on it. Note also that the message is an enum (Chapter~\ref{ch:rust4}), a good way to bring different kinds of events into one queue.
+
+An ordinary channel has an unlimited queue: if the receiver is slower than the sender, memory grows and the delay too. \verb!mpsc::sync_channel(n)! has a bounded queue; \verb!send! then waits (or you use \verb!try_send! and drop the message) when the queue is full. For a robot, an unbounded queue between a fast sensor and a slow consumer is a bug in waiting: decide what happens when the consumer cannot keep up.
+
+\section*{The ``latest value'' pattern}
+For sensor data, old values are worthless: the control loop wants \emph{the most recent} camera result, not the second in a queue of ten. A shared cell with the newest value does that:
+%rs:latest
+\begin{verbatim}
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
+
+#[derive(Clone, Debug)]
+struct Detection { frame: u32, ball_x: f64 }
+
+fn main() {
+    let latest: Arc<Mutex<Option<Detection>>> = Arc::new(Mutex::new(None));
+    let l2 = Arc::clone(&latest);
+    let vision = thread::spawn(move || {
+        for frame in 0..10 {                       // slow: 20 ms per frame
+            thread::sleep(Duration::from_millis(20));
+            let d = Detection { frame, ball_x: frame as f64 };
+            *l2.lock().unwrap() = Some(d);
+        }
+    });
+    let mut seen = Vec::new();
+    for _ in 0..40 {                               // fast: every 5 ms
+        let d = latest.lock().unwrap().clone();    // copy out, lock released
+        if let Some(d) = d {
+            if seen.last() != Some(&d.frame) { seen.push(d.frame); }
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    vision.join().unwrap();
+    println!("never blocked, frames seen in order: {}",
+             seen.windows(2).all(|w| w[0] < w[1]));
+}
+\end{verbatim}
+prints \verb!never blocked, frames seen in order: true!. The control loop (here every $5$\,ms) runs at its own rate, uses each result at most once and in order, skips frames when the vision thread is slow, and is never made to wait for vision. The lock is held only for the moment of the copy. The slow vision thread cannot disturb the fast loop, only provide fresher data.
+
+\section*{Scoped threads: borrowing across threads}
+Normally a thread needs \verb!move! because it might outlive its parent. \verb!thread::scope! guarantees that all threads end before the scope does, so they \emph{may borrow}. That is the easiest way to split a calculation over the processor cores:
+%rs:scope
+\begin{verbatim}
+use std::thread;
+use std::time::Instant;
+
+fn work(lo: u64, hi: u64) -> u64 {
+    (lo..hi).fold(0, |a, i| a.wrapping_add(i.wrapping_mul(i) ^ (i >> 3)))
+}
+
+fn main() {
+    let n = 400_000_000_u64;
+    let t0 = Instant::now();
+    let one = work(0, n);
+    let t1 = t0.elapsed().as_secs_f64() * 1000.0;
+    let t0 = Instant::now();
+    let (a, b) = thread::scope(|s| {
+        let h1 = s.spawn(|| work(0, n / 2));
+        let h2 = s.spawn(|| work(n / 2, n));
+        (h1.join().unwrap(), h2.join().unwrap())
+    });
+    let t2 = t0.elapsed().as_secs_f64() * 1000.0;
+    println!("same result: {}", one == a.wrapping_add(b));
+    eprintln!("1 thread {t1:.0} ms, 2 threads {t2:.0} ms");
+}
+\end{verbatim}
+prints \verb!same result: true!. With the release build, one thread needed about $240$\,ms and two threads about $125$\,ms on the two-core computer of this book (best of three runs; in one run another program used a core and the times were $289$ and $234$\,ms: measure several times), a speed-up of about $1.9$. More threads than cores do not help; and the speed-up of real programs is lower than the number of cores when threads wait for each other or for memory. For the robot the main use of threads is not speed but \emph{independence}: the slow things must not delay the fast things.
+
+\section*{Async in one paragraph}
+You will hear about \verb!async!/\verb!await! and the library \verb!tokio!. They allow thousands of tasks to wait for network events on a few threads, which is what web servers need. For our tools (a few sockets, a terminal, a control loop) ordinary threads and channels are simpler to understand and to debug; the UDP code of Chapter~\ref{ch:rust7} uses plain threads. If you meet a project that uses \verb!tokio!, the ideas of this chapter (ownership, \verb!Send!, channels) apply there as well.
+
+\begin{aibox}[A rule for the robot]
+The control thread should not wait for anything that it does not control: no \verb!lock()! on a mutex that a slow thread may hold for long, no \verb!recv()! without a timeout, no disk and no network calls. Give it channels and latest-value cells that other threads fill, and use \verb!try_recv! or the copy-out pattern.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item What does \verb!move! in \verb!thread::spawn(move || ...)! do, and what does the compiler say if you omit it for a closure that uses a local variable?
+  \item Explain in your own words why the program with the shared \verb!count += 1! does not compile, and which two changes make it correct (name both).
+  \item Write a program that starts $4$ threads; thread $k$ computes the sum of the squares of the numbers from $k\cdot1000$ to $k\cdot1000+999$ and returns it. The main thread adds the four results and compares with the sum over $0\ldots3999$ computed in one loop.
+  \item What is a deadlock? Describe a situation with two mutexes $A$ and $B$ and two threads, and a simple rule that prevents it.
+  \item Replace the \verb!Mutex<u64>! counter of the chapter by an \verb!AtomicU64!. Which is faster for $4\times10^5$ increments, in principle, and why? When can you \emph{not} use an atomic instead of a mutex?
+  \item Write a producer thread that sends the numbers $1,\dots,10$ through a channel and a consumer (the main thread) that prints the running average after each number. What ends the consumer's loop?
+  \item A sensor thread produces $1000$ values per second, a logging thread can write $200$ per second. What happens with an unbounded channel in $60$ seconds? Give the numbers (how many messages are waiting, how late is the last one). Name two ways to fix the problem.
+  \item Why does the ``latest value'' pattern copy the value out and release the lock before using it? Give the possible consequence for the control loop if the whole processing happened with the lock held.
+  \item Use \verb!thread::scope! to compute the mean of a \verb!Vec<f64>! with $1\,000\,000$ elements in two halves (both threads borrow the vector, no \verb!clone!), and compare the result with the single-thread mean.
+  \item[\textbf{\thechapter.10}$\star$] Design the threads of a small robot program: a UDP receiving thread (commands from the client), a control loop at $100$\,Hz and a log thread. Draw the connections, say for each connection whether you use a channel or a latest-value cell and why, and write the skeleton of the code including a clean shutdown with an \verb!AtomicBool!. The loop of the control thread must contain no blocking call.
+\end{enumerate}

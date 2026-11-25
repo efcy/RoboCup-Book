@@ -1,0 +1,280 @@
+\bookchapter{Structs, Enums and Traits}\label{ch:rust4}
+
+\section*{Explanation}
+Real programs combine simple values into larger concepts: a position, a command, a sensor. Python uses classes for that. Rust has no classes and no inheritance; it has three smaller building blocks that you combine: \textbf{structs} (data that belongs together), \textbf{enums} (a value that is \emph{one of several kinds}) and \textbf{traits} (a description of what a type can do). With these three you will write most of the robot code, and the compiler will check that you handled every case.
+
+\section*{Structs and methods}
+A struct groups named fields. Methods are written in an \verb!impl! block; the first parameter says how the method uses the object: \verb!&self! reads, \verb!&mut self! changes, \verb!self! consumes it (Chapter~\ref{ch:rust3}). Functions without \verb!self! (like \verb!new!) are called with \verb!Type::name!.
+%rs:structs
+\begin{verbatim}
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Vec2 {
+    x: f64,
+    y: f64,
+}
+
+impl Vec2 {
+    fn new(x: f64, y: f64) -> Self {
+        Self { x, y }
+    }
+    fn norm(&self) -> f64 {
+        (self.x * self.x + self.y * self.y).sqrt()
+    }
+    fn scale(&mut self, k: f64) {
+        self.x *= k;
+        self.y *= k;
+    }
+}
+
+fn main() {
+    let mut p = Vec2::new(3.0, 4.0);
+    println!("{:?} norm = {}", p, p.norm());
+    p.scale(2.0);
+    println!("{p:?}");
+    println!("{}", p == Vec2::new(6.0, 8.0));
+}
+\end{verbatim}
+prints \verb!Vec2 { x: 3.0, y: 4.0 } norm = 5!, \verb!Vec2 { x: 6.0, y: 8.0 }! and \verb!true!. The line \verb!#[derive(...)]! asks the compiler to write standard code for you: \verb!Debug! gives the \verb!{:?}! output, \verb!Clone! the \verb!.clone()!, \verb!Copy! makes the struct a cheap copied value (allowed because both fields are \verb!Copy!), \verb!PartialEq! the comparison with \verb!==!. Compared with Python: no \verb!__init__! (the struct literal \verb!Self { x, y }! creates the object, \verb!new! is just a convention), no \verb!self.__repr__!, and the data and the methods are written separately.
+
+\subsection*{The newtype pattern: units in the type}
+In 1999 the Mars Climate Orbiter was lost because one team calculated in newtons and another in pound-force. A struct with one field costs nothing at run time but makes such mistakes impossible:
+%rs:units
+\begin{verbatim}
+#[derive(Debug, Clone, Copy)]
+struct Meters(f64);
+#[derive(Debug, Clone, Copy)]
+struct Seconds(f64);
+
+fn speed(d: Meters, t: Seconds) -> f64 {
+    d.0 / t.0                      // .0 is the first (only) field
+}
+
+fn main() {
+    println!("{}", speed(Meters(6.0), Seconds(4.0)));
+    // speed(Seconds(4.0), Meters(6.0)) would not compile
+}
+\end{verbatim}
+prints \verb!1.5!. With plain \verb!f64! parameters the swapped call would compile and give a wrong number. Use this pattern for the quantities where confusion is likely: angles in radians or degrees, distances in metres or millimetres, joint indices, time stamps.
+
+\section*{Enums: one of several kinds}
+A Python programmer represents a robot command as a string (\verb!"stop"!, \verb!"walk"!) plus a dictionary of arguments, and finds a typo when the robot misbehaves. A Rust \textbf{enum} lists all possible kinds, \emph{each with its own data}:
+%rs:enum
+\begin{verbatim}
+#[derive(Debug)]
+enum Command {
+    Stop,
+    Walk { vx: f64, vy: f64, vyaw: f64 },
+    Kick(f64),                       // power 0..1
+    Say(String),
+}
+
+fn describe(c: &Command) -> String {
+    match c {
+        Command::Stop => "stop".to_string(),
+        Command::Walk { vx, vy, vyaw } => {
+            format!("walk vx={vx} vy={vy} vyaw={vyaw}")
+        }
+        Command::Kick(p) if *p > 0.8 => format!("hard kick {p}"),
+        Command::Kick(p) => format!("kick {p}"),
+        Command::Say(text) => format!("say '{text}'"),
+    }
+}
+
+fn main() {
+    let cmds = vec![
+        Command::Stop,
+        Command::Walk { vx: 0.3, vy: 0.0, vyaw: -0.1 },
+        Command::Kick(0.9),
+        Command::Kick(0.4),
+        Command::Say("goal".to_string()),
+    ];
+    for c in &cmds {
+        println!("{}", describe(c));
+    }
+}
+\end{verbatim}
+prints
+\begin{verbatim}
+stop
+walk vx=0.3 vy=0 vyaw=-0.1
+hard kick 0.9
+kick 0.4
+say 'goal'
+\end{verbatim}
+The \verb!match! expression looks at which kind the value is and takes the data out. \verb!if *p > 0.8! is a \textbf{guard}: an extra condition for an arm. The decisive property: \textbf{the match must cover every case}.
+%rsfail:nonexh
+\begin{verbatim}
+enum Command { Stop, Kick(f64), Say(String) }
+
+fn main() {
+    let c = Command::Stop;
+    let n = match c {
+        Command::Stop => 0,
+        Command::Kick(_) => 1,
+    };
+    println!("{n}");
+}
+\end{verbatim}
+The compiler stops with \verb!error[E0004]: non-exhaustive patterns: `Command::Say(_)` not covered!. Imagine that the protocol of the robot gets a new command next month: adding a variant to the enum makes the compiler list \emph{every place in the program that has to be updated}. That is the strongest argument for enums over strings and numbers in a protocol. A wildcard arm \verb!_ => ...! catches all other cases, but then you lose this check, so use it sparingly.
+
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.4mm]},st/.style={draw,thick,rounded corners=3pt,minimum width=2.4cm,minimum height=0.9cm,font=\footnotesize,fill=blue!8}]
+ \node[st] (i) at (0,0) {Idle};
+ \node[st] (s) at (4,0) {Search};
+ \node[st] (a) at (8,0) {Approach};
+ \node[st] (k) at (12,0) {Kick};
+ \draw[->,thick] (i)--node[above,font=\scriptsize]{start} (s);
+ \draw[->,thick] (s)--node[above,font=\scriptsize]{ball seen} (a);
+ \draw[->,thick] (a)--node[above,font=\scriptsize]{close} (k);
+ \draw[->,thick] (k) to[out=-110,in=-70,looseness=0.9] node[below,font=\scriptsize]{done} (s);
+ \draw[->,thick] (a) to[out=-130,in=-50,looseness=1.0] node[below,font=\scriptsize,pos=0.35]{ball lost} (s);
+ \draw[->,thick] (s) to[out=125,in=55,looseness=8] node[above,font=\scriptsize]{not seen} (s);
+\end{tikzpicture}
+\captionof{figure}{A behaviour as a state machine. In Rust the states are an enum, the transitions a \texttt{match}, and the compiler checks that every state is handled.}
+\end{center}
+The state machine of the figure, with the \emph{inputs} of the world as arguments:
+%rs:behaviour
+\begin{verbatim}
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum State { Idle, Search, Approach, Kick }
+
+struct World { ball_dist: Option<f64> }   // None: ball not visible
+
+fn next(s: State, w: &World) -> State {
+    match (s, w.ball_dist) {
+        (State::Idle, _) => State::Search,
+        (State::Search, Some(_)) => State::Approach,
+        (State::Search, None) => State::Search,
+        (State::Approach, None) => State::Search,
+        (State::Approach, Some(d)) if d < 0.3 => State::Kick,
+        (State::Approach, Some(_)) => State::Approach,
+        (State::Kick, _) => State::Search,
+    }
+}
+
+fn main() {
+    let inputs = [None, None, Some(2.0), Some(1.0), Some(0.2), None];
+    let mut s = State::Idle;
+    for d in inputs {
+        s = next(s, &World { ball_dist: d });
+        println!("{d:?} -> {s:?}");
+    }
+}
+\end{verbatim}
+prints
+\begin{verbatim}
+None -> Search
+None -> Search
+Some(2.0) -> Approach
+Some(1.0) -> Approach
+Some(0.2) -> Kick
+None -> Search
+\end{verbatim}
+The \verb!match! looks at a \emph{pair}, the state and the input, a style that is typical for Rust and replaces long chains of \verb!if!.
+
+\section*{Option: a value that may be missing}
+The ball may not be visible. In Python you return \verb!None! and the caller may forget to check; the error comes later as ``\verb!NoneType! has no attribute''. In Rust there is no \verb!None! hidden in other types. A value that may be missing has the type \verb!Option<T>!, an enum with two variants \verb!Some(value)! and \verb!None!, and you \emph{cannot use the value without handling the second case}.
+%rs:option
+\begin{verbatim}
+fn closest(dists: &[f64]) -> Option<f64> {
+    let mut best: Option<f64> = None;
+    for &d in dists {
+        best = match best {
+            None => Some(d),
+            Some(b) if d < b => Some(d),
+            other => other,
+        };
+    }
+    best
+}
+
+fn main() {
+    println!("{:?}", closest(&[2.5, 0.8, 3.1]));
+    println!("{:?}", closest(&[]));
+    if let Some(d) = closest(&[1.2, 0.9]) {
+        println!("closest {d}");
+    }
+    let d = closest(&[]).unwrap_or(f64::INFINITY);
+    println!("{d}");
+    let doubled = closest(&[4.0]).map(|d| d * 2.0);
+    println!("{doubled:?}");
+}
+\end{verbatim}
+prints \verb!Some(0.8)!, \verb!None!, \verb!closest 0.9!, \verb!inf! and \verb!Some(8.0)!. The handy forms: \verb!if let Some(x) = opt { ... }! (do something only if there is a value); \verb!opt.unwrap_or(default)!; \verb!opt.map(f)! (apply \verb!f! inside, keeping \verb!None!); \verb!opt.is_some()!. \verb!opt.unwrap()! stops the program with a panic if the value is missing: use it in tests and examples, but not where the robot should keep running. With this, the functions \verb!mean_abs! and \verb!smallest! of Problems 2.7 and 2.8 of Chapter~\ref{ch:rust2} get the honest return type \verb!Option<f64>!.
+
+\section*{Traits: what a type can do}
+A \textbf{trait} lists methods. Any type can \emph{implement} the trait. Code can then work with ``anything that is a Sensor'', in Python terms a protocol or an abstract base class, but checked at compile time and without inheritance.
+%rs:traits
+\begin{verbatim}
+trait Sensor {
+    fn name(&self) -> String;
+    fn read(&mut self) -> f64;
+}
+
+struct Imu { angle: f64 }
+struct Ultrasonic { echo_us: f64 }
+
+impl Sensor for Imu {
+    fn name(&self) -> String { "imu".to_string() }
+    fn read(&mut self) -> f64 { self.angle += 0.5; self.angle }
+}
+
+impl Sensor for Ultrasonic {
+    fn name(&self) -> String { "ultrasonic".to_string() }
+    fn read(&mut self) -> f64 { self.echo_us * 0.0343 / 2.0 }  // cm
+}
+
+fn print_reading<S: Sensor>(s: &mut S) {         // generic function
+    println!("{} = {:.2}", s.name(), s.read());
+}
+
+fn main() {
+    let mut imu = Imu { angle: 10.0 };
+    let mut us = Ultrasonic { echo_us: 5800.0 };
+    print_reading(&mut imu);
+    print_reading(&mut us);
+    let mut all: Vec<Box<dyn Sensor>> = vec![Box::new(imu), Box::new(us)];
+    for s in all.iter_mut() {
+        println!("{}: {:.2}", s.name(), s.read());
+    }
+}
+\end{verbatim}
+prints \verb!imu = 10.50!, \verb!ultrasonic = 99.47!, \verb!imu: 11.00! and \verb!ultrasonic: 99.47!. Two ways to use a trait: (1) as a bound on a \textbf{generic} parameter (\verb!<S: Sensor>!): the compiler generates a version of the function for each concrete type, fast, no overhead; (2) as a \textbf{trait object} \verb!Box<dyn Sensor>!: a list can hold different types, the right method is looked up at run time (like a Python method call, a little slower). The sound travels at $343$\,m/s, i.e.\ $0.0343$\,cm/\textmu s, hence the distance is half of the echo time (here $5800\,\mu$s) times the speed.
+
+Many traits of the standard library are used constantly: \verb!Debug! and \verb!Display! (printing with \verb!{:?}! and \verb!{}!), \verb!Clone!, \verb!Default! (a standard value, \verb!Config::default()!), \verb!PartialEq!, \verb!From!/\verb!Into! (conversions), \verb!Iterator! (Chapter~\ref{ch:rust5}) and \verb!Drop! (cleanup code at the end of life). A generic function states what it needs:
+%rs:generic
+\begin{verbatim}
+fn largest<T: PartialOrd + Copy>(xs: &[T]) -> Option<T> {
+    let mut it = xs.iter();
+    let mut m = *it.next()?;
+    for &x in it {
+        if x > m { m = x; }
+    }
+    Some(m)
+}
+
+fn main() {
+    println!("{:?}", largest(&[3, 9, 2]));
+    println!("{:?}", largest(&[0.5, -1.0]));
+    println!("{:?}", largest::<i32>(&[]));
+}
+\end{verbatim}
+prints \verb!Some(9)!, \verb!Some(0.5)! and \verb!None!. The \verb!?! after \verb!it.next()! returns \verb!None! from the function at once if there is no first element (Chapter~\ref{ch:rust5} explains it for errors).
+
+\begin{aibox}[Composition instead of inheritance]
+In Python you might build a class \verb!Robot! and subclass it for \verb!GoalKeeper!. In Rust a \verb!GoalKeeper! \emph{contains} the parts it needs (a struct with fields) and implements the traits that describe what it can do. This avoids deep class trees and the ``fragile base class'' problem, and it is how most Rust robotics code is organised.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Define a struct \verb!Pose! with the fields \verb!x!, \verb!y! (metres) and \verb!theta! (radians), derive \verb!Debug! and \verb!Clone!, and give it a method \verb!distance_to(&self, other: &Pose) -> f64!. Test with $(0,0)$ and $(3,4)$.
+  \item Add to \verb!Pose! a method \verb!advance(&mut self, d: f64)! that moves the pose by $d$ metres in the direction \verb!theta!. Test: start $(0,0,\pi/2)$, advance $2$.
+  \item Define newtypes \verb!Degrees(f64)! and \verb!Radians(f64)! and the conversion functions in both directions. Why is \verb!fn turn(a: Radians)! safer than \verb!fn turn(a: f64)!?
+  \item Define \verb!enum Led { Off, Red, Green, Rgb(u8, u8, u8) }! and a function that returns the colour as a triple \verb!(u8, u8, u8)!. Which compiler error do you get if you leave out the \verb!Off! case?
+  \item Write the function \verb!fn parse_command(s: &str) -> Option<Command>! for the enum \verb!Command! of this chapter: \verb!"stop"! gives \verb!Stop!, \verb!"kick 0.7"! gives \verb!Kick(0.7)!, everything else \verb!None!. (Hint: \verb!s.split_whitespace()! and \verb!parse::<f64>().ok()!.)
+  \item Extend the state machine: add a state \verb!Fallen! that is entered from every state when the input \verb!fallen: bool! is true, and left to \verb!Idle! when the robot has stood up again. Which parts of the program must you change, and which does the compiler show you?
+  \item Define a trait \verb!Shape! with the methods \verb!area()! and \verb!name()!, implement it for \verb!Circle! and \verb!Rect!, and print the total area of a \verb!Vec<Box<dyn Shape>>!.
+  \item Write a generic function \verb!fn clamp_to<T: PartialOrd>(x: T, lo: T, hi: T) -> T!. Test it with integers and floats. Why does it need the bound \verb!PartialOrd!?
+  \item Which is better for the list of joints of the robot, an \verb!enum Joint { HipPitch, KneePitch, AnklePitch, ... }! or the numbers $0,1,2,\dots$? Give three reasons. How do you get from the enum to the index in an array?
+  \item[\textbf{\thechapter.10}$\star$] A \verb!Telemetry! message for the debug client has the variants \verb!Imu {roll, pitch, yaw}!, \verb!Battery(f64)! and \verb!Log(String)!. Write the enum and a function \verb!fn summary(t: &Telemetry) -> String!. Then add the variant \verb!Fall! and note what the compiler tells you in the function that you wrote. Why is this property valuable for a protocol that the robot and the debug client both implement?
+\end{enumerate}

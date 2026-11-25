@@ -1,0 +1,108 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \verb!cargo new robot_math!, then in \verb!src/main.rs!:
+%rs:a1
+\begin{verbatim}
+fn main() {
+    let sum: u32 = (1..=100).sum();
+    println!("{sum}");
+}
+\end{verbatim}
+prints \verb!5050!. \verb!cargo build! compiles without running (\verb!cargo check! only checks, even faster).
+  \item $2$; $2.5$; $2$; $-2$ (the remainder has the sign of the dividend); $2$ (\verb!rem_euclid! is never negative); $2$; $-2$ (the decimals are cut towards zero).
+  \item The sum $260$ does not fit into a \verb!u8!: in a release build it wraps to $4$, in a debug build the program panics. \verb!250_u8.saturating_add(10)! gives $255$; \verb!250_u8.checked_add(10)! gives \verb!None!, which tells you that the limit was exceeded (the return type is \verb!Option<u8>!, Chapter~\ref{ch:rust4}).
+  \item \verb!2! is an integer literal and has no automatic conversion to \verb!f64!. Fix: write \verb!let x: f64 = 2.0;! or \verb!let x = 2 as f64;! (or \verb!2_f64!).
+  \item
+%rs:a5
+\begin{verbatim}
+use std::f64::consts::PI;
+
+fn rad_to_deg(rad: f64) -> f64 { rad * 180.0 / PI }
+
+fn wrap_angle(deg: f64) -> f64 {
+    (deg + 180.0).rem_euclid(360.0) - 180.0
+}
+
+fn main() {
+    for a in [190.0, -190.0, 540.0] {
+        println!("{a} -> {}", wrap_angle(a));
+    }
+    println!("{:.1}", rad_to_deg(PI / 2.0));
+}
+\end{verbatim}
+The result is $-170$, $170$ and $-180$ ($540^\circ$ is the same direction as $180^\circ$, which is mapped to $-180$ because the range excludes $180$). \verb!rem_euclid! is the right operation because \verb!%! would give negative remainders.
+  \item
+%rs:a6
+\begin{verbatim}
+fn main() {
+    let mut x = 0.0_f64;
+    for _ in 0..10 {
+        x = x / 2.0 + 1.0;
+        println!("{x:.3}");
+    }
+}
+\end{verbatim}
+The values are $1.000,\ 1.500,\ 1.750,\ 1.875,\ 1.938,\ 1.969,\ 1.984,\ 1.992,\ 1.996,\ 1.998$, converging to $2$ (the fixed point $x=x/2+1$).
+  \item
+%rs:a7
+\begin{verbatim}
+fn mean_abs(xs: &[f64]) -> f64 {
+    xs.iter().map(|x| x.abs()).sum::<f64>() / xs.len() as f64
+}
+
+fn main() {
+    println!("{}", mean_abs(&[1.0, -3.0, 2.0]));
+    println!("{}", mean_abs(&[]));
+}
+\end{verbatim}
+For an empty list Python raises \verb!ZeroDivisionError!; Rust does not stop: $0.0/0.0$ is \verb!NaN! (the program prints \verb!NaN!), because floating-point division by zero is defined. This silent \verb!NaN! can travel through a whole control system. Better: return an \verb!Option<f64>! (Chapter~\ref{ch:rust4}) or check \verb!xs.is_empty()! first.
+  \item
+%rs:a8
+\begin{verbatim}
+fn smallest(xs: &[f64]) -> f64 {
+    let mut m = f64::INFINITY;
+    for &x in xs {
+        if x < m { m = x; }
+    }
+    m
+}
+
+fn main() {
+    println!("{}", smallest(&[2.5, 0.8, 3.1]));
+    println!("{}", smallest(&[]));
+}
+\end{verbatim}
+The result is $0.8$; for the empty list it is \verb!inf!, which looks like a valid distance (``nothing in front of me'') but is a lie when the sensors simply delivered no data. A function should be able to say ``no result'': in Rust the return type \verb!Option<f64>! (Chapter~\ref{ch:rust4}).
+  \item (a) Error: \verb!a! is immutable. (b) Error: \verb!5.0! is a float, not an \verb!i32!. (c) Error: an integer and a float cannot be added. (d) The compiler already rejects it for a fixed array with a constant index (``this operation will panic at runtime''); with a computed index it is a panic when the program runs. (e) Error: the condition must be a \verb!bool!.
+  \item[\textbf{\ansnum.10}$\star$]
+%rs:a10
+\begin{verbatim}
+fn simulate(dt: f64, t_end: f64) -> f64 {
+    let (k, c) = (4.0, 0.1);
+    let (mut x, mut v) = (1.0_f64, 0.0_f64);
+    let n = (t_end / dt).round() as u64;
+    for _ in 0..n {
+        let a = -k * x - c * v;
+        v += a * dt;
+        x += v * dt;
+    }
+    x
+}
+
+fn exact(t: f64) -> f64 {
+    let (k, c) = (4.0_f64, 0.1_f64);
+    let w = (k - c * c / 4.0).sqrt();
+    (-c * t / 2.0).exp() * ((w * t).cos() + c / (2.0 * w) * (w * t).sin())
+}
+
+fn main() {
+    let t = 10.0;
+    println!("exact x(10) = {:.6}", exact(t));
+    for dt in [0.1, 0.01, 0.001] {
+        let x = simulate(dt, t);
+        let err = (x - exact(t)).abs();
+        println!("dt = {dt:<5} x = {x:.6}  error = {err:.2e}");
+    }
+}
+\end{verbatim}
+Output: exact $x(10)=0.264779$; $\Delta t=0.1$: $x=0.160185$, error $1.05\cdot10^{-1}$; $\Delta t=0.01$: $0.256267$, error $8.5\cdot10^{-3}$; $\Delta t=0.001$: $0.263946$, error $8.3\cdot10^{-4}$. With ten times smaller steps the error shrinks by about $12$ and then $10$: the Euler method is of \emph{first order} (the error is proportional to $\Delta t$), and every digit of accuracy costs ten times more steps. Better methods (Part~\ref{part:control}) reach the same accuracy with far larger steps.
+\end{enumerate}

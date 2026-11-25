@@ -1,0 +1,26 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Output size $2\times2$. Position $(0,0)$: $1\cdot1+2\cdot0+0\cdot0+1\cdot(-1)=0$; $(0,1)$: $2\cdot1+0+1\cdot0+3\cdot(-1)=-1$; $(1,0)$: $0\cdot1+1\cdot0+2\cdot0+1\cdot(-1)=-1$; $(1,1)$: $1\cdot1+3\cdot0+1\cdot0+0\cdot(-1)=1$. Result $\begin{pmatrix}0&-1\\-1&1\end{pmatrix}$.
+  \item $\lfloor(416+2-3)/1\rfloor+1=416$; $\lfloor(416+2-3)/2\rfloor+1=208$; pool: $104$; $(104-5)/1+1=100$.
+  \item Parameters: $3\cdot3\cdot32\cdot64+64=18\,496$. Multiplications: $80\cdot80\cdot64$ outputs, each $3\cdot3\cdot32=288$ products: $117\,964\,800\approx118$ million.
+  \item $\begin{pmatrix}5&3\\2&7\end{pmatrix}$.
+  \item Four $3\times3$ convolutions: $2\cdot4+1=9$. Conv--pool--conv: after the first conv $3$; the pool adds $(2-1)\cdot1=1\to4$ and doubles the step; the second conv adds $(3-1)\cdot2=4$: $8$.
+  \item Convolutions: $80+1168=1248$; the $1\times1$ convolution $16\to2$: $16\cdot2+2=34$; total $1282$. Global average pooling accepts any image size (as long as it is large enough, ideally a multiple of $4$): the output is $2$ numbers whatever the size.
+  \item Normal: $9\cdot256\cdot256+256=590\,080$. Depthwise separable: $9\cdot256+256=2560$ plus $256\cdot256+256=65\,792$, total $68\,352$. Factor $\approx8.6$ (without biases $8.7$, the formula $\frac{9\cdot C^2}{9C+C^2}$).
+  \item The first layers are equivariant: the output moves with the input. Invariance comes from pooling (small shifts do not change the maximum of a block), from the large receptive field of deep neurons and from the global pooling or the final dense layer that only asks \emph{whether} a pattern is present, not where.
+  \item With $F=0$ the block gives $y=x$ (the identity), so a deep network can begin as ``do nothing'' and every block only learns a small correction. In backpropagation the gradient also flows unchanged through the addition: there is always a direct path from the output to the early layers, so the gradient does not vanish (Chapter~\ref{ch:ai6}).
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+def maxpool2(x):
+    h, w = x.shape
+    return x.reshape(h // 2, 2, w // 2, 2).max(axis=(1, 3))
+
+def conv_bank(img, filters):
+    return np.stack([conv2d(img, f) for f in filters])
+
+img = np.array([[0,0,0,9,9]] * 5, float)
+kv = np.array([[1,0,-1]] * 3, float)
+bank = np.stack([kv, kv.T])          # vertical and horizontal edges
+print(conv_bank(img, bank).shape)    # (2, 3, 3)
+\end{verbatim}
+  The shape is $(2,3,3)$; the first map is the one of the example, the second (horizontal edges) is $0$ everywhere because all rows are equal.
+\end{enumerate}

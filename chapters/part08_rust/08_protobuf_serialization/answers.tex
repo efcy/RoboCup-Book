@@ -1,0 +1,136 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Field $3$, wire type $2$: $(3\ll3)|2=24+2=26=0x1a$ (this is the \verb!1a! of the nested \verb!imu! in the chapter). Field $15$, wire type $5$: $(15\ll3)|5=120+5=125=0x7d$. The tag is a varint; field numbers up to $15$ give a tag that fits into \emph{one} byte ($15\ll3|7=127$), numbers from $16$ need two. So give the numbers $1$--$15$ to the fields that are sent in nearly every message.
+  \item $300=256+32+8+4=1\,0010\,1100_2$. Groups of $7$ bits from the right: $010\,1100=0x2c$ and $000\,0010=0x02$. Low group first, with the continuation bit set on all but the last byte: $0x2c|0x80=0xac$, then $0x02$: \verb!ac 02!. The numbers $127$: $1$ byte; $128$: $2$ bytes; $16383=2^{14}-1$: $2$ bytes; $16384$: $3$ bytes. A varint with $n$ bytes holds $7n$ bits.
+  \item \verb!08 96 01!: tag $0x08$ is field $1$, wire type $0$; the varint \verb!96 01! is $150$. \verb!12 03 61 62 63!: tag $0x12=(2\ll3)|2$ is field $2$, wire type $2$ (length-delimited), length $3$, the bytes \verb!61 62 63! are the text \verb!"abc"!. So: field 1 = 150, field 2 = ``abc''.
+  \item In proto3 a field with the default value is not written, because the receiver sets every missing field to the default anyway: an empty message is $0$ bytes. Without \verb!optional! the receiver cannot tell ``the sender said $0$'' from ``the sender did not set it'' (or has an older version without the field). With \verb!optional! the field has a presence bit and is sent even if it is $0$; the Rust type is \verb!Option<T>!. For a value where $0$ is a real measurement (a temperature, an offset), use \verb!optional!; for counters and flags it does not matter.
+  \item
+%rs:a5
+\begin{verbatim}
+fn zigzag(n: i32) -> u32 { ((n << 1) ^ (n >> 31)) as u32 }
+fn unzigzag(z: u32) -> i32 { ((z >> 1) as i32) ^ -((z & 1) as i32) }
+
+fn main() {
+    for n in [-3, 3, -100, 0, -1] { print!("{n}->{} ", zigzag(n)); }
+    println!();
+    println!("{} {}", unzigzag(7), unzigzag(8));
+}
+\end{verbatim}
+prints \verb!-3->5 3->6 -100->199 0->0 -1->1! and \verb!-4 4!. Small negative numbers become small positive numbers, which are short varints: $-1$ takes one byte instead of ten (a plain \verb!int32! encodes a negative number as a huge unsigned number).
+  \item
+\begin{verbatim}
+message JointState {
+  string name = 1;
+  float position = 2;
+  float velocity = 3;
+  float temperature = 4;
+}
+message RobotState {
+  uint64 t_us = 1;
+  repeated JointState joints = 2;
+}
+\end{verbatim}
+The numbers $1$ to $15$ cost one byte; all of these fit. If you add rarely sent fields later (error flags, firmware version), give them numbers above $15$ and keep the low numbers for the fast data. For $22$ joints of fixed order, a packed \verb!repeated float position = 2;! (and the same for velocity and temperature) is smaller than $22$ nested messages with names, because the names are sent only once, e.g.\ in a separate start-up message.
+  \item The client does not know field $6$ and \emph{skips} it: it reads the tag, sees the wire type, skips the right number of bytes. All the old data is still correct. If the type of field $2$ changed from \verb!uint64! to \verb!double!, the wire type changes from $0$ (varint) to $1$ (eight bytes), the old client cannot interpret the value (it treats it as a wrong type or drops it), and all \emph{old logs} are read with a wrong meaning. Never change the type: add a new field with a new number, and stop using the old one (mark it \verb!reserved!).
+  \item
+\begin{verbatim}
+message Packet {
+  uint32 seq = 1;
+  oneof payload {
+    Telemetry telemetry = 2;
+    Command   command   = 3;
+    string    log       = 4;
+  }
+}
+\end{verbatim}
+Pseudo code in Rust: \verb!match packet.payload { Some(Payload::Telemetry(t)) => ..., Some(Payload::Command(c)) => ..., Some(Payload::Log(s)) => ..., None => ... }!. The \verb!None! case exists because the field may be missing (a damaged or newer packet). If you add a fourth kind to the \verb!oneof!, the generated enum gets a new variant, and every \verb!match! without a wildcard arm stops compiling and lists the place where the new case must be handled (Chapter~\ref{ch:rust4}).
+  \item A configuration file is edited by people with a text editor and compared with \verb!git diff!, so it must be readable text: TOML, YAML or JSON (in Rust usually TOML with \verb!serde!). A binary protobuf file is unreadable and not mergeable. A log is the opposite: written by a program, huge, read by programs, never edited by hand; so size, speed, streaming and a schema (to read old logs) matter. (Protobuf does have a text format that is good for test data and for showing a message to a human.)
+  \item[\textbf{\ansnum.10}$\star$]
+%rs:a10
+\begin{verbatim}
+fn put_varint(out: &mut Vec<u8>, mut v: u64) {
+    while v >= 0x80 { out.push((v as u8 & 0x7f) | 0x80); v >>= 7; }
+    out.push(v as u8);
+}
+fn get_varint(b: &[u8]) -> Option<(u64, usize)> {
+    let mut v = 0u64;
+    for (i, &x) in b.iter().enumerate().take(10) {
+        v |= ((x & 0x7f) as u64) << (7 * i);
+        if x & 0x80 == 0 { return Some((v, i + 1)); }
+    }
+    None
+}
+fn put_sint32(out: &mut Vec<u8>, field: u32, n: i32) {
+    let z = ((n << 1) ^ (n >> 31)) as u32;
+    put_varint(out, ((field << 3) | 0) as u64);
+    put_varint(out, z as u64);
+}
+
+#[derive(Debug, Default, PartialEq)]
+struct Imu { roll: f32, pitch: f32, yaw: f32 }
+#[derive(Debug, Default, PartialEq)]
+struct Telemetry { seq: u32, t_us: u64, imu: Imu }
+
+/// Calls `f(field, wire, payload_or_value)` for every field.
+fn walk(mut b: &[u8], mut f: impl FnMut(u32, u8, u64, &[u8])) -> Option<()> {
+    while !b.is_empty() {
+        let (tag, n) = get_varint(b)?;
+        b = &b[n..];
+        let (field, wire) = ((tag >> 3) as u32, (tag & 7) as u8);
+        match wire {
+            0 => {
+                let (v, n) = get_varint(b)?;
+                b = &b[n..];
+                f(field, 0, v, &[]);
+            }
+            5 => { let x = b.get(..4)?; f(field, 5, 0, x); b = &b[4..]; }
+            1 => { let x = b.get(..8)?; f(field, 1, 0, x); b = &b[8..]; }
+            2 => {
+                let (len, n) = get_varint(b)?; b = &b[n..];
+                let x = b.get(..len as usize)?;
+                f(field, 2, 0, x);
+                b = &b[len as usize..];
+            }
+            _ => return None,
+        }
+    }
+    Some(())
+}
+
+fn decode(b: &[u8]) -> Option<Telemetry> {
+    let mut t = Telemetry::default();
+    walk(b, |field, _wire, v, bytes| match field {
+        1 => t.seq = v as u32,
+        2 => t.t_us = v,
+        3 => {
+            let fl = |p: &[u8]| f32::from_le_bytes(p.try_into().unwrap());
+            walk(bytes, |fld, _w, _v, p| match fld {
+                1 => t.imu.roll = fl(p),
+                2 => t.imu.pitch = fl(p),
+                3 => t.imu.yaw = fl(p),
+                _ => {}
+            });
+        }
+        _ => {}                                   // unknown: skipped
+    })?;
+    Some(t)
+}
+
+fn main() {
+    let msg: Vec<u8> = "080710959aef3a1a0f0d0000003f150000a0bf1d0000b442"
+        .as_bytes().chunks(2)
+        .map(|h| {
+            let s = std::str::from_utf8(h).unwrap();
+            u8::from_str_radix(s, 16).unwrap()
+        })
+        .collect();
+    println!("{:?}", decode(&msg));
+    let mut more = msg.clone();
+    more.extend([0x62, 0x01, 0x7a]);              // unknown field 12
+    println!("{}", decode(&more) == decode(&msg));
+    let mut z = Vec::new();
+    put_sint32(&mut z, 1, -3);
+    println!("{z:02x?} {:?}", decode(&msg[..10]));
+}
+\end{verbatim}
+prints \verb!Some(Telemetry { seq: 7, t_us: 123456789, imu: Imu { roll: 0.5, pitch: -1.25, yaw: 90.0 } })!, then \verb!true! (the unknown field is skipped) and \verb![08, 05] None!: the zigzag value of $-3$ is $5$, written after the tag $0x08$; and a message cut in the middle of a field gives \verb!None!, not a crash. (Because the \verb!f32! is read with \verb!try_into().unwrap()! on a slice that \verb!walk! has already checked to be $4$ bytes long, the \verb!unwrap! cannot fail for wire type $5$; a nested field that arrives with another wire type would give a wrong length and panic, so production code uses the checked library.)
+\end{enumerate}

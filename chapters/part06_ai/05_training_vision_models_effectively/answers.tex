@@ -1,0 +1,35 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item For example four matches for training, one for validation, one for the test (whole matches, ideally from different days or halls). In a random split, frames that are $33$\,ms apart land on both sides, and the network is tested on pictures it has practically seen; the result is too good and tells nothing about the next match.
+  \item $P=45/50=0.90$, $R=45/60=0.75$, $F_1=2\cdot45/(90+5+15)=0.818$. A higher threshold removes the uncertain detections: precision rises (fewer FP), recall falls (more FN).
+  \item $\eta(0)=0.1$; $\eta(25)=0.05(1+0.7071)=0.0854$; $\eta(50)=0.05$; $\eta(75)=0.05(1-0.7071)=0.0146$; $\eta(100)=0$.
+  \item $w\leftarrow2-0.1\,(0.5+0.01\cdot2)=2-0.052=1.948$; without decay $2-0.05=1.95$. The decay pulls the weight slightly towards $0$.
+  \item Overfitting. Measures: early stopping at about epoch $12$; more or more varied data and augmentation; weight decay or dropout, a smaller model, or fine-tuning a pre-trained one.
+  \item Sensible: brightness (light varies), blur of $1$ pixel (motion blur), a random crop (the ball is at different positions; do not crop so much that the ball disappears while the label stays). Harmful: hue shift of $\pm90^\circ$ (the orange ball would become blue or green, the key cue is destroyed); vertical flip (the world is never upside down for the robot). Horizontal flip is harmless for a plain ball detector but harmful for anything with left/right meaning (the goal of the own or the opponent side).
+  \item $3000\cdot8\cdot4=96\,000$\,s $=26.7$\,h. Checking: $2400$ boxes at $1$\,s $=2400$\,s $=0.67$\,h (about $40$ minutes).
+  \item $640\cdot640\cdot3\cdot4$ bytes $=4\,915\,200$ bytes $=4.9$\,MB; a batch of $16$: $78.6$\,MB just for the input.
+  \item Ball: precision $50/(50+5+1)=0.893$, recall $50/55=0.909$. Robot: precision $40/(3+40+4)=0.851$, recall $40/50=0.800$. Post: precision $15/(2+5+15)=0.682$, recall $15/20=0.750$. The goal posts are the weakest class (confused with robots); look at these images first.
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+import numpy as np
+def split_by_group(groups, test_fraction=0.2, seed=0):
+    groups = np.asarray(groups)
+    ids, counts = np.unique(groups, return_counts=True)
+    order = np.random.default_rng(seed).permutation(len(ids))
+    target = test_fraction * len(groups)
+    test, n = set(), 0
+    for k in order:
+        if n >= target:
+            break
+        test.add(ids[k]); n += counts[k]
+    is_test = np.array([g in test for g in groups])
+    return np.where(~is_test)[0], np.where(is_test)[0]
+
+def test_no_leak():
+    groups = np.repeat(np.arange(10), 50)        # 10 recordings
+    tr, te = split_by_group(groups, 0.2, seed=1)
+    assert set(groups[tr]).isdisjoint(set(groups[te]))
+    assert len(tr) + len(te) == len(groups)
+    assert 0.15 <= len(te) / len(groups) <= 0.35
+\end{verbatim}
+  Because whole groups move together, the fraction is only approximate (here $0.2$ of $500$ frames means two recordings, $100$ frames, if the groups have equal size).
+\end{enumerate}

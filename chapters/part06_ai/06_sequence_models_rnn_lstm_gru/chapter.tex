@@ -1,0 +1,162 @@
+\bookchapter{Sequence Models: RNN, LSTM and GRU}\label{ch:ai6}
+
+\section*{Explanation}
+Pictures are a grid; many things a robot deals with are \emph{sequences}: the readings of the IMU over time, the positions of a ball in successive camera frames, the joint angles of a walk, the samples of a microphone, the words of a sentence. In a sequence the \textbf{order} matters and the \textbf{past} helps to explain the present: the same ball position means ``rolling to the right'' or ``rolling to the left'' depending on where it was a moment ago. A model for sequences needs a \textbf{memory}. This chapter shows three ways to give it one: a window of the last values, a recurrent network with a hidden state (RNN), and the gated cells LSTM and GRU that make such memory work for longer times. The next chapter, \textbf{attention and transformers}, shows the idea that has replaced recurrence for most language tasks.
+
+\section*{The simplest memory: a window}
+Cut the sequence into overlapping windows of the last $K$ values and give the whole window to an ordinary network (Chapter~\ref{ch:nn}). The network sees $K$ times the number of features, and learns patterns across time. It works well when the relevant past is short and the window size is fixed. A close relative is the \textbf{1D convolution}: a filter that slides along the time axis exactly as the 2D filter slides over an image (Chapter~\ref{ch:ai3}); stacked, they form a \emph{temporal convolutional network} (TCN). Limitation: the network cannot use anything that is older than the window.
+
+\begin{example}
+\textbf{Predicting the ball.} The camera measures the position $x$ of a ball rolling along a $9$\,m field at $30$\,Hz with an error of $2$\,cm. The ball slows down ($1.5\,\%$ of its velocity per frame) and bounces off the walls at both ends, losing $20\,\%$ of its speed. Task: from the last $K=5$ noisy measurements, predict the position $10$ frames ($0.33$\,s) later. We generated $300$ random trajectories for training and $80$ for testing and compared four predictors by their root mean square error (RMSE) on $10\,000$ test windows:
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lcc}
+\textbf{Predictor} & \textbf{all windows} & \textbf{windows with a bounce}\\ \hline
+repeat the last measurement & $0.243$\,m & $0.193$\,m\\
+constant velocity (from the window) & $0.120$\,m & $0.445$\,m\\
+linear model on the window (learned) & $0.097$\,m & $0.352$\,m\\
+small neural network on the window & $\mathbf{0.081}$\,m & $\mathbf{0.191}$\,m\\
+\end{tabular}
+\end{center}
+The neural network (two hidden layers of $64$ neurons, input: $5$ numbers) wins overall, and clearly so when a bounce happens: it has learned where the walls are and what happens there, which no linear rule can express. A constant-velocity prediction (what a simple tracker does) flies through the wall: with $0.445$\,m it is worse than not predicting at all. Only $210$ of the $10\,000$ test windows contain a bounce: a model can be good on average and still bad on the rare events that matter, which is why you evaluate them separately (Chapter~\ref{ch:ai5}).
+\end{example}
+\begin{center}
+\includegraphics[width=0.75\textwidth]{ai/ball_prediction.png}
+\captionof{figure}{One test trajectory: true position (black), noisy measurements (grey) and the prediction of the network $10$ frames ahead (red). The prediction follows the bounce at the walls.}
+\end{center}
+
+\section*{Recurrent networks (RNN)}
+Instead of a fixed window, a \textbf{recurrent neural network} reads the sequence one element at a time and carries a \textbf{hidden state} $h_t$ (a vector of, say, $64$ numbers) that summarises everything seen so far. At each step it combines the new input $x_t$ with the old state:
+\[
+h_t=\tanh\!\big(W_x\,x_t+W_h\,h_{t-1}+b\big),\qquad y_t=W_y\,h_t.
+\]
+The \emph{same} weights are used at every step (weight sharing in time, like the shared filter in space), so the network can process sequences of any length with a fixed number of parameters.
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.5mm]},cell/.style={draw,thick,rounded corners=3pt,fill=blue!8,minimum width=1.4cm,minimum height=0.9cm,font=\footnotesize}]
+ \foreach \i/\x in {1/0,2/3,3/6} {
+   \node[cell] (c\i) at (\x,0) {RNN};
+   \node (x\i) at (\x,-1.6) {$x_{\i}$};
+   \node (y\i) at (\x,1.6) {$y_{\i}$};
+   \draw[->,thick] (x\i)--(c\i); \draw[->,thick] (c\i)--(y\i);
+ }
+ \draw[->,thick] (c1)--(c2) node[midway,above,font=\scriptsize]{$h_1$};
+ \draw[->,thick] (c2)--(c3) node[midway,above,font=\scriptsize]{$h_2$};
+ \draw[->,thick] (-1.6,0)--(c1) node[midway,above,font=\scriptsize]{$h_0=0$};
+ \draw[->,thick,dashed] (c3)--(7.6,0) node[right,font=\scriptsize]{$h_3,\dots$};
+\end{tikzpicture}
+\captionof{figure}{An RNN unrolled over time. All boxes are the same network with the same weights; the state $h$ carries the memory from step to step.}
+\end{center}
+The training is gradient descent as always, with the gradient computed backwards through the unrolled steps (\textbf{backpropagation through time}, BPTT). In practice long sequences are cut into pieces of, say, $50$ steps; the hidden state is carried across the cut, but the gradient is not (\emph{truncated BPTT}).
+
+\subsection*{The problem: vanishing and exploding gradients}
+Going back in time, the gradient is multiplied at every step by the matrix $W_h$ (and by the derivative of $\tanh$, which is at most $1$). After $t$ steps the influence of a value from $t$ steps ago is scaled by about $\rho^t$, where $\rho$ is the size of the largest eigenvalue of $W_h$ (Chapter~\ref{ch:matrices}). If $\rho=0.9$ then $0.9^{50}=0.005$: the gradient of the distant past is almost zero and the network \emph{cannot learn} long-range dependencies (\textbf{vanishing gradient}). If $\rho=1.1$ then $1.1^{50}=117$: the training blows up (\textbf{exploding gradient}), and one clips the gradient length as a remedy. We measured the size of the Jacobian $\partial h_t/\partial h_0$ in a real $\tanh$ network with $16$ neurons and $\rho=1$: $1.3$ after one step, $0.70$ after $10$, $0.20$ after $25$, $0.014$ after $50$ steps; the derivative of $\tanh$ is below $1$, so memory fades even at $\rho=1$. A plain RNN remembers about $10$ to $20$ steps.
+
+\section*{LSTM: a memory with gates}
+The \textbf{Long Short-Term Memory} cell (1997) solves this with a second state, the \textbf{cell state} $c_t$, which is changed only by \emph{adding} and \emph{multiplying with a number between $0$ and $1$}, not by a matrix and not by $\tanh$. Three \textbf{gates}, each a small layer with a sigmoid output between $0$ and $1$ (they ``open'' and ``close''), control the flow:
+\begin{align*}
+f_t&=\sigma(W_f[x_t,h_{t-1}]+b_f) &&\text{forget gate: how much of the old $c$ to keep}\\
+i_t&=\sigma(W_i[x_t,h_{t-1}]+b_i) &&\text{input gate: how much of the new candidate to write}\\
+g_t&=\tanh(W_g[x_t,h_{t-1}]+b_g) &&\text{candidate: the new content}\\
+o_t&=\sigma(W_o[x_t,h_{t-1}]+b_o) &&\text{output gate: how much of $c$ to show}\\
+c_t&=f_t\odot c_{t-1}+i_t\odot g_t\\
+h_t&=o_t\odot\tanh(c_t)
+\end{align*}
+($[x_t,h_{t-1}]$ is the two vectors joined; $\odot$ is element-wise multiplication.) If $f\approx1$ and $i\approx0$, the cell state is copied unchanged: $c_t=c_{t-1}$, and so is the gradient, which makes remembering over hundreds of steps possible.
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2mm]},scale=0.95,
+ g/.style={draw,thick,fill=yellow!20,minimum width=0.9cm,minimum height=0.6cm,font=\scriptsize},
+ op/.style={draw,thick,circle,fill=white,inner sep=1pt,font=\scriptsize}]
+ \draw[thick,rounded corners=4pt] (0.0,0.0) rectangle (8.6,4.6);
+ % cell state
+ \draw[->,very thick,orange!70!black] (-1.0,3.8)--(9.6,3.8);
+ \node[font=\scriptsize,orange!70!black] at (-1.2,4.2) {$c_{t-1}$};
+ \node[font=\scriptsize,orange!70!black] at (9.9,4.2) {$c_t$};
+ \node[op] (mf) at (1.6,3.8) {$\times$};
+ \node[op] (pl) at (4.6,3.8) {$+$};
+ \node[op] (mi) at (4.6,2.6) {$\times$};
+ \node[op] (mo) at (7.6,2.0) {$\times$};
+ \node[g] (gf) at (1.6,1.2) {$\sigma$};
+ \node[g] (gi) at (3.4,1.2) {$\sigma$};
+ \node[g,fill=orange!20] (gg) at (4.8,1.2) {$\tanh$};
+ \node[g] (go) at (6.6,1.2) {$\sigma$};
+ \node[g,fill=orange!20] (th) at (6.4,3.0) {$\tanh$};
+ \draw[->,thick] (gf)--(mf); \draw[->,thick] (gi.north)--(3.4,2.6)--(mi.west);
+ \draw[->,thick] (gg.north)--(mi.south); \draw[->,thick] (mi)--(pl);
+ \draw[->,thick] (6.0,3.8)--(th.north); \draw[->,thick] (th.south)--(6.4,2.0)--(mo.west);
+ \draw[->,thick] (go.north)--(6.6,2.0)--(6.6,2.0);
+ \draw[->,thick] (go.east)--(7.6,1.2)--(mo.south);
+ \draw[->,thick] (mo.east)--(8.6,2.0)--(9.6,2.0) node[right,font=\scriptsize]{$h_t$};
+ \draw[->,thick] (-1.0,0.2)--(7.0,0.2);
+ \foreach \x in {1.6,3.4,4.8,6.6} \draw[->,thick] (\x,0.2)--(\x,0.9);
+ \node[font=\scriptsize,anchor=east] at (-1.0,0.2) {$x_t,\ h_{t-1}$};
+ \node[font=\tiny,above=1pt of gf] {forget};
+ \node[font=\tiny,below=0pt of gi,yshift=-0.55cm] {input};
+ \node[font=\tiny,below=0pt of gg,yshift=-0.55cm] {candidate};
+ \node[font=\tiny,above=1pt of go] {output};
+\end{tikzpicture}
+\captionof{figure}{An LSTM cell. The orange line on top is the cell state: it only passes through multiplications by gates and one addition. Inputs of all gates: the current input $x_t$ and the last output $h_{t-1}$.}
+\end{center}
+\begin{example}
+\textbf{One step with numbers.} Let $c_{t-1}=2$ (one component), $f=0.9$, $i=0.5$, $g=0.4$, $o=0.7$. Then $c_t=0.9\cdot2+0.5\cdot0.4=2.0$ and $h_t=0.7\cdot\tanh(2.0)=0.7\cdot0.964=0.675$.
+\end{example}
+\begin{verbatim}
+import numpy as np
+def sigmoid(z): return 1 / (1 + np.exp(-z))
+def lstm_step(x, h, c, W, b):         # W: (4*nh, nx+nh), gates i, f, g, o
+    nh = h.shape[0]
+    z = W @ np.concatenate([x, h]) + b
+    i, f, g, o = (sigmoid(z[:nh]), sigmoid(z[nh:2*nh]),
+                  np.tanh(z[2*nh:3*nh]), sigmoid(z[3*nh:]))
+    c = f * c + i * g
+    h = o * np.tanh(c)
+    return h, c
+\end{verbatim}
+To see the memory at work we set all weights to $0$, the bias of the forget gate to $+10$ and that of the input gate to $-10$: then $f=\sigma(10)=0.99995$ and $i\approx0.00005$ whatever the input is. Starting with $c=1$ and feeding $20$ random inputs, the cell state is $0.9991$ afterwards: it kept its value. (Real LSTMs learn such behaviour by themselves; it is common to initialise the forget bias to a positive value.)
+
+\section*{GRU, and the choice}
+The \textbf{Gated Recurrent Unit} (GRU) merges the cell state and the hidden state and uses two gates (update and reset). It has fewer parameters ($3$ blocks instead of $4$) and is often just as good. For $n_x$ inputs and $n_h$ hidden units the numbers of parameters are
+\[
+\text{RNN: }n_h(n_x+n_h)+n_h,\qquad\text{GRU: }3\times\text{that},\qquad\text{LSTM: }4\times\text{that}.
+\]
+For $n_x=12$ (IMU and a few joint values) and $n_h=64$: $4928$, $14\,784$ and $\mathbf{19\,712}$ parameters. For comparison, the window network of the ball example with $5$ steps of $12$ features and $64$ hidden neurons has $5\cdot12\cdot64+64=3904$ parameters in its first layer alone. Practical advice: start with a window and a small dense network or a 1D convolution (simple, fast, easy to deploy); use a GRU or LSTM if the relevant past is long or has variable length; do not start with a large model.
+\begin{verbatim}
+import torch.nn as nn
+class BallPredictor(nn.Module):             # not run: no PyTorch here
+    def __init__(self, n_in=2, n_hidden=64):
+        super().__init__()
+        self.rnn = nn.GRU(n_in, n_hidden, batch_first=True)
+        self.out = nn.Linear(n_hidden, 2)
+    def forward(self, x, h=None):           # x: (batch, time, n_in)
+        y, h = self.rnn(x, h)
+        return self.out(y), h               # prediction at every step
+\end{verbatim}
+
+\section*{Sequences on the robot}
+\begin{itemize}[nosep]
+\item \textbf{State}: at run time the network processes one new sample per step and \emph{keeps} $h$ (and $c$) between steps. Reset it when the situation restarts (a fall, a new episode, a lost track), otherwise the model starts from a state that belongs to another situation. Save and restore it if the process restarts.
+\item \textbf{Timing}: the model learned that consecutive inputs are $\Delta t$ apart. If the camera drops frames or the loop rate changes, the dynamics the network learned are wrong. Resample to a fixed rate, or give $\Delta t$ as an input (Chapters~\ref{ch:hw4} and~\ref{ch:ros5}).
+\item \textbf{Locomotion policies}: neural-network walking controllers trained with reinforcement learning (Part~\ref{part:rl}) typically get a short \emph{history} of joint angles, velocities and actions as input (a window) or a recurrent state: a single snapshot cannot tell the policy about friction or load, but the history of how the body responded can. Whether it is a window or a GRU is a design choice that you test in simulation.
+\item \textbf{Audio}: speech and whistle detection use recurrent or convolutional networks over the spectrogram (Chapter~\ref{ch:ai2}); models trained with the CTC loss turn a sequence of sound frames into a (shorter) sequence of letters.
+\item \textbf{Alternatives for state estimation}: for the ball and the robot's pose, classical filters (Kalman filter, Part~\ref{part:control}) are often better: they need no training data, are explainable and cheap. Use a learned model when the dynamics are complicated (bounces, collisions) or when you want to learn from data what the filter cannot express.
+\end{itemize}
+
+\section*{Why not just use RNNs for everything?}
+RNNs have two weaknesses. They are \textbf{sequential}: step $t$ needs the result of step $t-1$, so training cannot use the parallel power of a GPU along the time axis, which makes long sequences slow. And the whole past must be squeezed into one vector $h_t$ of fixed size; for a long sentence this \textbf{bottleneck} loses details. Both problems are solved by letting every position look directly at every other position: attention, the topic of Chapter~\ref{ch:ai7}.
+
+\begin{aibox}[Do I need a learned sequence model?]
+Ask in this order: (1) Can a physical model do it (constant velocity, friction, a Kalman filter)? (2) Does a window with a small dense network do it? (3) Only then a GRU/LSTM. A simple model that you understand and that has a defined behaviour for every input is worth a lot on a robot; a complicated one needs more data, more tests and a safety layer (Chapter~\ref{ch:hw8}).
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item An RNN has $n_x=6$ inputs and $n_h=32$ hidden units. Compute the number of parameters of a simple RNN layer, of a GRU and of an LSTM.
+  \item The gradient of the distant past is multiplied at every step by $\rho$. Compute $\rho^{100}$ for $\rho=0.95$, $0.98$ and $1.05$. Which cases are a problem and why?
+  \item One LSTM step for one component: $c_{t-1}=-1$, $f=0.8$, $i=0.3$, $g=0.9$, $o=0.5$. Compute $c_t$ and $h_t$.
+  \item In which situation do you want the forget gate near $1$ and the input gate near $0$? And the opposite?
+  \item A window network gets the last $K=8$ samples of a $200$\,Hz IMU with $6$ values each. How long is the window in milliseconds, how many inputs does the first layer have, and how many weights if the first layer has $48$ neurons?
+  \item A GRU is run on the robot at $50$\,Hz, once per step. After a fall the robot is stood up again. What should you do with the hidden state, and why?
+  \item A sequence of $1000$ steps is trained with truncated BPTT in pieces of $50$ steps. How many pieces are there, what is carried from piece to piece, and what is \emph{not}?
+  \item In the ball example the constant-velocity predictor is worse than ``repeat the last position'' in windows with a bounce ($0.445$ against $0.193$ m). Explain why in two sentences.
+  \item Name two reasons why you would use a Kalman filter instead of an LSTM for tracking the ball, and one reason for the LSTM.
+  \item[\textbf{\thechapter.10}$\star$] Use the function \texttt{lstm\_step} of the chapter. (a) Show that with zero weights and the biases $b_f=+10$, $b_i=-10$ the cell state stays at its initial value $c=1$ for $20$ steps. (b) Find biases with which the cell state is \emph{erased} within one step ($c\to0$), and check them. (c) Which values does $h$ take in (a) if $b_o=0$?
+\end{enumerate}

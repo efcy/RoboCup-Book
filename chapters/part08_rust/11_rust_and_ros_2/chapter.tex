@@ -1,0 +1,220 @@
+\bookchapter{Rust and ROS 2}\label{ch:rust11}
+
+\section*{Explanation}
+The robot program is written in Rust, the sensor drivers, the camera and much of the rest of the robot software are ROS~2 nodes (Part~\ref{part:ros}). How do the two meet? The question is a real design decision, with consequences for the build, for the testing and for what happens when the ROS release changes. This chapter lists the options, explains the trade-offs, and builds the option that our design favours: ROS~2 is only a \emph{source of sensor data}, and the programs that contain our own logic (the robot program and the debug tools) do not run inside ROS nodes. We also build and run the \emph{receiving end} of that design to measure what the extra step costs.
+
+\textbf{What was run, and what not.} The computer used to write this book has neither ROS~2 nor access to \verb!crates.io!. Everything about ROS libraries below comes from their documentation (read in November 2026) and was \emph{not} run. What was run: a Python program that sends protobuf messages exactly as the bridge would (with synthetic data instead of ROS), and a Rust program that receives and decodes them, with measured delays.
+
+\section*{Four ways to connect Rust and ROS 2}
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.4mm]},bx/.style={draw,thick,rounded corners=2pt,minimum width=2.7cm,minimum height=0.9cm,font=\footnotesize,align=center}]
+ \node[font=\bfseries\footnotesize,anchor=west] at (-0.2,4.6) {A. Rust ROS client library};
+ \node[bx,fill=blue!10] (a1) at (1.6,3.5) {ROS 2 nodes\\ (sensors)};
+ \node[bx,fill=orange!15] (a2) at (6.3,3.5) {robot program\\ \emph{with} \texttt{rclrs}/\texttt{r2r}};
+ \draw[<->,thick] (a1)--node[above,font=\scriptsize]{DDS} (a2);
+ \node[font=\bfseries\footnotesize,anchor=west] at (-0.2,2.4) {B. Rust speaks DDS itself};
+ \node[bx,fill=blue!10] (b1) at (1.6,1.3) {ROS 2 nodes\\ (sensors)};
+ \node[bx,fill=orange!15] (b2) at (6.3,1.3) {robot program\\ + \texttt{ros2-client}};
+ \draw[<->,thick] (b1)--node[above,font=\scriptsize]{RTPS} (b2);
+ \node[font=\bfseries\footnotesize,anchor=west] at (-0.2,0.2) {C. A bridge process};
+ \node[bx,fill=blue!10] (c1) at (1.6,-0.9) {ROS 2 nodes\\ (sensors)};
+ \node[bx,fill=yellow!25] (c2) at (5.6,-0.9) {bridge\\ (small)};
+ \node[bx,fill=orange!15] (c3) at (10.6,-0.9) {robot program\\ (pure Rust)};
+ \draw[<->,thick] (c1)--node[above,font=\scriptsize]{DDS} (c2);
+ \draw[->,thick] (c2)--node[above,font=\scriptsize,align=center]{UDP +\\ protobuf} (c3);
+\end{tikzpicture}
+\captionof{figure}{Three architectures (a fourth, a middleware such as Zenoh that replaces DDS, is described in the text).}
+\end{center}
+\subsection*{A. A Rust ROS client library}
+A \textbf{client library} lets a program be a ROS node: it publishes, subscribes and calls services. Two libraries for Rust are in use.
+\begin{itemize}[nosep]
+\item \textbf{rclrs} (the \verb!ros2-rust! project, called by its authors the official ROS~2 client library for Rust). At the time of writing the current release was $0.8.0$; it supports Humble, Jazzy, Kilted, Lyrical and Rolling. Messages are generated from the message packages of the ROS installation and imported through the helper crate \verb!ros-env!; this release changed that mechanism and parameter callbacks, an example of how the API still moves from release to release.
+\item \textbf{r2r}, version $0.9.x$: ``bindings for ROS~2 that do not require hooking in to the ROS~2 build infrastructure'': a normal \verb!cargo build! works, but you must \emph{source the ROS installation first} (\verb!. /opt/ros/<distro>/setup.sh!), the \verb!libclang! development package must be installed, and the crate generates Rust types for \emph{all} message packages it finds (which makes the first build slow; the environment variable \verb!IDL_PACKAGE_FILTER! restricts it). Its documentation says that the API is still changing and that it has no async runtime of its own.
+\end{itemize}
+Both link against the C library of ROS (\verb!rcl!, \verb!rmw!, and the DDS library). That brings the whole ROS installation into the \emph{build} of your program, and into the \emph{cross-compilation} of Chapter~\ref{ch:rust10}: to build for an ARM robot on an x86 laptop you need the ARM version of every ROS library on the laptop. Also, your program is now tied to one ROS release.
+
+\subsection*{B. Rust speaks DDS itself}
+ROS~2 nodes talk to each other with the RTPS protocol of DDS (Chapter~\ref{ch:ros2}). A Rust program can speak it directly. The crate \textbf{ros2-client} is a ``Rust native client library for ROS~2'' on top of the Rust DDS library \verb!RustDDS!: it does not link against any ROS or C library, so it needs no ROS installation to be \emph{built} (only to test against real nodes), it cross-compiles like any pure Rust crate, and it supports topics, services, actions, parameters and logging. Version $0.11.1$ was current; the $0.11$ release made breaking API changes, and it also has an experimental backend for the Zenoh protocol. The price: it is a smaller project than the ROS libraries themselves, interoperability with each DDS vendor and each ROS release must be tested by you, and QoS settings must match exactly (Chapter~\ref{ch:ros2}); and the message types come from \verb!.msg! files that you must make available to Rust (the crate has experimental generation).
+
+\subsection*{C. A bridge process}
+A small separate program is a ROS node: it subscribes to the sensor topics that we need, converts the messages to our protobuf messages (Chapter~\ref{ch:rust8}) and sends them as UDP packets (Chapter~\ref{ch:rust7}) to the robot program, which does not know anything about ROS. The bridge can be written in Python with \verb!rclpy! (Chapter~\ref{ch:ros6}), because it does little and the speed of Python is no problem for a few sensor topics, or in C++ or Rust with one of the libraries of option A. The robot program and the debug client only know protobuf and UDP.
+
+\subsection*{D. A different middleware}
+ROS~2 can use other middleware than DDS; \textbf{rmw\_zenoh\_cpp} replaces DDS with the Zenoh protocol, and Zenoh itself has a native Rust API. There are also bridges between a DDS network and a Zenoh network. This is attractive for Wi-Fi (Zenoh is designed for it, DDS discovery is not, Chapter~\ref{ch:ros2}), but changes the middleware of the whole ROS system, a decision for the whole team and not for one program. We mention it so that you recognise the name.
+
+\section*{How to choose}
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{4.2cm}p{2.2cm}p{2.2cm}p{2.2cm}}
+\textbf{question} & \textbf{A: rclrs / r2r} & \textbf{B: ros2-client} & \textbf{C: bridge}\\ \hline
+Robot program builds without ROS installed & no & yes & yes\\
+Cross-compile without ARM ROS libraries & no & yes & yes (robot program)\\
+Robot program tied to a ROS release & yes & weakly & no\\
+Robot program can be tested without ROS & only with mocks & yes & yes (replay UDP)\\
+Extra hop and process & no & no & yes\\
+Services, actions, parameters & yes & yes & only via the bridge\\
+Maturity & official, API moving & smaller project & your own, simple\\
+\end{tabular}
+\end{center}
+Our rule: \textbf{use ROS where it is strong and keep it out of the code that is yours}. The bridge (C) is the simplest thing that works when ROS is needed \emph{only for sensor data}: the camera driver and the other drivers already publish topics; the bridge turns the few that we need into a message for us. All our logic stays in plain Rust programs that can be built anywhere, tested on a laptop with recorded data, and cross-compiled with the method of Chapter~\ref{ch:rust10}. If later more ROS features are needed (services for configuration, actions), reconsider B or A for the part that needs them.
+
+\section*{The bridge, in Python}
+\textbf{Not run (no ROS~2 on the book computer).} This is the usual structure of a \verb!rclpy! node (Chapter~\ref{ch:ros6}): it subscribes to the IMU topic with the QoS profile for sensor data (best effort, small queue, Chapter~\ref{ch:ros1}), converts and sends. \verb!robot_pb2! is the module that \verb!protoc! generates from \verb!robot.proto! (Chapter~\ref{ch:rust8}).
+\begin{verbatim}
+import math, socket
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
+from sensor_msgs.msg import Imu
+import robot_pb2
+
+class Bridge(Node):
+    def __init__(self):
+        super().__init__("sensor_bridge")
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.dest = ("127.0.0.1", 9100)
+        self.seq = 0
+        self.create_subscription(Imu, "/imu/data", self.on_imu,
+                                 qos_profile_sensor_data)
+
+    def on_imu(self, msg):
+        self.seq += 1
+        stamp = msg.header.stamp                  # time of the measurement
+        q = msg.orientation
+        roll = math.atan2(2 * (q.w * q.x + q.y * q.z),
+                          1 - 2 * (q.x * q.x + q.y * q.y))
+        frame = robot_pb2.SensorFrame(
+            seq=self.seq,
+            t_us=stamp.sec * 1_000_000 + stamp.nanosec // 1000,
+            imu=robot_pb2.Imu(roll=math.degrees(roll)))
+        self.sock.sendto(frame.SerializeToString(), self.dest)
+
+def main():
+    rclpy.init()
+    rclpy.spin(Bridge())
+
+main()
+\end{verbatim}
+Points to notice: the time stamp of the \emph{measurement} (from the message header) goes into the packet, not the time of sending, so that the receiver can compute how old the data is; the ROS message type stays inside the bridge; losing a packet is fine (best effort, as the QoS says); and the bridge has no state besides the counter. The conversion from the quaternion to the roll angle is the standard formula (Chapter~\ref{ch:ros4}), a good place for a unit test. Replacing the ROS part of the bridge later by \verb!rclrs! or \verb!r2r! does not change anything for the robot program.
+
+\section*{The receiving end, in Rust}
+To test the receiving side without ROS, we wrote a stand-in for the bridge: a Python program that sends the \emph{same protobuf messages} (the schema of Chapter~\ref{ch:rust8} with a \verb!SensorFrame! of sequence number, time stamp and IMU angles) $200$ times per second, with synthetic data, using Python's protobuf library. The Rust program below decodes them with the hand-written decoder of Chapter~\ref{ch:rust8}, checks the sequence numbers, and measures the \emph{age} of every frame, i.e.\ the time between the stamp in the packet and the arrival. Both programs run on one computer, so they share one clock.
+\begin{verbatim}
+use std::net::UdpSocket;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+fn get_varint(b: &[u8]) -> Option<(u64, usize)> {
+    let mut v = 0u64;
+    for (i, &x) in b.iter().enumerate().take(10) {
+        v |= ((x & 0x7f) as u64) << (7 * i);
+        if x & 0x80 == 0 { return Some((v, i + 1)); }
+    }
+    None
+}
+
+#[derive(Debug, Default)]
+struct Frame { seq: u32, t_us: u64, rpy: [f32; 3] }
+
+fn decode(mut b: &[u8]) -> Option<Frame> {
+    let mut f = Frame::default();
+    while !b.is_empty() {
+        let (tag, n) = get_varint(b)?;
+        b = &b[n..];
+        match (tag >> 3, tag & 7) {
+            (1, 0) => {
+                let (v, n) = get_varint(b)?;
+                b = &b[n..];
+                f.seq = v as u32;
+            }
+            (2, 0) => {
+                let (v, n) = get_varint(b)?;
+                b = &b[n..];
+                f.t_us = v;
+            }
+            (3, 2) => {                               // nested Imu message
+                let (len, n) = get_varint(b)?;
+                let mut p = b.get(n..n + len as usize)?;
+                b = &b[n + len as usize..];
+                while !p.is_empty() {
+                    let (t, n) = get_varint(p)?;
+                    let x = p.get(n..n + 4)?;
+                    let v = f32::from_le_bytes(x.try_into().ok()?);
+                    let field = (t >> 3) as usize;
+                    if (1..=3).contains(&field) { f.rpy[field - 1] = v; }
+                    p = &p[n + 4..];
+                }
+            }
+            (_, 0) => {                               // unknown varint: skip
+                let (_, n) = get_varint(b)?;
+                b = &b[n..];
+            }
+            _ => return None,                         // unknown wire type
+        }
+    }
+    Some(f)
+}
+
+fn now_us() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros() as u64
+}
+
+fn main() -> std::io::Result<()> {
+    let port: u16 = std::env::args().nth(1).unwrap().parse().unwrap();
+    let sock = UdpSocket::bind(("127.0.0.1", port))?;
+    sock.set_read_timeout(Some(Duration::from_millis(500)))?;
+    let mut buf = [0u8; 1500];
+    let (mut ages, mut last, mut lost) = (Vec::new(), 0u32, 0u32);
+    while let Ok((n, _)) = sock.recv_from(&mut buf) {
+        let arrived = now_us();
+        let Some(f) = decode(&buf[..n]) else { continue };
+        if last != 0 { lost += f.seq - last - 1; }
+        last = f.seq;
+        ages.push(arrived.saturating_sub(f.t_us));
+    }
+    ages.sort();
+    let p = |q: f64| ages[((ages.len() - 1) as f64 * q) as usize];
+    let max = ages[ages.len() - 1];
+    println!("frames {}, lost {lost}, age: median {} us, p99 {} us, \
+              max {max} us", ages.len(), p(0.5), p(0.99));
+    Ok(())
+}
+\end{verbatim}
+A real run (release build, Python sender at $200$\,Hz for one second):
+\begin{verbatim}
+frames 200, lost 0, age: median 124 us, p99 250 us, max 834 us
+\end{verbatim}
+In four runs the median age was $110$ to $129\,\mu$s, the $99$th percentile $193$ to $310\,\mu$s and the maximum $294$ to $834\,\mu$s. So the whole step ``serialise in Python, send over loopback, receive, decode in Rust'' took about $0.1$\,ms at the median and stayed below one millisecond in the worst case of every run: small against a camera period of $33$\,ms or a control period of $5$\,ms, even though a Python interpreter does the sending. What the real bridge adds is the cost of ROS and DDS in front of it; you measure that with the same method, using the stamp of the message header. The decoder shows what the language boundary looks like: the Python side uses the generated class of the official library, the Rust side the hand-written decoder, and they agree because the \emph{wire format} is the contract (a test that proves it for every release of both sides is the ``one source of truth'' test of Chapter~\ref{ch:rust8}).
+
+\section*{Testing without a robot: replay}
+With a bridge, the robot program can be tested without ROS at all, with data recorded in the real world: record the topics with \verb!ros2 bag record! (Chapter~\ref{ch:ros5}), play them back with \verb!ros2 bag play! while the bridge is running, and the Rust program receives exactly what it received on the robot. Or record the UDP packets themselves in the length-delimited log format of Chapter~\ref{ch:rust8}, and let a small program send them again with the original timing. Both are the basis of the regression tests that tell you before a tournament that the new version still sees the ball.
+
+\section*{Rust or Python for a ROS node?}
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{5.0cm}p{9.0cm}}
+\textbf{situation} & \textbf{choice}\\ \hline
+Quick experiment, a visualisation node, a test publisher & Python (\verb!rclpy!, Chapter~\ref{ch:ros6}): minutes to write\\
+A node that does little work per message, such as our bridge & Python is enough; the language is not the bottleneck\\
+Heavy computation per message (image processing, a neural network) & C++ or Rust, or Python with NumPy/OpenCV doing the work in compiled code (Chapter~\ref{ch:ai9})\\
+Hard timing requirements, long unattended operation & Rust or C++, outside the ROS node if possible\\
+A team that knows only Python & Python first; rewrite the parts that measurements show to be too slow\\
+\end{tabular}
+\end{center}
+
+\begin{aibox}[The boundary is the design]
+Wherever two systems meet, define the boundary \emph{explicitly}: the message formats, the units, the frames (Chapter~\ref{ch:ros4}), the rates, what happens when data is late or missing. A boundary that is described in one protobuf file and one page of text, and tested with recorded data, is worth more than the cleverest choice of library inside it.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Name the four ways of connecting Rust and ROS~2 that this chapter describes, and say for each in one sentence what the robot program needs to be built.
+  \item Why is cross-compiling a program that uses \verb!rclrs! or \verb!r2r! harder than cross-compiling a program that uses only \verb!std! and \verb!prost!? What can you do about it?
+  \item Our design keeps the robot logic out of ROS nodes. Give three advantages and two disadvantages.
+  \item The bridge puts the time stamp of the \emph{measurement} into the packet. Why is that better than the time of sending? What other information would you add to a frame to detect problems (think about Chapter~\ref{ch:rust7})?
+  \item The receiver measures the age of each frame as arrival time minus the stamp of the packet. Why does this only work if sender and receiver share a clock? What would you do for two different computers (robot and laptop)?
+  \item In the measurement of the chapter the median age was about $0.1$\,ms and the maximum $0.3$ to $0.8$\,ms. Compare with the control period of $5$\,ms and the camera period of $33$\,ms. Is the bridge a problem for the control loop? What would you check if the real bridge on the robot showed $40$\,ms?
+  \item Write the protobuf description of a message \verb!SensorFrame! with sequence number, time stamp, the IMU angles and a list of $22$ joint angles (\verb!repeated float!) and say how many bytes the joint part needs if all angles are non-zero (packed floats).
+  \item For which of the following would you use Python, and for which Rust? (a) a node that publishes a test ball for the simulation, (b) the program that decodes the camera stream, runs the detector and sends the result at $30$\,Hz, (c) a script that plays a recorded bag and checks the topics, (d) the gait controller at $200$\,Hz.
+  \item A teammate wants to use \verb!ros2-client! instead of the bridge so that ``there is one program less''. List the checks you would require before you agree (think about QoS, message types, the ROS release, cross-compiling, testing).
+  \item[\textbf{\thechapter.10}$\star$] Write the Python bridge of this chapter for two topics, \verb!/imu/data! and \verb!/joint_states!, using one \verb!SensorFrame! per IMU message and the latest joint angles (store them in the node; Chapter~\ref{ch:ros6}). Explain why the joint angles are \emph{not} sent in their own datagram at their own rate, and what the receiver can conclude from the stamps if the joint data is older than $50$\,ms.
+\end{enumerate}

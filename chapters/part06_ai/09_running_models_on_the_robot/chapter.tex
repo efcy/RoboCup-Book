@@ -1,0 +1,131 @@
+\bookchapter{Running Models on the Robot}\label{ch:ai9}
+
+\section*{Explanation}
+A model that works in a notebook is only half of the job. On the robot it must run \emph{fast enough}, \emph{in the memory it has}, \emph{every time}, and with \emph{exactly the same numbers} as in training. This chapter follows a model from the training framework to the robot: export to a portable format, optimisation and quantisation, measuring latency honestly, the preprocessing that decides whether everything works, and the safety net for the day it does not. The experiments are real; they were run on the (slow, shared) CPU of the computer used to write the book, so look at the \emph{method} and the proportions, not at the absolute numbers: measure on your own robot.
+
+\section*{The path from training to the robot}
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.5mm]},bx/.style={draw,thick,rounded corners=2pt,minimum width=2.3cm,minimum height=0.9cm,font=\footnotesize,align=center}]
+ \node[bx,fill=green!12] (tr) at (0,0) {training\\ (PyTorch\dots)};
+ \node[bx,fill=blue!10] (ex) at (3.1,0) {export\\ (ONNX)};
+ \node[bx,fill=orange!15] (op) at (6.2,0) {optimise,\\ quantise};
+ \node[bx,fill=yellow!20] (rt) at (9.3,0) {runtime on\\ the robot};
+ \node[bx,fill=gray!15] (ro) at (12.0,0) {ROS node\\ + safety};
+ \foreach \a/\b in {tr/ex,ex/op,op/rt,rt/ro} \draw[->,thick] (\a)--(\b);
+ \node[font=\scriptsize,gray] at (3.1,-0.9) {same results?};
+ \node[font=\scriptsize,gray] at (6.2,-0.9) {accuracy loss?};
+ \node[font=\scriptsize,gray] at (9.3,-0.9) {fast enough?};
+ \node[font=\scriptsize,gray] at (12.0,-0.9) {fails safely?};
+\end{tikzpicture}
+\captionof{figure}{Every arrow is a place where something can go wrong, and every step needs its own check, written under the arrow.}
+\end{center}
+
+\section*{Export: ONNX}
+Training frameworks have their own formats. \textbf{ONNX} (Open Neural Network Exchange) is a file format that describes the network as a graph of standard operations (matrix multiplication, convolution, ReLU, \dots) plus the weights. Many runtimes can load it: \textbf{ONNX Runtime} (CPU, GPU, and other accelerators through plug-ins called \emph{execution providers}), \textbf{TensorRT} (NVIDIA GPUs), \textbf{OpenVINO} (Intel) and others; embedded accelerators have their own tools that start from ONNX. In PyTorch the export is one call (not run when this book was written, since PyTorch is not installed on the writing machine):
+\begin{verbatim}
+import torch
+model.eval()                       # no dropout, fixed norms
+x = torch.zeros(1, 3, 640, 640)               # example input fixes the shapes
+torch.onnx.export(model, x, "detector.onnx",
+                  input_names=["images"], output_names=["output"],
+                  dynamic_axes={"images": {0: "batch"}}, opset_version=17)
+\end{verbatim}
+\textbf{What is inside an ONNX file?} To demystify it, we built one by hand: a small network for the digit images of Chapter~\ref{ch:ai5} ($64\to128\to10$, $9610$ parameters), trained with scikit-learn, written as an ONNX graph of \texttt{MatMul}, \texttt{Add} and \texttt{Relu} nodes with a few lines of Python that write the binary format (protobuf). The file has $38\,705$ bytes, almost entirely the weights ($9610\times4$ bytes). Loaded in ONNX Runtime and run on the test images it gave the same accuracy as the original ($97.9\,\%$), and the largest difference of the output numbers to a plain NumPy calculation was $8.4\cdot10^{-6}$.
+\begin{keyidea}[Always test the export]
+After every export, run the \emph{same} inputs through the original model and through the exported one, and compare the outputs: they should agree to about $10^{-4}$ or better (floating-point rounding). Do it in an automated test (Chapter~\ref{ch:py11}). Then run the exported model on a set of real images and compare the \emph{results} (the mAP or the accuracy), not just the numbers.
+\end{keyidea}
+\begin{verbatim}
+import onnxruntime as ort, numpy as np
+sess = ort.InferenceSession("detector.onnx",
+                            providers=["CPUExecutionProvider"])
+out = sess.run(None, {"images": x_numpy})[0]
+assert np.allclose(out, out_pytorch, atol=1e-4)
+\end{verbatim}
+
+\section*{Preprocessing: where most bugs are}
+The network was trained with a certain input, and it must receive exactly this on the robot. Typical mismatches, from the most to the least frequent: the colour order (BGR from OpenCV, RGB in training); the value range ($0\dots255$ or $0\dots1$) and the normalisation (mean and standard deviation); the axis order (HWC or CHW, Chapter~\ref{ch:ai2}); the size and the kind of resizing (stretching or \textbf{letterbox}, i.e.\ resizing with the aspect ratio kept and grey borders); the interpolation method; and the data type. Put the whole preprocessing in \emph{one function} that is used for training \emph{and} for deployment, or at least test that both produce the same array for the same image.
+\begin{verbatim}
+def letterbox(img, size=640):
+    h, w = img.shape[:2]; s = size / max(h, w)
+    nh, nw = int(round(h * s)), int(round(w * s))
+    r = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LINEAR)
+    out = np.full((size, size, 3), 114, np.uint8)
+    top, left = (size - nh) // 2, (size - nw) // 2
+    out[top:top + nh, left:left + nw] = r
+    return out, s, left, top
+
+def preprocess(img):                       # img: BGR uint8, from the camera
+    lb, s, l, t = letterbox(img)
+    x = cv2.cvtColor(lb, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+    return np.ascontiguousarray(x.transpose(2, 0, 1))[None], s, l, t
+\end{verbatim}
+For a camera image of $1280\times720$ the scale is $s=0.5$, the picture becomes $640\times360$ and is placed at the vertical offset $140$ (the grey bands above and below). Results of the network are in the coordinates of the $640\times640$ input; to get back to the camera image one subtracts the offsets and divides by the scale: a box at the centre $(320,400)$ with the size $40$ lies at $((320-0)/0.5,\,(400-140)/0.5)=(640,520)$ with the size $80$ in the camera image. Forgetting this step is the classic reason for ``the boxes are shifted''. The preprocessing itself costs time: measured over $300$ frames on the sandbox CPU, it takes $2.2$\,ms on average (median $2.1$, $95$th percentile $3.2$, worst $6.4$\,ms).
+
+\section*{Making it smaller and faster}
+\subsection*{Quantisation}
+Weights and activations are normally 32-bit floats. \textbf{Quantisation} stores them with fewer bits: $16$-bit floats, $8$-bit integers, even $4$ bits. The model becomes $2$ to $8$ times smaller, needs less memory bandwidth (usually the bottleneck, Chapter~\ref{ch:ai8}), and integer arithmetic is faster on many chips. The simplest method maps the weights linearly to integers: with the largest absolute value $m$ and $b$ bits, the scale is $s=m/(2^{b-1}-1)$ and $w_q=\mathrm{round}(w/s)$; the stored number is $w_q$, the value used is $s\cdot w_q$. A better variant gives every output channel its own scale (\textbf{per-channel}).
+\begin{example}
+\textbf{How many bits do we need?} The digit network of above, weights quantised to $b$ bits (simulated by rounding; accuracy on the test images, unquantised: $97.91\,\%$):
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{rcc}
+\textbf{bits} & \textbf{one scale per layer} & \textbf{one scale per channel}\\ \hline
+8 & 97.91\,\% & 97.91\,\%\\
+6 & 97.77\,\% & 97.91\,\%\\
+4 & 97.91\,\% & 97.91\,\%\\
+3 & 95.97\,\% & 96.80\,\%\\
+2 & 11.96\,\% & 70.79\,\%\\
+\end{tabular}
+\end{center}
+With $8$ and even $4$ bits nothing is lost in this small network, the model shrinks from $37.9$ to $9.5$\,kB (int8) or $4.7$\,kB (int4); with $2$ bits it collapses unless per-channel scales help. Real detectors are less forgiving than this toy: activations must be quantised too, and a few channels with large values (outliers) can make a whole layer inaccurate. Therefore the tools use a small \textbf{calibration} set of real images to choose the scales, and you must \emph{measure the mAP again} after quantisation (Chapter~\ref{ch:ai4}), and also on the hard cases (far balls, bad light).
+\end{example}
+\subsection*{More ways}
+\begin{itemize}[nosep]
+\item \textbf{A smaller model}: the cheapest and biggest saving. Choose the smallest model size that reaches the accuracy you need (Chapter~\ref{ch:ai5}), and a lower input resolution only after checking the small objects (Chapter~\ref{ch:ai4}).
+\item \textbf{Pruning}: remove weights or whole channels that contribute little; structured pruning speeds up, unstructured pruning mainly makes the file small.
+\item \textbf{Distillation}: train a small \emph{student} network to imitate a large \emph{teacher}, which often gives a better small model than training it alone.
+\item \textbf{Graph optimisation}: runtimes fuse operations (convolution + batch norm + ReLU in one), remove unused nodes and choose fast kernels; this is part of loading the model, and TensorRT-like tools do it ahead of time and store an optimised ``engine'' for \emph{one specific} device.
+\item \textbf{Move the work away}: the NMS and the preprocessing on the GPU as well, or a cheap classical filter first (Chapter~\ref{ch:ai4}).
+\end{itemize}
+
+\section*{Measuring latency properly}
+\textbf{Latency} is the time from the input to the result; \textbf{throughput} is the number of results per second. For a robot the latency counts: a result that is $100$\,ms old describes where the ball \emph{was} (Chapter~\ref{ch:ros4}). Rules for honest measurements:
+\begin{itemize}[nosep]
+\item \textbf{Warm up}. The first call is slow (memory allocation, loading kernels, compilation). In our test of the digit network in ONNX Runtime the first call took $82$\,\textmu s, the typical later call $10$\,\textmu s.
+\item \textbf{Measure many runs and look at percentiles, not only the mean}: for the same $2000$ runs the median was $10$\,\textmu s, the $95$th percentile $15$\,\textmu s, the $99$th percentile $31$\,\textmu s and the worst call $202$\,\textmu s: twenty times the median. A control loop must cope with the \emph{worst} case, not with the average.
+\item \textbf{Measure the whole chain}: capture, transfer, preprocessing, inference, post-processing (NMS), publishing (Chapter~\ref{ch:ros5}); not only the model.
+\item \textbf{Measure on the target}, with the power mode and the cooling of the real robot: mobile and embedded processors \textbf{throttle} (lower their clock) when they get hot, and a model that runs at $30$\,Hz for one minute may run at $20$\,Hz after ten (Chapter~\ref{ch:hw8}).
+\item \textbf{Batch size $1$}: batching raises the throughput, but on a robot you process the newest image immediately.
+\end{itemize}
+\begin{example}
+\textbf{A latency budget.} A camera delivers $30$ images per second. Capture and transfer take about $10$\,ms (the sensor exposure and the USB transfer), preprocessing $3$\,ms, inference $12$\,ms, post-processing and NMS $2$\,ms, publishing $1$\,ms: total $28$\,ms, which fits into the frame period of $33$\,ms with little reserve. The result arrives $28$\,ms after the exposure. If the inference rises to $25$\,ms the total is $41$\,ms: now the robot cannot keep up with the camera ($1000/41=24$ frames per second), the queue of frames grows and the age of the results increases without limit unless old frames are dropped (queue depth $1$, best-effort QoS, Chapters~\ref{ch:ros1} and~\ref{ch:ros6}). The simple relation: frames per second $=1000/\text{(ms per frame)}$: $8$\,ms $\to125$\,fps, $20$\,ms $\to50$\,fps, $33$\,ms $\to30$\,fps, $60$\,ms $\to16.7$\,fps.
+\end{example}
+
+\section*{The model as a good citizen on the robot}
+\begin{itemize}[nosep]
+\item \textbf{Own process}: run the inference in its own ROS node or process (Chapter~\ref{ch:ros6}), so that a slow or crashed model cannot block the control loop. Output with the stamp of the input image.
+\item \textbf{Watchdog and fallback}: if the model does not deliver for $X$\,ms, the consumers use a defined fallback, for example the simple colour-based ball detector of Chapter~\ref{ch:ros6}, or stop. A system that works with a classical method when the neural network fails is much easier to defend than one that depends on it.
+\item \textbf{Sanity checks on the output}: a ball cannot be $1.5$\,m above the floor, move $5$\,m in $33$\,ms or be $2\times2$\,m in size (Chapter~\ref{ch:ros4}); reject such detections.
+\item \textbf{Monitor}: log the inference time, the number of detections and the mean confidence; a drift shows a changed world (Chapter~\ref{ch:ai5}) or a thermal problem.
+\item \textbf{Versioning}: file name or hash of the model, the training data version and the preprocessing in the log of every run; keep the last good model on the robot and be able to go back in a minute.
+\item \textbf{Memory and start-up}: loading a model takes time (hundreds of ms to seconds); load at start, not when the first image arrives. Check that the memory suffices with all other nodes running.
+\item \textbf{Hardware}: look at what your robot has: CPU only, a GPU, or a dedicated neural processing unit. Each needs its own runtime and format, and each has its limits for the operations it supports. Read the documentation of your robot's computer before you choose the network, not after.
+\end{itemize}
+
+\begin{aibox}[Nothing replaces testing on the robot]
+Test the full path: real camera, real lighting, the final exported and quantised model, the final software, running for a long time. Record a bag (Chapter~\ref{ch:ros5}) and play it back to compare the old and the new version on identical input. A model that passes this test on the day before the match is worth more than one that is half a percent better on the laptop.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Compute the size in megabytes of a model with $3.2$ million parameters in float32, float16 and int8. How many parameters could an int4 model have with the same $3.2$\,MB?
+  \item Quantise the weights $(0.52,\,-1.30,\,0.07,\,0.91)$ to $4$ bits with one scale ($q_\text{max}=2^{3}-1=7$). Give the scale, the integers, the reconstructed weights and the largest error.
+  \item An exported model gives for the same input the outputs $(0.7312,\,0.2688)$ in PyTorch and $(0.7311,\,0.2689)$ in ONNX Runtime. Is this acceptable? Which check would you automate?
+  \item A camera image of $1920\times1080$ is letterboxed to $640\times640$. Compute the scale, the size of the resized image and the offsets. A detection has its centre at $(320,250)$ in model coordinates; where is it in the camera image?
+  \item The network expects RGB in $[0,1]$ normalised with mean $0.45$ and standard deviation $0.225$, shape $(1,3,H,W)$. Describe the exact sequence of operations on an OpenCV image.
+  \item A pipeline has these stages per frame: capture $9$\,ms, preprocessing $3$\,ms, inference $14$\,ms, NMS $2$\,ms, publishing $1$\,ms. What is the latency and the maximum frame rate if the stages run one after the other? Which frame rate does the camera need, at most, for the pipeline to keep up?
+  \item Repeated timing of an inference gives $18$\,ms for $97\,\%$ of the runs, and $60$\,ms for the other $3\,\%$. Compute the mean. Why does the mean hide the problem? What could the cause be?
+  \item The same model on the robot runs at $25$\,ms for the first minute and then at $38$\,ms. Give a likely cause and two measures.
+  \item After int8 quantisation the mAP@0.5 of a ball detector falls from $0.91$ to $0.89$ overall, but for balls smaller than $10$ pixels from $0.62$ to $0.41$. Is the quantised model acceptable for a robot that must see the ball at $8$\,m? What do you do?
+  \item[\textbf{\thechapter.10}$\star$] Write a small benchmarking function \texttt{benchmark(fn, n=1000, warmup=50)} that calls \texttt{fn()}, discards the warm-up calls and returns the mean, the median, the $95$th and $99$th percentile and the maximum in milliseconds; and a function that checks the parity of two models on a list of inputs (maximum absolute difference below a tolerance). Apply the first to the \texttt{preprocess} function of the chapter with a random $720\times1280$ image.
+\end{enumerate}

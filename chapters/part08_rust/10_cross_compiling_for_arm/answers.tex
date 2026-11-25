@@ -1,0 +1,37 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \verb!uname -m! on the robot (for example \verb!aarch64!). For a file: \verb!file name! (or \verb!readelf -h name! and look at ``Machine'').
+  \item \verb!aarch64!: the processor (64-bit ARM); \verb!unknown!: the vendor, not specified; \verb!linux!: the operating system; \verb!gnu!: the C library is glibc, linked dynamically. With \verb!musl! the program is linked statically with the small musl library: it has no dependence on the version of the C library of the robot (runs on any 64-bit ARM Linux), but some C dependencies do not build and the allocator is slower.
+  \item The standard library for the target: \verb!rustup target add aarch64-unknown-linux-gnu!. The linker \verb!cc! is the one of the laptop, which only knows x86: install the cross-linker, \verb!sudo apt install gcc-aarch64-linux-gnu!, and set it in \verb!.cargo/config.toml! as \verb!linker = "aarch64-linux-gnu-gcc"! for the target.
+  \item
+\begin{verbatim}
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+runner = "qemu-aarch64 -L /usr/aarch64-linux-gnu"
+\end{verbatim}
+  \item The program was built against a newer glibc (here $2.38$) than the robot has. Fixes: build on (or in a container with) the same or an older Ubuntu release as the robot, or use the same release on laptop and robot; link statically with the musl target; or build with \verb!cargo-zigbuild! and select the old glibc version in the target name; or update the robot's system if the team agrees.
+  \item Either the file is built for the wrong architecture (x86 file on the ARM robot, or ARM file on the laptop), or it is not an executable of this system at all (a text file, a damaged copy). \verb!file name! decides: it names the architecture (\verb!x86-64! or \verb!ARM aarch64!); compare with \verb!uname -m! on the machine where you run it.
+  \item (1) Use a crate feature that compiles OpenSSL from source into the program (\verb!vendored!), which only needs a C cross-compiler. (2) Replace it by a pure Rust alternative such as \verb!rustls!. (3) Build in the container of \verb!cross!, which can contain the ARM version of the library, or install the ARM library packages and point \verb!pkg-config! at them. First (2) if the crate offers a choice (no C code at all, nothing to cross-compile), otherwise (1).
+  \item Remove symbols (\verb!strip = true!): costs the readability of crash reports; link time optimisation (\verb!lto = true!, \verb!codegen-units = 1!): costs build time; \verb!panic = "abort"!: costs unwinding and clean-up on panic; \verb!opt-level = "z"!: may cost speed; removing unused dependencies and default features of crates (look at the output of \verb!cargo tree!): costs some work and maybe features; compress the file for transport (\verb!gzip!, \verb!zstd!): costs time at the robot. Another: avoid heavy generic code and large formatting machinery, which grows with each use.
+  \item A stripped binary has no function names or line numbers, so a crash address or a backtrace is just numbers. With the unstripped copy of \emph{exactly} the same build you can translate them back (\verb!addr2line!, a debugger). Store it with the version tag, for example as an artifact of the CI run or in a release folder named with the commit hash, together with the checksum, so you can find the right one months later.
+  \item[\textbf{\ansnum.10}$\star$] A possible \verb!justfile! (the lines under a target are indented):
+\begin{verbatim}
+ROBOT := "robot.local"
+TARGET := "aarch64-unknown-linux-gnu"
+BIN := "target/" + TARGET + "/release/robot-app"
+
+test:
+    cargo test
+
+build-arm: test
+    cargo build --release --target {{TARGET}}
+    file {{BIN}} | grep -q aarch64
+
+deploy: build-arm
+    ./deploy.sh {{BIN}} robot@{{ROBOT}}
+    ssh robot@{{ROBOT}} sudo systemctl restart robot-app
+
+logs:
+    ssh robot@{{ROBOT}} journalctl -u robot-app -f
+\end{verbatim}
+\verb!just deploy ROBOT=robot3.local! overrides the variable. Each step depends on the previous one, and a recipe line that fails stops \verb!just!: if the tests fail nothing is built; if \verb!grep -q aarch64! does not find the architecture the deployment does not run; if the checksum check in \verb!deploy.sh! fails (it uses \verb!set -e!) the service is not restarted. All steps should stop the process; the most important ones are the tests and the architecture check, because a wrong file on a robot is expensive. (This justfile was not run for the book; the \verb!just! tool is not installed on the computer used to write it. A \verb!Makefile! with the same targets works the same way.)
+\end{enumerate}

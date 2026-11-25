@@ -1,9 +1,111 @@
-\bookchapter{Training vision models effectively}\label{ch:ai5}
-\begin{keyidea}[Planned content]
-This chapter is not written yet. It will cover:
-\begin{itemize}[nosep]
-  \item Datasets, labelling, augmentation
-  \item Train, validation and test sets, overfitting
-  \item Learning-rate schedules and evaluation (mAP)
-\end{itemize}
+\bookchapter{Training Vision Models Effectively}\label{ch:ai5}
+
+\section*{Explanation}
+A network is only as good as the data and the training procedure behind it. Two teams with the same architecture get very different robots: the one that collects data from the real field, splits it honestly, augments it sensibly and looks at its mistakes wins. This chapter is a field guide for that work. The experiments in it are real: they use the small digit images that come with the library \texttt{scikit-learn} (the same principles hold for ball detectors, only with larger images and longer training times), and every number below was computed while writing the book.
+
+\section*{The data comes first}
+\subsection*{Collect}
+Record images (or video) on the real robot, in the real conditions: the carpet or artificial grass of the match, the lamps of the hall, the motion blur when the head turns, other robots, the shadows of spectators. The recording tool of Chapter~\ref{ch:ros5} (\texttt{ros2 bag}) is the right one. Vary what varies in reality: time of day, camera, distance, ball position, partly hidden objects, and include many frames \emph{without} the object (the background must learn too). Write down where and when each recording was made.
+\subsection*{Label}
+Draw the boxes (or masks) with a labelling tool; there are open-source ones that run in the browser and export in the YOLO format of Chapter~\ref{ch:ai4}. Rules that save weeks: write a short \textbf{labelling guide} (``box tight around the visible part of the ball; label the ball if at least half is visible; robots: the whole body, not only the torso'') and let everybody follow it; check a random $5\,\%$ of the labels of each person; let the network help (pre-labelling with an old model, then correct by hand is much faster than drawing from scratch). \textbf{Label noise} (wrong or inconsistent boxes) puts a ceiling on the quality which no training trick can lift. A rough budget: $2000$ images with $6$ boxes each and $5$ seconds per box are $60\,000$\,s, almost $17$ hours of work; plan for it.
+\subsection*{Balance}
+If $95\,\%$ of the boxes are robots, the network gets very good at robots and bad at goal posts. Count the boxes per class, and collect or sample more of the rare ones. Also keep \textbf{hard cases}: blurred, far away, partly hidden, the white shoe that looks like a ball.
+
+\section*{Train, validation, test}
+Split the data into three sets with three different jobs:
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{2.6cm}p{3.0cm}p{6.8cm}}
+\textbf{Set} & \textbf{Typical share} & \textbf{Used for}\\ \hline
+Training & $70$--$80\,\%$ & the weights are fitted on it (gradient descent)\\
+Validation & $10$--$15\,\%$ & you choose the model size, the learning rate, the number of epochs, the augmentation; looked at often\\
+Test & $10$--$15\,\%$ & looked at \emph{once} at the end, for the honest result\\
+\end{tabular}
+\end{center}
+\begin{keyidea}[Split by situation and not by frame]
+Consecutive frames of a video are almost identical. If you shuffle all frames and split randomly, nearly the same picture is in the training and in the test set, and the result is far too good. Split by \textbf{recording} (whole match, whole day, whole location); the test set should be a situation the network has never seen, because the next game will be one.
 \end{keyidea}
+\begin{example}
+\textbf{How much does a leaky split fool you?} We simulated $40$ short ``videos'' of $25$ nearly identical frames each (features: a $20$-dimensional point of the video plus a little noise), with a label per video. A nearest-neighbour classifier with a \emph{random} split of the frames reaches $100\,\%$ test accuracy; the same classifier with a split \emph{by video} reaches $65\,\%$. In this toy there is nothing to learn that carries over from one video to another, so the honest value is chance-like, and the random split reports perfection. In a real project the gap is smaller, but the direction is always the same.
+\end{example}
+\begin{verbatim}
+from sklearn.model_selection import GroupShuffleSplit
+gs = GroupShuffleSplit(n_splits=1, test_size=0.3, random_state=0)
+train_idx, test_idx = next(gs.split(X, y, groups=video_id))
+\end{verbatim}
+
+\section*{Overfitting}
+A network with many parameters can \textbf{memorise} the training set: the training error goes to zero, but on new images it makes mistakes. This is \textbf{overfitting}; its opposite, a network that is too small or trained too little to fit even the training data, is \textbf{underfitting}.
+\begin{center}
+\includegraphics[width=0.62\textwidth]{ai/overfit_curves.png}
+\captionof{figure}{A real run: a dense network ($256$ hidden neurons) trained on only $150$ images of $8\times8$ digits. The training accuracy reaches $100\,\%$, the validation accuracy stops improving at $94.2\,\%$ (epoch $38$, dashed line) and ends at $93.3\,\%$.}\label{fig:ai5_over}
+\end{center}
+The gap between the training and the validation curve is the signal. What to do about it, in the order that usually pays off:
+\begin{enumerate}[nosep]
+\item \textbf{More and more varied data}, the best cure.
+\item \textbf{Augmentation} (next section).
+\item \textbf{Early stopping}: keep the weights of the epoch with the best validation score (epoch $38$ in the figure).
+\item \textbf{Regularisation}: \emph{weight decay} (every update also pulls the weights a little towards $0$: $w\leftarrow w-\eta\,(\nabla L+\lambda w)$) and \emph{dropout} (during training a random part of the neurons is switched off, so that no neuron can rely on one particular other neuron).
+\item A \textbf{smaller model}, or a \textbf{pre-trained} one (below).
+\end{enumerate}
+
+\section*{Augmentation}
+\textbf{Data augmentation} creates new training images by changing the existing ones in ways that do \emph{not} change the label: shift, scale, small rotation, brightness and contrast, colour jitter, blur, noise, random crops, and for detectors also combining several images into one (``mosaic''). The network sees a different version of every image in every epoch, so it cannot memorise them.
+\begin{example}
+\textbf{Augmentation, a real experiment.} Again $150$ training digits. Version 1: trained on them as they are. Version 2: each image added ten times with a random shift by up to one pixel, a rotation by up to $12^\circ$ and a brightness change of $\pm20\,\%$ ($1650$ images in total). Both are tested (mean of $5$ training runs) on the clean test images and on test images that were shifted, rotated and brightness-changed in the same way:
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lcc}
+ & \textbf{clean test} & \textbf{shifted/rotated test}\\ \hline
+no augmentation & $90.1\,\%$ & $34.4\,\%$\\
+with augmentation & $90.7\,\%$ & $85.3\,\%$\\
+\end{tabular}
+\end{center}
+On the clean images the gain is small, but as soon as the test images differ from the training images in position and angle, the plain network collapses and the augmented one does not. A camera that is mounted slightly differently, or a robot that looks a bit tilted after a fall, is such a shift.
+\end{example}
+Choose augmentations that \emph{match reality}, and be careful with those that destroy information. Brightness and contrast: always. Small blur: yes (motion blur is real). A horizontal flip is fine for a ball but \emph{changes the meaning} when the label says ``team mate on the left'' or ``goal on the right'', and a vertical flip makes no sense for a standing robot. A strong hue shift destroys the single most important cue for the orange ball. Look at a grid of augmented images before training; this finds most mistakes in a minute.
+
+\section*{Transfer learning}
+A network that was trained on millions of images has already learned edges, textures and shapes (Chapter~\ref{ch:ai3}). \textbf{Fine-tuning} starts from these weights and trains on your small data set: the early layers can stay fixed (\emph{frozen}) or learn with a small learning rate, and only the last layers and the output head are adapted to your classes. This usually gives better results than training from scratch with fewer than some tens of thousands of images, needs less time and fewer epochs, and is the default procedure for detectors. Pre-trained weights are trained on everyday images; if your images look very different (an infrared camera), the advantage becomes smaller.
+
+\section*{Hyperparameters}
+\begin{itemize}[nosep]
+\item \textbf{Learning rate}: the most important number. Too high: the loss jumps or becomes \texttt{NaN}; too low: training crawls or gets stuck. A common method is to try values in factors of $3$ or $10$ ($10^{-2},10^{-3},10^{-4}$) for a few epochs and to look at the loss curve.
+\item \textbf{Schedule}: the learning rate should \emph{fall} during the training, so that the end of the training settles into a minimum. Often a short \textbf{warm-up} (a few epochs of rising learning rate) comes first, because the initial gradients are large and unreliable. The cosine schedule is $\eta(t)=\tfrac12\eta_0\big(1+\cos(\pi t/T)\big)$.
+\item \textbf{Batch size}: the number of images per update: bigger means smoother gradients and better use of the GPU, but needs more memory. A single $640\times640$ colour image in float32 is $4.9$\,MB, and the intermediate results inside the network are many times larger.
+\item \textbf{Optimiser}: plain gradient descent with momentum (SGD) or \textbf{Adam}, which scales the step of every weight by the history of its gradients and needs less tuning of the learning rate; both are good.
+\item \textbf{Epochs}: one epoch is one pass over the training set. Watch the validation curve, do not decide the number in advance.
+\end{itemize}
+\begin{center}
+\includegraphics[width=0.62\textwidth]{ai/lr_schedules.png}
+\captionof{figure}{Three common learning-rate schedules over $100$ epochs: step decay (divide by $10$ every $40$ epochs), cosine decay, and cosine with a $10$-epoch warm-up.}
+\end{center}
+
+\section*{Looking at results honestly}
+For a classifier, the \textbf{confusion matrix} shows which classes are mixed up (rows: true class, columns: predicted class). Precision, recall and the \textbf{F1 score} (their harmonic mean $F_1=2PR/(P+R)=2TP/(2TP+FP+FN)$) summarise it; for detectors use AP and mAP (Chapter~\ref{ch:ai4}). Example: $TP=45$, $FP=5$, $FN=15$ gives precision $0.90$, recall $0.75$, $F_1=0.82$.
+
+Numbers do not replace \textbf{error analysis}: look at the $50$ worst mistakes and sort them. Is it always the far-away ball? The ball in front of the orange cone? Motion blur? Wrong labels (it happens more often than you think)? Each category gives an action: more data of this kind, a better augmentation, a corrected label, or a change of the camera setting. And test on the \emph{robot}, not only on the laptop: preprocessing differences (colour order, resizing, compression) between training and robot are the most frequent reason for a network that is ``much worse in the game'' (Chapter~\ref{ch:ai9}).
+
+\subsection*{Domain shift}
+The network sees the world of its training data. A hall with different lighting, new jerseys, a different carpet are a \textbf{domain shift}, and the performance can fall sharply (like the shifted test above). Counter-measures: record at the competition venue as early as possible, have a short fine-tuning routine with a few hundred new labelled frames, and add colour and brightness augmentations. A detector should also be \emph{monitored} while it runs: log the mean confidence and the number of detections per minute; a sudden change tells you that the world has changed.
+
+\section*{Reproducibility and bookkeeping}
+Keep for every training run: the version of the code (\texttt{git} commit), the data version (a list or a hash of the files), the configuration (learning rate, size, augmentation), the random seed and the results with the curves. Tools for experiment tracking exist (TensorBoard, and several hosted and self-hosted ones); a folder per run with a \texttt{config.yaml}, a log file and the weights is enough for a school team. Without it you cannot answer ``which model is on the robot, and how was it made?'' two weeks later. Also fix the seeds, but expect small run-to-run differences (the demo above shows a spread of $0.5$ percentage points between training runs): compare models over several runs before you believe a difference of one percent.
+
+\begin{aibox}[Data is part of the robot]
+Treat the labelled data set like source code: put it under version control (or a data-versioning tool), review changes, and never overwrite the old version. A model that was good in March and bad in April is often a data problem, not a code problem.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item You have recorded $6$ matches with $2000$ frames each. Describe a correct train/validation/test split. Why is a random $80/20$ split of all $12\,000$ frames wrong?
+  \item A detector produces $TP=45$, $FP=5$, $FN=15$ at the chosen threshold. Compute precision, recall and F1. Which number do you improve if you raise the score threshold, and which gets worse?
+  \item The cosine schedule $\eta(t)=\tfrac12\eta_0(1+\cos(\pi t/T))$ with $\eta_0=0.1$ and $T=100$: compute the learning rate at $t=0,25,50,75,100$.
+  \item One weight update with weight decay: $w=2$, gradient $\nabla L=0.5$, learning rate $\eta=0.1$, $\lambda=0.01$. Compute the new $w$. What would it be without weight decay?
+  \item The training loss falls from epoch to epoch but the validation loss rises after epoch $12$. Name the problem and three measures.
+  \item Which of these augmentations are sensible for a ball detector on a soccer field, and which are harmful (and why): horizontal flip, vertical flip, brightness $\pm30\,\%$, hue shift of $\pm90^\circ$, Gaussian blur of $1$ pixel, random crop of $80\,\%$ of the image?
+  \item Labelling $3000$ images with $8$ boxes each at $4$ seconds per box: how many hours? How many hours would the second labeller need to check $10\,\%$ of the boxes in a quarter of the time per box?
+  \item A single $640\times640$ RGB image in float32 needs how many megabytes? How large is a batch of $16$ (only the input)?
+  \item A confusion matrix (rows true, columns predicted) for the classes ball, robot, post: ball $(50,3,2)$, robot $(5,40,5)$, post $(1,4,15)$. Compute precision and recall of each class.
+  \item[\textbf{\thechapter.10}$\star$] Write a function \texttt{split\_by\_group(groups, test\_fraction, seed)} that assigns \emph{whole groups} (recordings) to train or test, so that about the requested fraction of the \emph{frames} is in the test set, and a test that checks that no group appears in both sets.
+\end{enumerate}

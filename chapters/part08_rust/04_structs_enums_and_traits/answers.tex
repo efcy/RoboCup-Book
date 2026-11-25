@@ -1,0 +1,156 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item and \textbf{\ansnum.2}
+%rs:a1
+\begin{verbatim}
+#[derive(Debug, Clone)]
+struct Pose { x: f64, y: f64, theta: f64 }
+
+impl Pose {
+    fn distance_to(&self, o: &Pose) -> f64 {
+        ((self.x - o.x).powi(2) + (self.y - o.y).powi(2)).sqrt()
+    }
+    fn advance(&mut self, d: f64) {
+        self.x += d * self.theta.cos();
+        self.y += d * self.theta.sin();
+    }
+}
+
+fn main() {
+    let a = Pose { x: 0.0, y: 0.0, theta: 0.0 };
+    let b = Pose { x: 3.0, y: 4.0, theta: 0.0 };
+    println!("{}", a.distance_to(&b));
+    let mut p = Pose { x: 0.0, y: 0.0, theta: std::f64::consts::FRAC_PI_2 };
+    p.advance(2.0);
+    println!("{:.3} {:.3}", p.x, p.y);
+}
+\end{verbatim}
+The distance is $5$; after \verb!advance(2.0)! the pose is $(0.000,\,2.000)$ (the $x$ value is about $10^{-16}$, rounded away by the format).
+  \item[\textbf{\ansnum.3}]
+%rs:a3
+\begin{verbatim}
+use std::f64::consts::PI;
+struct Degrees(f64);
+struct Radians(f64);
+
+fn to_rad(d: Degrees) -> Radians { Radians(d.0 * PI / 180.0) }
+fn to_deg(r: Radians) -> Degrees { Degrees(r.0 * 180.0 / PI) }
+fn turn(a: Radians) -> f64 { a.0.sin() }
+
+fn main() {
+    println!("{:.3}", turn(to_rad(Degrees(30.0))));
+    println!("{:.1}", to_deg(Radians(PI)).0);
+}
+\end{verbatim}
+The output is $0.500$ and $180.0$. \verb!turn(a: Radians)! cannot be called with a number of degrees (not even with a plain number), so the typical mistake ``$90$ instead of $\pi/2$'' becomes a compile error.
+  \item[\textbf{\ansnum.4}]
+%rs:a4
+\begin{verbatim}
+enum Led { Off, Red, Green, Rgb(u8, u8, u8) }
+
+fn colour(l: &Led) -> (u8, u8, u8) {
+    match l {
+        Led::Off => (0, 0, 0),
+        Led::Red => (255, 0, 0),
+        Led::Green => (0, 255, 0),
+        Led::Rgb(r, g, b) => (*r, *g, *b),
+    }
+}
+
+fn main() {
+    println!("{:?} {:?}", colour(&Led::Red), colour(&Led::Rgb(1, 2, 3)));
+}
+\end{verbatim}
+Without the \verb!Off! arm: \verb!error[E0004]: non-exhaustive patterns: `&Led::Off` not covered!.
+  \item[\textbf{\ansnum.5}]
+%rs:a5
+\begin{verbatim}
+#[derive(Debug)]
+enum Command { Stop, Kick(f64) }
+
+fn parse_command(s: &str) -> Option<Command> {
+    let mut parts = s.split_whitespace();
+    match (parts.next()?, parts.next()) {
+        ("stop", None) => Some(Command::Stop),
+        ("kick", Some(p)) => p.parse::<f64>().ok().map(Command::Kick),
+        _ => None,
+    }
+}
+
+fn main() {
+    for s in ["stop", "kick 0.7", "kick", "kick x", "dance", ""] {
+        println!("{s:?} -> {:?}", parse_command(s));
+    }
+}
+\end{verbatim}
+The results are \verb!Some(Stop)!, \verb!Some(Kick(0.7))! and \verb!None! for the other four inputs. The function never panics, whatever text arrives: that is exactly what you want for commands that come from a network.
+  \item[\textbf{\ansnum.6}] Add the variant \verb!Fallen! to \verb!State! and an input \verb!fallen: bool! to \verb!World!. In \verb!next! the first arm becomes \verb!(_, _) if w.fallen => State::Fallen! (before all others, since the first matching arm wins) and \verb!(State::Fallen, _) => State::Idle! is added. If you only add the variant, the compiler reports \verb!non-exhaustive patterns: `(State::Fallen, _)` not covered! in \verb!next! and in every other \verb!match! on \verb!State! (for example the one that sets the LEDs): it finds all places for you.
+  \item[\textbf{\ansnum.7}]
+%rs:a7
+\begin{verbatim}
+trait Shape {
+    fn area(&self) -> f64;
+    fn name(&self) -> &str;
+}
+struct Circle(f64);
+struct Rect(f64, f64);
+
+impl Shape for Circle {
+    fn area(&self) -> f64 { std::f64::consts::PI * self.0 * self.0 }
+    fn name(&self) -> &str { "circle" }
+}
+impl Shape for Rect {
+    fn area(&self) -> f64 { self.0 * self.1 }
+    fn name(&self) -> &str { "rect" }
+}
+
+fn main() {
+    let v: Vec<Box<dyn Shape>> =
+        vec![Box::new(Circle(1.0)), Box::new(Rect(2.0, 3.0))];
+    let total: f64 = v.iter().map(|s| s.area()).sum();
+    for s in &v { println!("{} {:.3}", s.name(), s.area()); }
+    println!("{total:.3}");
+}
+\end{verbatim}
+The output is \verb!circle 3.142!, \verb!rect 6.000! and \verb!9.142!.
+  \item[\textbf{\ansnum.8}]
+%rs:a8
+\begin{verbatim}
+fn clamp_to<T: PartialOrd>(x: T, lo: T, hi: T) -> T {
+    if x < lo { lo } else if x > hi { hi } else { x }
+}
+
+fn main() {
+    println!("{} {}", clamp_to(15, 0, 10), clamp_to(-0.5, 0.0, 1.0));
+}
+\end{verbatim}
+The result is \verb!10 0!. The comparison operators \verb!<! and \verb!>! exist only for types that implement \verb!PartialOrd!; the bound tells the compiler that the function is allowed to compare, and prevents a call with a type that cannot be ordered (such as a struct without ordering).
+  \item[\textbf{\ansnum.9}] The enum: (1) the compiler checks every \verb!match! for completeness when joints are added or removed; (2) no invalid values: the number $17$ is not a joint, while \verb!Joint::KneePitch! always is; (3) readability: \verb!Joint::KneePitch! in the code and the log, instead of a mysterious $5$; a swap of two arguments is impossible, because different enums are different types. The index of an array: \verb!joint as usize! (for an enum without data, the compiler numbers the variants $0,1,2,\dots$ in order of writing), or a \verb!match! that gives the index explicitly if the numbers are fixed by the hardware (more robust, because moving a line in the enum would otherwise change the numbers).
+  \item[\textbf{\ansnum.10}$\star$]
+%rs:a10
+\begin{verbatim}
+enum Telemetry {
+    Imu { roll: f64, pitch: f64, yaw: f64 },
+    Battery(f64),
+    Log(String),
+}
+
+fn summary(t: &Telemetry) -> String {
+    match t {
+        Telemetry::Imu { roll, pitch, yaw } =>
+            format!("imu r={roll:.1} p={pitch:.1} y={yaw:.1}"),
+        Telemetry::Battery(v) => format!("battery {v:.1} V"),
+        Telemetry::Log(s) => format!("log: {s}"),
+    }
+}
+
+fn main() {
+    let items = [
+        Telemetry::Imu { roll: 1.0, pitch: -2.5, yaw: 90.0 },
+        Telemetry::Battery(24.8),
+        Telemetry::Log("started".to_string()),
+    ];
+    for t in &items { println!("{}", summary(t)); }
+}
+\end{verbatim}
+Output: \verb!imu r=1.0 p=-2.5 y=90.0!, \verb!battery 24.8 V!, \verb!log: started!. After adding the variant \verb!Fall! the compiler reports \verb!non-exhaustive patterns: `&Telemetry::Fall` not covered! in \verb!summary! (and in every other \verb!match! on \verb!Telemetry!). In a protocol that both the robot and the client implement, a new message type can then not be forgotten by one side, in contrast to a string or number code where an unknown message is silently ignored or mis-handled.
+\end{enumerate}

@@ -1,0 +1,118 @@
+\bookchapter{Attention and Transformers}\label{ch:ai7}
+
+\section*{Explanation}
+Chapter~\ref{ch:ai6} ended with two weaknesses of recurrent networks: they must process a sequence step by step, and everything the network remembers has to fit into one hidden vector. The \textbf{transformer} (2017) removes both with one idea, \textbf{attention}: every element of the sequence may look directly at every other element and decide, by itself, which ones are relevant right now. Transformers are the technology behind large language models (Chapter~\ref{ch:ai8}), they are used for images, sound, time series and robot policies, and they train very well on parallel hardware. This chapter builds the idea up from a small number-example to the complete block, and shows what it costs.
+
+\section*{Attention as a soft lookup}
+Think of a dictionary: a \textbf{query} is compared with the \textbf{keys}, and the value of the matching key is returned. In \emph{soft} lookup the query is compared with \emph{all} keys, the comparison gives a similarity score for each, the scores are turned into weights that sum to $1$ (softmax, Chapter~\ref{ch:prob}), and the result is the weighted average of \emph{all} values. Everything is made of vectors (Chapter~\ref{ch:dotproduct}): the similarity of a query $q$ and a key $k$ is their dot product $q\cdot k$, large if the vectors point in the same direction.
+\[
+\mathrm{Attention}(Q,K,V)=\mathrm{softmax}\!\left(\frac{Q\,K^{\top}}{\sqrt{d}}\right)V
+\]
+$Q$, $K$, $V$ are matrices with one row per position; $d$ is the length of the query and key vectors. Row $i$ of $QK^\top$ contains the scores of position $i$ against all positions, softmax makes each row a set of weights, and the product with $V$ mixes the value vectors with these weights.
+\begin{example}
+\textbf{Three positions, two numbers each.} Queries and keys $Q=K=\begin{pmatrix}1&0\\0&1\\1&1\end{pmatrix}$, values $V=\begin{pmatrix}10&0\\0&10\\5&5\end{pmatrix}$, $d=2$. For position $1$ (query $(1,0)$) the dot products with the three keys are $1,0,1$; divided by $\sqrt2$: $0.707,0,0.707$; softmax: $\frac{e^{0.707}}{e^{0.707}+1+e^{0.707}}=0.401$, then $0.198$ and $0.401$. The output is $0.401\cdot(10,0)+0.198\cdot(0,10)+0.401\cdot(5,5)=(6.02,\,3.98)$. The three weight rows (computed with the code below) are
+\[
+\begin{pmatrix}0.401&0.198&0.401\\0.198&0.401&0.401\\0.248&0.248&0.503\end{pmatrix}.
+\]
+The third query $(1,1)$ is equally similar to the first two keys and most similar to the third: it puts the most weight ($0.503$) on the third value. With a \textbf{causal mask} (a position may only look at itself and earlier positions, needed for text generation) the scores of the future are set to $-\infty$ before the softmax, and the weights become $\begin{pmatrix}1&0&0\\0.33&0.67&0\\0.248&0.248&0.503\end{pmatrix}$.
+\end{example}
+\begin{verbatim}
+import numpy as np
+def softmax(z, axis=-1):
+    z = z - z.max(axis=axis, keepdims=True)
+    e = np.exp(z)
+    return e / e.sum(axis=axis, keepdims=True)
+
+def attention(Q, K, V, mask=None):
+    d = Q.shape[-1]
+    S = Q @ K.T / np.sqrt(d)               # scores, shape (n, n)
+    if mask is not None:
+        S = np.where(mask, S, -1e9)        # forbidden positions
+    A = softmax(S)                         # each row sums to 1
+    return A @ V, A
+\end{verbatim}
+
+\subsection*{Where do $Q$, $K$ and $V$ come from? Self-attention}
+In \textbf{self-attention} all three come from the same input $X$ (one row per position), by multiplying with three learned weight matrices: $Q=XW_Q$, $K=XW_K$, $V=XW_V$. The network learns \emph{what to ask}, \emph{what to advertise} and \emph{what to hand over}. In the sentence ``the robot kicks the ball because \emph{it} is round'', the word ``it'' has a query that (after training) matches the key of ``ball'', and receives its value: this is how information travels over long distances in one step, without the $50$ steps through which an RNN would have to carry it.
+
+\subsection*{Why divide by $\sqrt d$?}
+The dot product of two random vectors of length $d$ has a spread that grows like $\sqrt d$. We measured the standard deviation of $q\cdot k$ for random vectors: $2.0$ for $d=4$, $8.0$ for $d=64$ and $22.5$ for $d=512$; after dividing by $\sqrt d$ it is $1.0$ in all cases. Without it the softmax gets very large inputs and becomes almost one-hot: for $d=64$ one key took $72\,\%$ of the weight and three keys got $0.000$ (unscaled), against a gentle $0.02$ to $0.31$ for all six keys with the scaling. A softmax that saturates has almost zero gradient, and the network cannot learn (Chapter~\ref{ch:gd}).
+
+\section*{Multi-head attention}
+One attention mixes the values in only one way. \textbf{Multi-head attention} runs $h$ attentions in parallel, each with its own small $W_Q,W_K,W_V$ of dimension $d/h$ (e.g.\ $8$ heads of $64$ for $d=512$), concatenates the results and mixes them with a last matrix $W_O$. Different heads learn different relations (one looks at the previous word, another at the subject of the sentence, another at a matching bracket). The total cost and parameters stay the same as for one big head: $4d^2$ weights for $W_Q,W_K,W_V,W_O$.
+
+\section*{Position: attention does not know the order}
+Look at the formula: if you shuffle the rows of $X$, the output rows are shuffled in the same way, nothing else changes. Attention treats its input as a \emph{set}. For text, time series or image patches the order is essential, so a \textbf{positional encoding} is added to the input vectors. The original transformer used sine and cosine waves of different wavelengths: $PE_{(pos,2i)}=\sin(pos/10000^{2i/d})$ and $PE_{(pos,2i+1)}=\cos(pos/10000^{2i/d})$. Fast waves distinguish neighbours, slow waves distinguish distant positions, like the digits of a clock (seconds, minutes, hours).
+\begin{center}
+\includegraphics[width=0.9\textwidth]{ai/attention_pe.png}
+\captionof{figure}{Left: sinusoidal positional encoding for $50$ positions and $64$ dimensions (each row is one dimension, each column one position). Right: the attention weights of a causal self-attention with random scores for $8$ positions: the upper triangle is zero, every row sums to $1$.}
+\end{center}
+Neighbouring positions get similar codes (distance between the codes of positions $3$ and $4$: $1.47$) and distant ones different codes (positions $3$ and $30$: $5.43$). Modern models often use \emph{learned} position vectors or \emph{rotary} encodings, which rotate the query and key vectors by an angle that depends on the position (rotation matrices, Chapter~\ref{ch:matrices}).
+
+\section*{The transformer block}
+A transformer is a stack of identical blocks. Each block has two parts: the (multi-head) self-attention, which \emph{mixes information between positions}, and a small \textbf{feed-forward network} (two dense layers, the hidden one usually $4$ times wider than $d$) which processes \emph{each position separately}. Both are wrapped by a \textbf{residual connection} (as in ResNet, Chapter~\ref{ch:ai3}) and by \textbf{layer normalisation} (which normalises over the features of one position, so that it works for any batch size).
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.5mm]},bx/.style={draw,thick,rounded corners=2pt,minimum width=4.4cm,minimum height=0.7cm,font=\footnotesize}]
+ \node[bx,fill=gray!15] (in) at (0,0) {tokens $\rightarrow$ embedding $+$ position};
+ \node[bx,fill=orange!20] (att) at (0,1.6) {multi-head self-attention};
+ \node[bx,fill=yellow!20] (n1) at (0,2.8) {add \& layer norm};
+ \node[bx,fill=blue!10] (ff) at (0,4.2) {feed-forward (2 dense layers)};
+ \node[bx,fill=yellow!20] (n2) at (0,5.4) {add \& layer norm};
+ \node (out) at (0,6.5) {to the next block, or the output layer};
+ \draw[->,thick] (in)--(att); \draw[->,thick] (att)--(n1); \draw[->,thick] (n1)--(ff); \draw[->,thick] (ff)--(n2); \draw[->,thick] (n2)--(out);
+ \draw[->,thick,orange!70!black] (0,0.5) -- (-3.0,0.5) -- (-3.0,2.8) -- (n1.west);
+ \draw[->,thick,orange!70!black] (0,3.4) -- (-3.0,3.4) -- (-3.0,5.4) -- (n2.west);
+ \node[font=\scriptsize,orange!70!black,rotate=90] at (-3.3,1.6) {skip};
+ \node[font=\scriptsize,orange!70!black,rotate=90] at (-3.3,4.4) {skip};
+ \node[font=\scriptsize,anchor=west] at (2.4,1.6) {positions exchange information};
+ \node[font=\scriptsize,anchor=west] at (2.4,4.2) {each position alone};
+\end{tikzpicture}
+\captionof{figure}{One transformer block (in the ``post-norm'' form of the original paper; many modern models normalise before the sub-layers). A model is a stack of $6$ to $100$ such blocks.}
+\end{center}
+\textbf{Parameters of a block.} Attention: $4d^2$. Feed-forward with width $4d$: $d\cdot4d+4d\cdot d=8d^2$. Together about $12d^2$ per block. Examples (without the embedding tables, biases and norms): $d=256$, $6$ blocks: $4.7$\,M parameters; $d=768$, $12$ blocks: $84.9$\,M (the well-known ``base'' size of the first language-model encoders has about $110$\,M with the embeddings); $d=4096$, $32$ blocks: $6.4$\,billion, the size class of the ``7B'' language models.
+
+\textbf{Three layouts.} An \emph{encoder} (every position sees all positions) produces a representation of the input; a \emph{decoder} (causal mask) generates a sequence step by step, each element only looking at the earlier ones; an \emph{encoder-decoder} adds \emph{cross-attention} in which the decoder's queries look at the encoder's keys and values (used for translation and speech recognition). Large language models are decoder-only.
+
+\section*{The price: $n^2$}
+Every position attends to every other: the score matrix is $n\times n$ per head. The cost in time and memory grows with the \emph{square} of the sequence length. For one layer with $12$ heads and numbers of $2$ bytes (fp16) the score matrices alone need
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{rr}
+\textbf{sequence length $n$} & \textbf{attention matrices per layer}\\ \hline
+$196$ & $0.9$\,MB\\
+$1600$ & $61$\,MB\\
+$4096$ (with $32$ heads) & $1.07$\,GB\\
+\end{tabular}
+\end{center}
+Doubling the length quadruples the cost, which is why context length is limited and why there is much research on cheaper (sparse, linear, windowed) attention and on memory-efficient implementations. RNNs have a cost that grows linearly with $n$, but cannot be parallelised.
+
+\section*{Transformers for images and other data}
+A \textbf{Vision Transformer} (ViT) cuts the image into square \textbf{patches} (e.g.\ $16\times16$ pixels), flattens each patch to a vector and maps it by one linear layer (this is a convolution with kernel and stride $16$, Chapter~\ref{ch:ai3}) to an embedding: the patches are the ``words''. A $224\times224$ image gives $14\cdot14=196$ tokens, a $640\times640$ image $40\cdot40=1600$ tokens, and the cost per layer rises accordingly (table above). With enough training data ViTs match or beat CNNs, because attention sees the whole image from the first layer; with little data CNNs are better, since their locality is a built-in assumption that the transformer must learn. Hybrid detectors use a CNN for the first stages and attention in the last ones with the coarse $20\times20=400$ feature map, to get the global view cheaply. The same recipe turns \textbf{audio} (spectrogram patches), \textbf{time series} (a token per time step or window) and \textbf{point clouds} into token sequences.
+\subsection*{On robots}
+Transformers appear in robotics as \textbf{pre-trained perception backbones} (features of images), as \textbf{policies} that look at a history or at a chunk of future actions, and in \textbf{vision-language-action} models that read camera images and a text instruction and output robot actions; this is an active research area and the details change quickly. For a humanoid soccer player they are most useful as pre-trained components or in the cloud; the real-time loop (Chapters~\ref{ch:hw7} and~\ref{ch:ros6}) normally runs a small CNN or MLP, because of latency and the limited computer on board (Chapter~\ref{ch:ai9}).
+
+\begin{verbatim}
+import torch.nn as nn                       # not run: no PyTorch here
+layer = nn.TransformerEncoderLayer(d_model=128, nhead=4,
+                                   dim_feedforward=512, batch_first=True)
+encoder = nn.TransformerEncoder(layer, num_layers=2)
+y = encoder(x)                              # x: (batch, n, 128) -> same shape
+\end{verbatim}
+
+\begin{aibox}[Attention as a tool for understanding]
+The weights $A$ can be drawn as a picture: which positions did this position look at? For ``the robot kicks the ball'' a trained model shows, for example, that ``kicks'' attends strongly to ``robot'' and ``ball''. Such pictures give hints, not proofs: a high weight does not mean that the information was used. They are still a useful first debugging tool.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item For $q=(2,0)$ and keys $k_1=(1,0)$, $k_2=(0,1)$, $k_3=(-1,0)$ with $d=2$: compute the scores $q\cdot k_i/\sqrt d$ and the softmax weights. Which key is most important?
+  \item With the weights of problem 1 and values $v_1=(1,0)$, $v_2=(0,1)$, $v_3=(5,5)$: compute the output.
+  \item Why is the score matrix divided by $\sqrt d$? If $d=256$, by how much does the standard deviation of $q\cdot k$ shrink for random unit-variance vectors?
+  \item A causal mask is applied to a sequence of $4$ positions. Write the $4\times4$ pattern of the allowed positions (1 = allowed). How many weights are non-zero?
+  \item A model has $d=512$, $8$ heads. Give the size of the vectors of one head, the number of parameters of $W_Q,W_K,W_V,W_O$ together (no biases) and the parameters of the feed-forward part with width $4d$.
+  \item Compute the parameters of a stack of $24$ blocks with $d=1024$ using the rule $12d^2$ per block.
+  \item A ViT uses $16\times16$ patches. How many tokens has an image of $320\times240$? How large (fp16, $8$ heads) are the attention matrices per layer? By what factor does the cost of attention change if the image is scaled to $640\times480$?
+  \item If one shuffles the positions of the input of a self-attention layer without positional encoding, what happens to the output? Why does this make a positional encoding necessary for sentences?
+  \item Name two advantages and two disadvantages of attention compared with an LSTM.
+  \item[\textbf{\thechapter.10}$\star$] Extend \texttt{attention} to \textbf{multi-head self-attention} with random weight matrices: input $X$ of shape $(n,d)$, $h$ heads of size $d/h$, outputs concatenated and mixed with $W_O$. Check that the output has the shape $(n,d)$, that the rows of every attention matrix sum to $1$ and that shuffling the rows of $X$ shuffles the output rows in the same way.
+\end{enumerate}

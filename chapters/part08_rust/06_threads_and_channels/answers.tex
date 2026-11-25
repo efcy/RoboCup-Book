@@ -1,0 +1,119 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \verb!move! transfers the variables that the closure uses into the closure, which the new thread owns from then on. Without it, the closure only borrows local variables of the parent function, and the thread could still be running when the function ends and the variables are gone. The compiler reports \verb!error[E0373]: closure may outlive the current function, but it borrows `x`!, with the hint ``to force the closure to take ownership, use the `move` keyword''.
+  \item Several threads would change the same variable \verb!count! at the same time, and the closures would borrow it for longer than the function exists. This is a data race (an unordered write by several threads) and it violates the ownership rules. Corrections: (1) \verb!Arc<Mutex<u64>>!, each thread locks while it counts; (2) an \verb!AtomicU64! with \verb!fetch_add! (also in an \verb!Arc!). A third, often best, way: each thread counts in its \emph{own} local variable and returns the number; the main thread adds up the results after \verb!join!.
+  \item
+%rs:a3
+\begin{verbatim}
+use std::thread;
+
+fn main() {
+    let hs: Vec<_> = (0..4_u64).map(|k| {
+        thread::spawn(move || {
+            (k * 1000..k * 1000 + 1000).map(|x| x * x).sum::<u64>()
+        })
+    }).collect();
+    let par: u64 = hs.into_iter().map(|h| h.join().unwrap()).sum();
+    let seq: u64 = (0..4000_u64).map(|x| x * x).sum();
+    println!("{par} {seq} {}", par == seq);
+}
+\end{verbatim}
+prints \verb!21325334000 21325334000 true!; the formula $\sum_{x=0}^{n-1}x^2=(n-1)n(2n-1)/6$ with $n=4000$ gives the same value, $21\,325\,334\,000$.
+  \item A deadlock is a state in which threads wait for each other forever. Thread 1 locks $A$ and then wants $B$; thread 2 has locked $B$ and wants $A$: both wait. Rule: all threads take locks in the \emph{same order} (always $A$ before $B$), or hold only one lock at a time (copy the data out, release, then lock the next one).
+  \item With an atomic the increment is one processor instruction (\verb!fetch_add!) and no thread ever waits for a lock, so it is much faster, in particular with many threads. An atomic is possible only for single simple values (flags, counters, a number); a struct with several fields that must change \emph{together} (e.g.\ x and y of a position) needs a mutex (or a channel), otherwise another thread could see a mixture of old and new values.
+  \item
+%rs:a6
+\begin{verbatim}
+use std::sync::mpsc;
+use std::thread;
+
+fn main() {
+    let (tx, rx) = mpsc::channel();
+    let p = thread::spawn(move || {
+        for i in 1..=10 { tx.send(i as f64).unwrap(); }
+    });
+    let (mut n, mut sum) = (0, 0.0);
+    for v in rx {
+        n += 1;
+        sum += v;
+        println!("{n}: average {:.2}", sum / n as f64);
+    }
+    p.join().unwrap();
+}
+\end{verbatim}
+The last line is \verb!10: average 5.50!. The loop ends when the sender \verb!tx! is dropped, which happens when the producer thread ends.
+  \item The queue grows by $1000-200=800$ messages per second: after $60$ s there are $48\,000$ waiting, using memory, and the message that is written now was produced $48\,000/200=240$\,s ago (the delay grows without limit). Fixes: a bounded channel (\verb!sync_channel!) and then \emph{decide} what to do when it is full: drop the oldest or newest values (for telemetry a good choice), or lower the rate (send every fifth value), or write in batches (writing $1000$ values at once may be much cheaper than $1000$ single writes), or use a faster storage.
+  \item Copying the value is quick and releases the lock at once. If the control loop processed the data with the lock held, the vision thread could not write its next result during that time, and if the processing is slow (or the loop sleeps or panics) the other thread would be blocked as well, and with a panic the mutex would be poisoned. In general, locks protect \emph{data access}, not \emph{work}.
+  \item
+%rs:a9
+\begin{verbatim}
+use std::thread;
+
+fn main() {
+    let v: Vec<f64> = (0..1_000_000).map(|i| i as f64 * 0.001).collect();
+    let (left, right) = v.split_at(v.len() / 2);
+    let (a, b) = thread::scope(|s| {
+        let h1 = s.spawn(|| left.iter().sum::<f64>());
+        let h2 = s.spawn(|| right.iter().sum::<f64>());
+        (h1.join().unwrap(), h2.join().unwrap())
+    });
+    let par = (a + b) / v.len() as f64;
+    let seq = v.iter().sum::<f64>() / v.len() as f64;
+    println!("{par:.6} {seq:.6} {}", (par - seq).abs() < 1e-9);
+}
+\end{verbatim}
+Both means are $499.999500$. The threads borrow \verb!left! and \verb!right! (views of \verb!v!), which is allowed because the scope ends before \verb!v! does. The two sums can differ in the last digits from the single sum because floating-point addition is not associative, hence the tolerance.
+  \item[\textbf{\ansnum.10}$\star$] Connections: UDP thread $\to$ control loop: a \emph{channel} of commands (commands are events that must not be lost or reordered; the loop uses \verb!try_recv! at the start of each cycle and handles all waiting commands); control loop $\to$ log thread: a \emph{bounded channel} with \verb!try_send! (the loop must never wait; if the log is behind, the sample is dropped and a counter is incremented); shutdown: a shared \verb!AtomicBool!.
+%rs:a10
+\begin{verbatim}
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
+use std::thread;
+use std::time::{Duration, Instant};
+
+#[derive(Debug)]
+enum Cmd { Walk(f64), Stop }
+
+fn main() {
+    let run = Arc::new(AtomicBool::new(true));
+    let (cmd_tx, cmd_rx) = mpsc::channel::<Cmd>();
+    let (log_tx, log_rx) = mpsc::sync_channel::<f64>(100);
+
+    let net = {                                // stands in for the UDP thread
+        let run = Arc::clone(&run);
+        thread::spawn(move || {
+            cmd_tx.send(Cmd::Walk(0.3)).unwrap();
+            thread::sleep(Duration::from_millis(30));
+            cmd_tx.send(Cmd::Stop).unwrap();
+            while run.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(5));
+            }
+        })
+    };
+    let logger = thread::spawn(move || log_rx.iter().count());
+    let ctl = {
+        let run = Arc::clone(&run);
+        thread::spawn(move || {
+            let (mut speed, mut dropped) = (0.0, 0);
+            let mut next = Instant::now();
+            while run.load(Ordering::Relaxed) {
+                while let Ok(c) = cmd_rx.try_recv() {   // never blocks
+                    match c {
+                        Cmd::Walk(v) => speed = v,
+                        Cmd::Stop => run.store(false, Ordering::Relaxed),
+                    }
+                }
+                if log_tx.try_send(speed).is_err() { dropped += 1; }
+                next += Duration::from_millis(10);      // 100 Hz
+                thread::sleep(next.saturating_duration_since(Instant::now()));
+            }
+            dropped
+        })
+    };
+    let dropped = ctl.join().unwrap();
+    net.join().unwrap();
+    let logged = logger.join().unwrap();
+    println!("clean shutdown, dropped: {dropped}, logged > 0: {}", logged > 0);
+}
+\end{verbatim}
+prints \verb!clean shutdown, dropped: 0, logged > 0: true!. Notes: the control loop uses \verb!try_recv! and \verb!try_send!, so it never blocks; its clock advances by a fixed $10$\,ms from the \emph{previous target time} (\verb!next!) and not from the current time, so the period does not drift; the logger ends when the control thread (the only sender) ends; the \verb!Stop! command clears the flag that all threads watch.
+\end{enumerate}

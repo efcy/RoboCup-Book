@@ -1,0 +1,24 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Scores: $q\cdot k_1=2$, $q\cdot k_2=0$, $q\cdot k_3=-2$; divided by $\sqrt2$: $1.414,\;0,\;-1.414$. Softmax: $e^{1.414}=4.11$, $e^0=1$, $e^{-1.414}=0.243$, sum $5.35$: weights $0.768,\;0.187,\;0.045$. Key $k_1$ (the same direction as the query) is the most important.
+  \item $0.768\cdot(1,0)+0.187\cdot(0,1)+0.045\cdot(5,5)=(0.995,\,0.414)$ (with unrounded weights).
+  \item The spread of $q\cdot k$ grows like $\sqrt d$; the softmax of large scores is almost one-hot and has nearly zero gradient. For $d=256$ it shrinks by $\sqrt{256}=16$.
+  \item $\begin{pmatrix}1&0&0&0\\1&1&0&0\\1&1&1&0\\1&1&1&1\end{pmatrix}$; $1+2+3+4=10$ non-zero weights.
+  \item Head size $512/8=64$. $4d^2=4\cdot512^2=1\,048\,576$. Feed-forward: $8d^2=2\,097\,152$.
+  \item $24\cdot12\cdot1024^2=301\,989\,888\approx302$ million (without embeddings).
+  \item $20\cdot15=300$ tokens. Attention matrices: $300^2\cdot8\cdot2$ bytes $=1.44$\,MB per layer. At $640\times480$: $40\cdot30=1200$ tokens, $4$ times more, so attention costs $4^2=16$ times as much.
+  \item The output rows are shuffled in exactly the same way and nothing else changes (permutation equivariance). The layer cannot tell ``dog bites man'' from ``man bites dog''; the order must be added to the input as a positional encoding.
+  \item Advantages: training is parallel over the sequence; every position sees every other directly, so long-range relations are easy. Disadvantages: cost grows with $n^2$; it needs more data and positional information, and a streaming robot must keep all earlier keys and values (the cache) instead of a small state.
+  \item[\textbf{\ansnum.10}]
+\begin{verbatim}
+def mha(X, Wq, Wk, Wv, Wo, h):
+    n, d = X.shape; dh = d // h
+    Q, K, V = X @ Wq, X @ Wk, X @ Wv
+    heads, weights = [], []
+    for i in range(h):
+        s = slice(i * dh, (i + 1) * dh)
+        A = softmax(Q[:, s] @ K[:, s].T / np.sqrt(dh))
+        heads.append(A @ V[:, s]); weights.append(A)
+    return np.concatenate(heads, axis=1) @ Wo, weights
+\end{verbatim}
+  Test with $n=6$, $d=16$, $h=4$ and random matrices: the output has the shape $(6,16)$; the rows of all four attention matrices sum to $1$ (\texttt{True}); with a random permutation \texttt{perm} the output of \texttt{X[perm]} equals \texttt{Y[perm]} (\texttt{True}). Both checks were run.
+\end{enumerate}

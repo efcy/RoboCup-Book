@@ -1,0 +1,164 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item In cooked mode the terminal collects a whole line, lets you edit it and prints what you type; the program gets the line after Enter. In raw mode every key press goes to the program at once and nothing is printed automatically, which is what a full-screen program needs (arrow keys, \verb!q! without Enter). If a program ends without restoring the mode (a crash), the shell no longer echoes and behaves strangely. The command \verb!reset! (or \verb!stty sane!) repairs it.
+  \item \verb!ESC[2J! clears the screen, \verb!ESC[3;7H! moves the cursor to row $3$, column $7$, \verb!ESC[32m! sets the text colour to green.
+%rs:a2
+\begin{verbatim}
+fn main() {
+    println!("\x1b[32mOK\x1b[0m");
+    println!("\x1b[31mFAIL\x1b[0m");
+}
+\end{verbatim}
+In a terminal this shows green ``OK'' and red ``FAIL''; piped into a file the escape codes are in the file as well (\verb!cat -v! shows them as \verb!^[[32m!), which is why good tools check whether the output is a terminal before they use colours.
+  \item Model: all state of the program. Update: a function that takes an event and changes the model. View: a function that draws the model and changes nothing. Model and update need no terminal: a test creates an \verb!App!, feeds a list of messages to \verb!update! and compares the fields with the expected values. Only the view needs a screen (or the \verb!TestBackend!).
+  \item
+%rslib:a4
+\begin{verbatim}
+#[derive(Debug, Default)]
+struct App {
+    rx_count: u32, lost: u32, last_seq: Option<u32>, history: Vec<f64>,
+}
+
+enum Msg { Packet { seq: u32, pitch: f64 }, Reset }
+
+impl App {
+    fn update(&mut self, msg: Msg) {
+        match msg {
+            Msg::Packet { seq, pitch } => {
+                if let Some(l) = self.last_seq {
+                    let step = seq.wrapping_sub(l);
+                    if step == 0 || step > u32::MAX / 2 { return; }
+                    self.lost += step - 1;
+                }
+                self.last_seq = Some(seq);
+                self.rx_count += 1;
+                self.history.push(pitch);
+            }
+            Msg::Reset => {
+                self.rx_count = 0;
+                self.lost = 0;
+                self.history.clear();
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn gap_then_reset() {
+        let mut a = App::default();
+        for seq in [1, 2, 3, 7, 8] {
+            a.update(Msg::Packet { seq, pitch: 0.0 });
+        }
+        assert_eq!((a.rx_count, a.lost), (5, 3));
+        a.update(Msg::Reset);
+        assert_eq!((a.rx_count, a.lost, a.history.len()), (0, 0, 0));
+    }
+}
+\end{verbatim}
+The test passes (five packets counted, $3$ lost: $4,5,6$; after the reset everything is zero). Note that \verb!last_seq! is kept after a reset: the next packet must not be counted as a huge loss.
+  \item With $24$ rows: the two fixed rectangles get $3$ rows each, the \verb!Min(5)! area takes the rest: $24-3-3=18$ rows. With $10$ rows the sum of the minimum sizes ($3+5+3=11$) does not fit; the layout engine of ratatui then resolves the conflict according to the strength of the constraints, and one or more of the rectangles gets fewer rows than requested (the exact outcome depends on the library version; test it with the \verb!TestBackend!). The lesson: a TUI must also draw something sensible in a small terminal (for example the message ``terminal too small'').
+  \item
+%rs:a6
+\begin{verbatim}
+fn bar(ratio: f64, width: usize) -> String {
+    let r = ratio.clamp(0.0, 1.0);
+    let full = (r * width as f64).round() as usize;
+    format!("[{}{}]", "#".repeat(full), ".".repeat(width - full))
+}
+
+fn main() {
+    for r in [-0.5, 0.0, 0.5, 1.0, 7.0] {
+        println!("{r:>5} {}", bar(r, 10));
+    }
+}
+\end{verbatim}
+prints the empty bar for $-0.5$ and $0$, \verb![#####.....]! for $0.5$ and the full bar \verb![##########]! for $1$ and for $7$. Without the clamp, \verb!width - full! would underflow for the ratio $7$ (a panic in the debug build) and \verb!repeat! would fail for the negative ratio: the typical edge cases of a display function that gets sensor values.
+  \item Model: a list of $22$ rows (joint name, temperature in $^\circ$C, time of the last update) and the selected row. Update: \verb!Msg::JointTemps(array)! from the receiver thread, \verb!Msg::Key! for moving the selection. View: a \verb!Table! with a column ``name'' and a column ``temperature''; a row style that is red and bold above $60\,^\circ$C (and a text such as ``HOT'' in an extra column, so the information does not depend on the colour alone); the title shows the highest temperature. The limit belongs to a configuration constant, not into the drawing code.
+  \item Dropped SSH connection: the terminal program receives a hangup signal or write errors; \verb!terminal.draw! returns an \verb!Err! and the program must end cleanly (the \verb!?! passes it to \verb!main!); a robot-side process started from the TUI would keep running (use \verb!tmux! or a service, Chapter~\ref{ch:linux5}, for things that must survive). On a resize the terminal sends a \verb!Resize! event (and ratatui adapts the buffer at the next \verb!draw!); the program should simply redraw, since the view computes everything from the area it is given.
+  \item The screen belongs to the TUI: a \verb!println!! writes into the middle of the picture and garbles it, and the terminal is in raw mode (no automatic newline conversion). A file (or the standard error redirected to a file with \verb!2> debug.log!) does not disturb the display, and \verb!tail -f debug.log! in a second terminal shows it live.
+  \item[\textbf{\ansnum.10}$\star$]
+%rslib:a10
+\begin{verbatim}
+struct Viewer {
+    lines: Vec<String>,
+    filter: String,
+    selected: usize,             // index into the FILTERED list
+    offset: usize,               // first visible row (filtered)
+    height: usize,
+}
+
+impl Viewer {
+    fn new(lines: Vec<String>, height: usize) -> Self {
+        Viewer {
+            lines, filter: String::new(), selected: 0, offset: 0, height,
+        }
+    }
+    fn visible(&self) -> Vec<&String> {
+        self.lines.iter().filter(|l| l.contains(&self.filter)).collect()
+    }
+    fn key(&mut self, c: char) {
+        let n = self.visible().len();
+        match c {
+            'j' => {
+                self.selected = (self.selected + 1).min(n.saturating_sub(1))
+            }
+            'k' => self.selected = self.selected.saturating_sub(1),
+            'g' => self.selected = 0,
+            'G' => self.selected = n.saturating_sub(1),
+            _ => {}
+        }
+        self.scroll();
+    }
+    fn set_filter(&mut self, f: &str) {
+        self.filter = f.to_string();
+        self.selected = 0;
+        self.offset = 0;
+    }
+    fn scroll(&mut self) {
+        if self.selected < self.offset { self.offset = self.selected; }
+        if self.selected >= self.offset + self.height {
+            self.offset = self.selected + 1 - self.height;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn viewer() -> Viewer {
+        let lines = (0..1000).map(|i| format!("line {i}")).collect();
+        Viewer::new(lines, 10)
+    }
+    #[test]
+    fn scrolls_down_and_stops_at_the_end() {
+        let mut v = viewer();
+        for _ in 0..20 { v.key('j'); }
+        assert_eq!((v.selected, v.offset), (20, 11));
+        v.key('G');
+        assert_eq!((v.selected, v.offset), (999, 990));
+        v.key('j');
+        assert_eq!(v.selected, 999);
+    }
+    #[test]
+    fn scrolls_up_and_stops_at_the_start() {
+        let mut v = viewer();
+        v.key('G');
+        v.key('g');
+        assert_eq!((v.selected, v.offset), (0, 0));
+        v.key('k');
+        assert_eq!(v.selected, 0);
+    }
+    #[test]
+    fn filter_shrinks_the_list() {
+        let mut v = viewer();
+        v.set_filter("line 99");               // line 99, 990..=999
+        assert_eq!(v.visible().len(), 11);
+        v.key('G');
+        assert_eq!((v.selected, v.offset), (10, 1));
+    }
+}
+\end{verbatim}
+The three tests pass. The key idea: the selected line is an index into the \emph{filtered} list, and the scroll offset is corrected after every key so that it stays inside $[\text{selected}-h+1,\ \text{selected}]$. The end cases (an empty filtered list, pressing \verb!j! at the end) are handled with \verb!saturating_sub! and \verb!min!, which avoids the typical underflow panic. The view would only slice \verb!visible()[offset..offset+height]! and highlight the row \verb!selected - offset!.
+\end{enumerate}

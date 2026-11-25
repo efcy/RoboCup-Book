@@ -1,0 +1,156 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \verb!Option<T>! says ``there may be no value'' without a reason: the ball is not visible, a list is empty. \verb!Result<T, E>! says ``this operation can fail, and here is why'': a packet that does not parse (the error says which field), a configuration file that cannot be opened (the error says that the file does not exist or may not be read). Rule: if the caller would want to know the reason, use \verb!Result!.
+  \item
+%rs:a2
+\begin{verbatim}
+use std::num::ParseFloatError;
+
+fn parse_pair(s: &str) -> Result<(f64, f64), ParseFloatError> {
+    let mut it = s.split(',');
+    let a = it.next().unwrap_or("").trim().parse()?;
+    let b = it.next().unwrap_or("").trim().parse()?;
+    Ok((a, b))
+}
+
+fn main() {
+    println!("{:?}", parse_pair("1.5,-2"));
+    println!("{:?}", parse_pair("1.5"));
+    println!("{:?}", parse_pair("x,1"));
+}
+\end{verbatim}
+prints \verb!Ok((1.5, -2.0))! and then two times \verb!Err(ParseFloatError { kind: ... })! (\verb!Empty! for the missing part of \verb!"1.5"!, \verb!Invalid! for \verb!"x"!). A missing part is treated as the empty text, whose parsing fails. (A better error type would say ``missing second value''; see the enum of the chapter.)
+  \item
+%rs:a3
+\begin{verbatim}
+fn main() {
+    let d = vec![0.3, 0.8, 1.2, 2.5, 1.9];
+    let n = d.iter().filter(|&&x| (0.5..=2.0).contains(&x)).count();
+    let above: Vec<f64> = d.iter().copied().filter(|&x| x > 1.0).collect();
+    let mean = above.iter().sum::<f64>() / above.len() as f64;
+    let squares: Vec<f64> = d.iter().map(|x| x * x).collect();
+    println!("{n} {mean:.3} {squares:?}");
+}
+\end{verbatim}
+prints $3$, $1.867$ and the squares $[0.09, 0.64, 1.44, 6.25, 3.61]$ (up to floating-point rounding in the last digits). The values in $[0.5,2.0]$ are $0.8$, $1.2$ and $1.9$.
+  \item
+%rs:a4
+\begin{verbatim}
+fn dot(x: &[f64], y: &[f64]) -> f64 {
+    x.iter().zip(y).map(|(a, b)| a * b).sum()
+}
+
+fn main() {
+    println!("{}", dot(&[1.0, 2.0, 3.0], &[4.0, 5.0, 6.0]));
+}
+\end{verbatim}
+The result is $1\cdot4+2\cdot5+3\cdot6=32$. If the vectors have different lengths, \verb!zip! silently stops at the shorter one: add an \verb|assert_eq!(x.len(), y.len())| if that is not what you want.
+  \item
+%rs:a5
+\begin{verbatim}
+fn moving_average(xs: &[f64], n: usize) -> Vec<f64> {
+    xs.windows(n).map(|w| w.iter().sum::<f64>() / n as f64).collect()
+}
+
+fn main() {
+    println!("{:?}", moving_average(&[1.0, 2.0, 3.0, 4.0, 5.0], 3));
+}
+\end{verbatim}
+The result is $[2,3,4]$ (three values: $5-3+1$). \verb!windows(0)! panics, so a robust version checks \verb!n > 0!.
+  \item
+%rs:a6
+\begin{verbatim}
+use std::collections::HashMap;
+
+fn main() {
+    let text = "the ball the goal the robot a ball";
+    let mut count: HashMap<&str, usize> = HashMap::new();
+    for w in text.split_whitespace() {
+        *count.entry(w).or_insert(0) += 1;
+    }
+    let mut v: Vec<(&str, usize)> = count.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    for (w, n) in v { println!("{w} {n}"); }
+}
+\end{verbatim}
+prints \verb!the 3!, \verb!ball 2!, \verb!a 1!, \verb!goal 1!, \verb!robot 1!. The comparison first looks at the counts in reverse order, and \verb!then! (only for equal counts) at the words.
+  \item (a) Result (bad data from outside is normal). (b) Panic: if the index can be $\ge22$ it is a bug in the program, and a stop with a clear message is better than wrong data; an \verb!assert! or the normal index check does that. (c) Result (the user may have misspelled the name). (d) Panic: a violated, documented precondition is a bug in the caller (one may also return an \verb!Option!, if the caller cannot know). (e) Result or \verb!Option! (cameras fail; the robot must go on, e.g.\ with the last image or a fallback).
+  \item
+%rslib:a7
+\begin{verbatim}
+/// Limits `x` to `lo..=hi`. Panics if `lo > hi`.
+pub fn clamp(x: f64, lo: f64, hi: f64) -> f64 {
+    assert!(lo <= hi, "lo must not be larger than hi");
+    x.max(lo).min(hi)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn inside() { assert_eq!(clamp(0.3, 0.0, 1.0), 0.3); }
+    #[test]
+    fn below() { assert_eq!(clamp(-2.0, 0.0, 1.0), 0.0); }
+    #[test]
+    fn above() { assert_eq!(clamp(7.0, 0.0, 1.0), 1.0); }
+    #[test]
+    #[should_panic(expected = "lo must not")]
+    fn reversed_limits() { clamp(0.5, 1.0, 0.0); }
+}
+\end{verbatim}
+All four tests pass. The decision (panic on reversed limits) is a programming error of the caller and is documented in the \verb!///! comment, which \verb!cargo doc! shows.
+  \item \verb!Cargo.toml! of the workspace: \verb![workspace]!, \verb!members = ["geometry", "app"]!, \verb!resolver = "3"!. In \verb!geometry/Cargo.toml! only the \verb![package]! section (name, version, edition) and the code in \verb!geometry/src/lib.rs! (\verb!pub fn distance(...)!). In \verb!app/Cargo.toml!, below \verb![package]!: \verb![dependencies]! and \verb!geometry = { path = "../geometry" }!. In \verb!app/src/main.rs!: \verb!geometry::distance(...)!. This was built and run for the book; \verb!cargo run -p app! printed \verb!5! for the points $(0,0)$ and $(3,4)$, and \verb!cargo build --release! builds both crates.
+  \item[\textbf{\ansnum.10}$\star$]
+%rslib:a10
+\begin{verbatim}
+use std::fmt;
+
+#[derive(Debug, PartialEq)]
+pub enum CsvError { BadLine(usize), NoHeader }
+
+impl fmt::Display for CsvError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            CsvError::BadLine(n) => write!(f, "line {n}: expected 'time,x'"),
+            CsvError::NoHeader => write!(f, "file has no header line"),
+        }
+    }
+}
+
+pub fn read_csv(text: &str) -> Result<Vec<(f64, f64)>, CsvError> {
+    let mut lines = text.lines().enumerate();
+    lines.next().ok_or(CsvError::NoHeader)?;          // skip the header
+    let mut out = Vec::new();
+    for (i, line) in lines {
+        if line.trim().is_empty() { continue; }
+        let mut p = line.split(',');
+        let (a, b) = (p.next(), p.next());
+        match (a.and_then(|s| s.trim().parse().ok()),
+               b.and_then(|s| s.trim().parse().ok()), p.next()) {
+            (Some(t), Some(x), None) => out.push((t, x)),
+            _ => return Err(CsvError::BadLine(i + 1)),
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn good_file() {
+        let r = read_csv("time,x\n0,1.5\n\n0.1,2\n").unwrap();
+        assert_eq!(r, vec![(0.0, 1.5), (0.1, 2.0)]);
+    }
+    #[test]
+    fn text_instead_of_number() {
+        let r = read_csv("time,x\n0,1\n1,abc\n");
+        assert_eq!(r, Err(CsvError::BadLine(3)));
+    }
+    #[test]
+    fn empty_file() {
+        assert_eq!(read_csv(""), Err(CsvError::NoHeader));
+    }
+}
+\end{verbatim}
+All three tests pass. The line number counts from $1$ including the header, so the error message matches what the user sees in an editor. The three-way \verb!match! on a tuple checks that there are exactly two parseable numbers and nothing more.
+\end{enumerate}

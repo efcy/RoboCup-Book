@@ -1,0 +1,393 @@
+\bookchapter{Terminal Tools with Ratatui}\label{ch:rust9}
+
+\section*{Explanation}
+The debugging client of the team is a terminal application: a screen of text with live numbers, curves and lists that updates while the robot sends data, controlled by the keyboard. A \textbf{text user interface} (\textbf{TUI}) has no graphics libraries and no window system: it starts over an SSH connection to the robot (Chapter~\ref{ch:linux3}) as well as on a laptop, needs almost no bandwidth, starts in a fraction of a second and can be scripted and logged. The Rust library for such programs is \textbf{ratatui}. This chapter explains how a terminal program works, shows how to structure an application so that most of it can be tested without a terminal, and gives the ratatui code for a telemetry viewer. At the end we look at command line tools without a screen, which are just as important (argument parsing, exit codes, pipes).
+
+\textbf{What was run.} The programs in the sections ``A terminal in thirty lines'', ``Model, update, view'' and ``Command line arguments'' use only the standard library and were compiled and run. The ratatui and clap code was \emph{not} run, because the computer used to write this book has no access to \verb!crates.io! and so cannot download crates. It is written against ratatui $0.30$ (the current release when the chapter was written, version $0.30.2$; its documentation was read, but nothing was compiled) and clap $4$. Libraries change quickly: ratatui needs at least Rust $1.86$ and has had breaking changes between $0.29$ and $0.30$ (for example how titles and alignments are written), so compare with the current documentation (\verb!docs.rs/ratatui!) and the examples in the repository when you copy code.
+
+\section*{How a terminal works}
+A terminal shows a \textbf{grid of characters}, for example $80$ columns by $24$ rows (try \verb!stty size!, or \verb!tput cols!). A program writes \emph{bytes} to the terminal. Normal characters appear where the cursor is. Special byte sequences that begin with the \textbf{escape} character (\verb!0x1b!, written \verb!ESC! or \verb!\x1b!) are \textbf{commands}: move the cursor, set the colour, clear the screen. For example \verb!ESC[2J! clears the screen, \verb!ESC[5;10H! moves the cursor to row $5$, column $10$, \verb!ESC[31m! switches to red text and \verb!ESC[0m! back to normal. You can try it in a shell:
+\begin{verbatim}
+$ printf '\x1b[31mred\x1b[0m normal\n'
+\end{verbatim}
+For an interactive program the terminal has to be switched from its normal mode (\emph{cooked}: the terminal collects a line and passes it on after Enter, and prints what you type) to \textbf{raw mode}: every key press is passed at once and nothing is printed automatically. Programs such as \verb!vim!, \verb!htop! or \verb!less! also use the \textbf{alternate screen}, a second buffer, so that your shell history is back when the program ends. The program \emph{must} restore the terminal when it ends or crashes, otherwise the shell is left in a broken state (\verb!reset! repairs it). In Rust the library \verb!crossterm! handles these details for all systems, and ratatui builds on it.
+
+\section*{Immediate mode: draw everything, every frame}
+Graphical toolkits keep objects (buttons, labels) that you change. Ratatui works in \textbf{immediate mode}: in every cycle your code describes the \emph{whole} screen from the current state, as a small number of widgets in rectangles; the library draws them into a \textbf{buffer} (a grid of cells with character and style), compares it with the previous buffer and sends only the \emph{differences} to the terminal. You never have to remember what is currently on the screen.
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.4mm]},bx/.style={draw,thick,rounded corners=2pt,minimum width=2.3cm,minimum height=0.95cm,font=\footnotesize,align=center}]
+ \node[bx,fill=blue!10] (st) at (0,0) {state\\ (the \emph{model})};
+ \node[bx,fill=yellow!20] (dr) at (4.0,0) {\texttt{draw}\\ (the \emph{view})};
+ \node[bx,fill=green!10] (bf) at (8.0,0) {buffer\\ (cells)};
+ \node[bx,fill=gray!15] (tm) at (12.0,0) {terminal};
+ \draw[->,thick] (st)--(dr); \draw[->,thick] (dr)--(bf);
+ \draw[->,thick] (bf)--(tm);
+ \node[font=\scriptsize,above] at (10.0,0.1) {only changes};
+ \node[bx,fill=orange!15] (ev) at (4.0,-2.0) {events\\ (keys, packets, ticks)};
+ \draw[->,thick] (ev.west) -| node[below,font=\scriptsize,pos=0.2]{update} (st.south);
+ \draw[->,thick] (tm.south) |- (ev.east);
+\end{tikzpicture}
+\captionof{figure}{The loop of a TUI application: events change the state, the state is drawn, the changes are sent to the terminal.}
+\end{center}
+
+\section*{A terminal in thirty lines}
+To see that there is nothing magic, here is a tiny ``screen'' built from the standard library only: a grid of characters, a box, a text, a bar for the battery and a small curve (a \textbf{sparkline}) with one character per value. It prints one frame of a telemetry dashboard as plain text; ratatui does the same with Unicode box-drawing and block characters, colours and a better layout.
+%rs:mini
+\begin{verbatim}
+struct Screen { w: usize, h: usize, cells: Vec<char> }
+
+impl Screen {
+    fn new(w: usize, h: usize) -> Self {
+        Screen { w, h, cells: vec![' '; w * h] }
+    }
+    fn put(&mut self, x: usize, y: usize, s: &str) {
+        for (i, c) in s.chars().enumerate() {
+            if x + i < self.w && y < self.h {
+                self.cells[y * self.w + x + i] = c;     // clipped at the edge
+            }
+        }
+    }
+    fn frame(&mut self, title: &str) {
+        let (w, h) = (self.w, self.h);
+        for x in 0..w { self.put(x, 0, "-"); self.put(x, h - 1, "-"); }
+        for y in 0..h { self.put(0, y, "|"); self.put(w - 1, y, "|"); }
+        for (x, y) in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)] {
+            self.put(x, y, "+");
+        }
+        self.put(2, 0, &format!(" {title} "));
+    }
+    fn show(&self) {
+        for row in self.cells.chunks(self.w) {
+            println!("{}", row.iter().collect::<String>());
+        }
+    }
+}
+
+fn sparkline(data: &[f64]) -> String {
+    const LEVELS: &[u8] = b" .:-=+*#%@";
+    let (lo, hi) = data.iter().fold((f64::MAX, f64::MIN),
+                                    |(a, b), &x| (a.min(x), b.max(x)));
+    data.iter().map(|&x| {
+        let t = if hi > lo { (x - lo) / (hi - lo) } else { 0.5 };
+        LEVELS[(t * (LEVELS.len() - 1) as f64).round() as usize] as char
+    }).collect()
+}
+
+fn gauge(ratio: f64, width: usize) -> String {
+    let full = (ratio * width as f64).round() as usize;
+    format!("[{}{}] {:3.0} %", "#".repeat(full), ".".repeat(width - full),
+            ratio * 100.0)
+}
+
+fn main() {
+    let pitch: Vec<f64> =
+        (0..40).map(|i| 8.0 * (i as f64 * 0.35).sin() + 0.1 * i as f64)
+            .collect();
+    let mut s = Screen::new(52, 9);
+    s.frame("robot1 telemetry");
+    s.put(2, 2, "seq 12345   lost 2   link OK");
+    s.put(2, 4, "pitch (deg)");
+    s.put(2, 5, &sparkline(&pitch));
+    s.put(2, 7, "battery");
+    s.put(10, 7, &gauge(0.61, 24));
+    s.show();
+}
+\end{verbatim}
+prints
+\begin{verbatim}
++- robot1 telemetry -------------------------------+
+|                                                  |
+| seq 12345   lost 2   link OK                     |
+|                                                  |
+| pitch (deg)                                      |
+| -+*#%%#*+=:.   .:-=*#%@@%#*+-:...:-=+#%@         |
+|                                                  |
+| battery [###############.........]  61 %         |
++--------------------------------------------------+
+\end{verbatim}
+(The curve shows one oscillation of the pitch angle with a slow drift, scaled between the smallest and largest value.) The three ideas that ratatui adds to this: the screen is divided into \textbf{rectangles} by a layout engine; each rectangle is filled by a \textbf{widget} that knows how to draw itself; and the library sends only what has \emph{changed} since the last frame.
+
+\section*{Model, update, view}
+A program of this kind has three parts that should be kept separate:
+\begin{itemize}[nosep]
+\item the \textbf{model}: a struct with everything the program knows (the last values, a history, which tab is selected, whether it is paused, the time of the last packet);
+\item the \textbf{update}: a function that takes an \textbf{event} (a message) and changes the model; the events are an enum (Chapter~\ref{ch:rust4}): a key was pressed, a telemetry packet arrived, a timer ticked;
+\item the \textbf{view}: a function that draws the model, and changes nothing.
+\end{itemize}
+The advantage: model and update are ordinary Rust with no terminal in sight, so you test them with ordinary unit tests (Chapter~\ref{ch:rust5}), including the nasty cases (packets lost, window resized, sender silent), without a robot and without a screen. Only the view needs a terminal, and it is short.
+%rs:model
+\begin{verbatim}
+use std::collections::VecDeque;
+
+#[derive(Debug, Clone, PartialEq)]
+enum Msg {
+    Key(char),
+    Packet { seq: u32, pitch: f64 },
+    Tick(u32),                           // time in milliseconds
+}
+
+#[derive(Debug)]
+struct App {
+    history: VecDeque<f64>,              // newest at the back
+    cap: usize,
+    last_seq: Option<u32>,
+    lost: u32,
+    last_rx_ms: Option<u32>,
+    paused: bool,
+    quit: bool,
+}
+
+impl App {
+    fn new(cap: usize) -> Self {
+        App { history: VecDeque::new(), cap, last_seq: None, lost: 0,
+              last_rx_ms: None, paused: false, quit: false }
+    }
+
+    fn link_ok(&self, now_ms: u32) -> bool {
+        matches!(self.last_rx_ms, Some(t) if now_ms.saturating_sub(t) < 500)
+    }
+
+    fn update(&mut self, now_ms: u32, msg: Msg) {
+        match msg {
+            Msg::Key('q') => self.quit = true,
+            Msg::Key('p') => self.paused = !self.paused,
+            Msg::Key(_) => {}
+            Msg::Packet { seq, pitch } => {
+                self.last_rx_ms = Some(now_ms);
+                if let Some(l) = self.last_seq {
+                    let step = seq.wrapping_sub(l);
+                    if step == 0 || step > u32::MAX / 2 { return; } // old
+                    self.lost += step - 1;
+                }
+                self.last_seq = Some(seq);
+                if !self.paused {
+                    if self.history.len() == self.cap {
+                        self.history.pop_front();
+                    }
+                    self.history.push_back(pitch);
+                }
+            }
+            Msg::Tick(_) => {}
+        }
+    }
+}
+
+fn main() {
+    let mut app = App::new(3);
+    let script = [
+        (0, Msg::Packet { seq: 1, pitch: 1.0 }),
+        (10, Msg::Packet { seq: 2, pitch: 2.0 }),
+        (20, Msg::Packet { seq: 5, pitch: 5.0 }),     // 3 and 4 lost
+        (30, Msg::Key('p')),                          // pause
+        (40, Msg::Packet { seq: 6, pitch: 6.0 }),
+        (50, Msg::Key('p')),                          // resume
+        (60, Msg::Packet { seq: 7, pitch: 7.0 }),
+        (70, Msg::Packet { seq: 7, pitch: 7.0 }),     // duplicate
+        (80, Msg::Packet { seq: 8, pitch: 8.0 }),
+    ];
+    for (t, m) in script {
+        app.update(t, m);
+    }
+    println!("history {:?}, lost {}", app.history, app.lost);
+    println!("link at 100 ms: {}, at 900 ms: {}",
+             app.link_ok(100), app.link_ok(900));
+    app.update(900, Msg::Key('q'));
+    println!("quit: {}", app.quit);
+}
+\end{verbatim}
+prints
+\begin{verbatim}
+history [5.0, 7.0, 8.0], lost 2
+link at 100 ms: true, at 900 ms: false
+quit: true
+\end{verbatim}
+Read the results against the script: the history holds the last three values that were stored: the packet $6.0$ arrived while the display was paused, so it was counted (for the sequence numbers) but not stored; $1.0$ and $2.0$ were pushed out by the capacity of three; two packets were lost; the duplicate was ignored; after $820$\,ms of silence the link counts as down. All of this is tested without a terminal. A model written like this could be driven by recorded logs (Chapter~\ref{ch:rust8}) in a \emph{replay mode}, with exactly the same code that shows the live robot.
+
+\section*{The ratatui application}
+\textbf{Not run: needs the crates \texttt{ratatui} (with its \texttt{crossterm}) from \texttt{crates.io}.} The \verb!Cargo.toml! has \verb!ratatui = "0.30"!. The program has three kinds of input: the receiver thread (Chapter~\ref{ch:rust7}) sends decoded packets through a channel (Chapter~\ref{ch:rust6}), the keyboard is polled, and time passes. Everything funnels into \verb!app.update!.
+\begin{verbatim}
+use std::sync::mpsc::{self, Receiver};
+use std::time::{Duration, Instant};
+use ratatui::{
+    crossterm::event::{self, Event, KeyCode, KeyEventKind},
+    layout::{Constraint, Layout},
+    style::{Color, Style},
+    widgets::{Block, Gauge, Paragraph, Sparkline},
+    DefaultTerminal, Frame,
+};
+
+fn main() -> std::io::Result<()> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || receiver_thread(tx));    // Chapter 7
+    // run: raw mode + alternate screen, a panic hook that restores the
+    // terminal, and the restore at the end, whatever happens in between
+    ratatui::run(|terminal| run(terminal, rx))
+}
+
+fn run(terminal: &mut DefaultTerminal, rx: Receiver<Msg>)
+    -> std::io::Result<()>
+{
+    let start = Instant::now();
+    let mut app = App::new(200);
+    while !app.quit {
+        let now = start.elapsed().as_millis() as u32;
+        terminal.draw(|f| view(f, &app, now))?;          // 1. draw
+        if event::poll(Duration::from_millis(20))? {     // 2. keyboard
+            if let Event::Key(k) = event::read()? {
+                if k.kind == KeyEventKind::Press {
+                    if let KeyCode::Char(c) = k.code {
+                        app.update(now, Msg::Key(c));
+                    }
+                }
+            }
+        }
+        while let Ok(msg) = rx.try_recv() {              // 3. packets
+            app.update(now, msg);
+        }
+    }
+    Ok(())
+}
+
+fn view(f: &mut Frame, app: &App, now: u32) {
+    let [top, middle, bottom] = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Min(5),
+        Constraint::Length(3),
+    ]).areas(f.area());
+
+    let link = if app.link_ok(now) { "OK" } else { "NO DATA" };
+    let color = if app.link_ok(now) { Color::Green } else { Color::Red };
+    f.render_widget(
+        Paragraph::new(format!("lost {}   link {}", app.lost, link))
+            .style(Style::new().fg(color))
+            .block(Block::bordered().title("robot1")),
+        top);
+
+    let data: Vec<u64> = app.history.iter()
+        .map(|p| (p + 20.0).max(0.0) as u64).collect();   // shift to >= 0
+    f.render_widget(
+        Sparkline::default()
+            .block(Block::bordered().title("pitch (deg + 20)"))
+            .data(&data),
+        middle);
+
+    f.render_widget(
+        Gauge::default()
+            .block(Block::bordered().title("battery"))
+            .ratio(0.61),
+        bottom);
+}
+\end{verbatim}
+\textbf{How it works.} \verb!ratatui::run(|terminal| ...)! switches the terminal to raw mode and the alternate screen, hands a \verb!Terminal! to your closure and restores everything afterwards (in older versions you call \verb!ratatui::init()! and \verb!ratatui::restore()! yourself; they still exist). \verb!terminal.draw(|f| ...)! calls your \emph{view} with a \verb!Frame!, and afterwards sends the changes. \verb!Layout::vertical([...]).areas(rect)! cuts a rectangle into parts: \verb!Length(3)! is exactly three rows, \verb!Min(5)! at least five (and takes the rest), \verb!Percentage(30)! and \verb!Fill(1)! divide the remainder. \verb!f.render_widget(widget, area)! draws a widget into an area. A \verb!Block! is a border with a title; most widgets accept one with \verb!.block(...)!. Widgets are built with the \textbf{builder pattern}: each method returns the changed widget. Colours and text attributes come from \verb!Style!; text can also be composed from styled pieces (\verb!Line!, \verb!Span!). Our \verb!view! only reads the model, so the loop can draw as often as it wants.
+
+\subsection*{More widgets}
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lp{9cm}}
+\verb!Paragraph! & text with colours and wrapping\\
+\verb!List! + \verb!ListState! & a list with a selected line, scrolled with the arrow keys (a \emph{stateful} widget: \verb!render_stateful_widget! with a state in the model)\\
+\verb!Table! & rows and columns, for example the $22$ joints with position, velocity, temperature\\
+\verb!Tabs! & the tab line (``Joints $|$ IMU $|$ Vision $|$ Log'')\\
+\verb!Gauge!, \verb!LineGauge! & a bar for a ratio (battery, load, progress)\\
+\verb!Sparkline! & a small curve with one value per column\\
+\verb!Chart! & a real $x$-$y$ plot with axes, datasets and labels\\
+\end{tabular}
+\end{center}
+Typical tools for robot debugging: a tab for each subsystem; a table of the joints with a warning colour when the temperature exceeds a limit (Chapter~\ref{ch:hw8}); a log window that scrolls and can be filtered; a key to pause (\verb!p! in our model) so that you can read a value; a key to start and stop a recording; and an indicator that turns red when the data stops, which our \verb!link_ok! provides. The colour of a warning must never be the only sign (a colour-blind student, a monochrome terminal over a bad link): write ``NO DATA'' as well.
+
+\subsection*{Testing the view}
+Ratatui has a \verb!TestBackend!, a fake terminal that keeps the buffer in memory. A test draws the application into it and compares the cells with an expected text (``snapshot test''). The model tests above are more valuable and simpler; a few snapshot tests protect against a broken layout.
+
+\section*{Command line tools without a screen}
+Not every tool needs a full-screen interface. Often you want a \textbf{command} that does one thing and can be combined with others:
+\begin{verbatim}
+$ robot-log dump match1.log | head          # first records as text
+$ robot-log stats match1.log                # lost packets, rate, gaps
+$ robot-log extract match1.log --field pitch > pitch.csv
+\end{verbatim}
+Rules for such tools (they hold for Python scripts as well): results go to \textbf{standard output}, messages for the human and errors to \textbf{standard error} (\verb!eprintln!), so a pipe such as \verb!| head! or \verb!> pitch.csv! contains only data; the \textbf{exit code} is $0$ for success and non-zero for failure (\verb!std::process::exit(1)!, or return an error from \verb!main!, Chapter~\ref{ch:rust5}), so that scripts and CI can react; \verb!--help! describes every option; a program that reads a file also accepts \verb!-! for standard input.
+
+The simplest way to read arguments is \verb!std::env::args()!:
+%rs:args
+\begin{verbatim}
+#[derive(Debug, PartialEq)]
+struct Args { listen: String, record: Option<String>, verbose: bool }
+
+fn parse(args: &[&str]) -> Result<Args, String> {
+    let mut a = Args {
+        listen: "0.0.0.0:9000".into(), record: None, verbose: false,
+    };
+    let mut it = args.iter();
+    while let Some(&arg) = it.next() {
+        match arg {
+            "--listen" => {
+                let v = it.next().ok_or("--listen needs a value")?;
+                a.listen = v.to_string();
+            }
+            "--record" => {
+                let f = it.next().ok_or("--record needs a file")?;
+                a.record = Some(f.to_string());
+            }
+            "-v" | "--verbose" => a.verbose = true,
+            other => return Err(format!("unknown option '{other}'")),
+        }
+    }
+    Ok(a)
+}
+
+fn main() {
+    println!("{:?}", parse(&[]));
+    println!("{:?}", parse(&["--listen", "127.0.0.1:7000", "-v"]));
+    println!("{:?}", parse(&["--record"]));
+    println!("{:?}", parse(&["--speed", "3"]));
+}
+\end{verbatim}
+prints
+\begin{verbatim}
+Ok(Args { listen: "0.0.0.0:9000", record: None, verbose: false })
+Ok(Args { listen: "127.0.0.1:7000", record: None, verbose: true })
+Err("--record needs a file")
+Err("unknown option '--speed'")
+\end{verbatim}
+In a real program you pass \verb!&std::env::args().skip(1).collect::<Vec<_>>()! (converted to \verb!&str!). Writing such a parser for many options, with help text, defaults, types and error messages, is tedious; the crate \textbf{clap} does it from a struct (\emph{not run}):
+\begin{verbatim}
+use clap::Parser;
+
+/// Telemetry viewer for the robot
+#[derive(Parser, Debug)]
+#[command(version)]
+struct Args {
+    /// address to listen on
+    #[arg(long, default_value = "0.0.0.0:9000")]
+    listen: String,
+    /// write the received packets to this file
+    #[arg(long)]
+    record: Option<std::path::PathBuf>,
+    #[arg(short, long)]
+    verbose: bool,
+}
+
+fn main() {
+    let args = Args::parse();       // prints help or an error and exits
+    println!("{args:?}");
+}
+\end{verbatim}
+With this, \verb!--help!, \verb!--version! and the error messages for wrong or missing values exist without further code. Subcommands (\verb!robot-log dump!, \verb!robot-log stats!) are an enum with \verb!#[derive(Subcommand)]!. The crate \verb!anyhow! makes \verb!main! return \verb!anyhow::Result<()>! with a readable error chain.
+
+\begin{aibox}[Keep the terminal clean]
+A TUI that ends with a panic must restore the terminal, or the next command shows garbage. \verb!ratatui::run()! (and \verb!init()!) installs a panic hook for this. If you use your own set-up with \verb!crossterm!, do it yourself. During development print debug messages to a \emph{file} (the screen belongs to the TUI): \verb!tail -f debug.log! in a second terminal is the standard solution.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item What is the difference between raw mode and cooked mode of a terminal? Why must a TUI program restore the mode, and what is the command that repairs a broken terminal?
+  \item What do the escape sequences \verb!ESC[2J!, \verb!ESC[3;7H! and \verb!ESC[32m! do? Write a Rust program that prints ``OK'' in green and ``FAIL'' in red with \verb!println!! and these codes, and then resets the colour.
+  \item Explain the three parts model, update and view of a TUI program. Which of them can be tested without a terminal, and how?
+  \item Extend the \verb!App! of the chapter with the field \verb!rx_count! (number of valid packets received) and a \verb!Msg::Reset! that sets the lost counter, the history and the count to zero. Write a test that sends five packets with a gap and then a reset.
+  \item With the layout \verb!Constraint::Length(3)!, \verb!Constraint::Min(5)!, \verb!Constraint::Length(3)! on a terminal of $24$ rows: how many rows does each rectangle get? What if the terminal has only $10$ rows?
+  \item Write the function \verb!fn bar(ratio: f64, width: usize) -> String! (as the \verb!gauge! of the chapter, but with a ratio that is clamped to $[0,1]$) and test it with $-0.5$, $0$, $0.5$, $1$ and $7$.
+  \item A telemetry table should show the temperature of $22$ joints and mark everything above $60\,^\circ$C. Describe the model (what data), the update (which messages) and the view (which widget, what styling).
+  \item What happens to a TUI if the SSH connection to the robot drops? What should the client do when the terminal is resized? (Ratatui delivers a \verb!Resize! event.)
+  \item Why should debug output of a TUI program go to a file and not to the screen with \verb!println!!?
+  \item[\textbf{\thechapter.10}$\star$] Write the model (without ratatui) of a \emph{log viewer}: a list of $1000$ lines, a selected line, a scroll offset such that the selected line is always visible in a window of $h$ lines, the keys \verb!j!, \verb!k! (down, up), \verb!g!, \verb!G! (first, last line) and a filter text that shows only lines containing it. Write tests for the scrolling at both ends.
+\end{enumerate}

@@ -1,0 +1,51 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item (A) A Rust ROS client library (\verb!rclrs!, \verb!r2r!): the robot program needs the ROS installation to build (and to run), with message types generated from it. (B) Rust speaks DDS itself (\verb!ros2-client!): only Rust crates; ROS is needed only to test against real nodes. (C) A bridge process: the robot program needs only protobuf and UDP; ROS lives in the bridge. (D) A different middleware (Zenoh): the ROS system is changed as a whole; Rust can use the Zenoh API directly.
+  \item These libraries link against the C libraries of ROS (\verb!rcl!, \verb!rmw!, DDS). For an ARM target you need ARM builds of all of them on the laptop (a ``sysroot'' of the robot, or a container with the ARM ROS installation), and the generated message code must match. A \verb!std!/\verb!prost! program needs only the Rust standard library for the target and a linker (Chapter~\ref{ch:rust10}). Remedies: build natively on the robot or on an ARM CI machine; build in a container that matches the robot; or avoid the problem with a bridge or with \verb!ros2-client!.
+  \item Advantages: (1) the robot program builds and cross-compiles without ROS, quickly and reproducibly; (2) it can be tested on a laptop with recorded data and does not depend on the ROS release (updating ROS changes the bridge, not the program); (3) a crash or a slow ROS node cannot take down the control program, and the debug tools can use the same protocol. Disadvantages: (1) one more process and one more hop (latency of about $0.1$\,ms in our measurement, plus the ROS cost), one more thing to run and to keep running; (2) ROS features such as services, actions, parameters and \verb!tf2! are not available directly in the robot program (they must be forwarded, or the program does not need them).
+  \item The age of a measurement is what matters for the robot: the ball was seen \emph{then}, the camera needed time, and the data may have waited in queues; the time of sending hides all that earlier delay. With the stamp of the measurement the receiver can compute how old the data is and correct the position of a moving object, or reject it if it is too old. Further information: a sequence number (to detect loss and duplicates), the \emph{frame} or sensor identifier, and the unit/coordinate frame in the field names or the documentation; possibly a version number of the message and the time of sending in addition.
+  \item The difference of two time stamps is only meaningful if both come from the same clock; the clocks of two computers differ by an unknown amount (often milliseconds, sometimes more). For two computers: synchronise the clocks (NTP or, better for a LAN, PTP/chrony, Chapter~\ref{ch:linux7}) and check the offset; or measure the round trip (send a request and measure the reply, which needs only one clock) and assume that the delay is half of it; or let the receiver stamp the arrival time and use differences only between consecutive frames of the same sender.
+  \item The control period is $5$\,ms and the camera period $33$\,ms; $0.1$\,ms is $2\,\%$ of the former and $0.3\,\%$ of the latter, and even the maximum of $0.8$\,ms is a small part of the control period. The bridge is no problem. If the real bridge showed $40$\,ms, it is slower than a camera frame, and the problem is probably \emph{not} the Python code: check the QoS of the subscription (reliable, with large queue and a slow subscriber, delays grow), whether the bridge runs on a loaded CPU (Chapter~\ref{ch:linux8}), the network between the nodes if the bridge is on another computer, the size of the messages (images should not go through this path), and measure the time at each stage with the stamps.
+  \item
+\begin{verbatim}
+message SensorFrame {
+  uint32 seq  = 1;
+  uint64 t_us = 2;
+  Imu    imu  = 3;
+  repeated float joints = 4;     // 22 values, radians, packed
+}
+\end{verbatim}
+The joint part: one tag byte (\verb!0x22!, field $4$, wire type $2$), a length ($22\cdot4=88$, fits into one varint byte) and $88$ bytes of floats: $1+1+88=90$ bytes. (A value of exactly $0.0$ still takes four bytes inside the packed list: the list is not compressed.)
+  \item (a) Python: a test publisher is a few lines. (b) Rust or C++, or Python only if the heavy work is done by compiled libraries (the detector in ONNX Runtime, OpenCV); the program has a rate, memory use and a long run to survive. (c) Python: a script around \verb!rosbag2_py! or \verb!ros2 bag! commands. (d) Rust: fixed rate, no pauses, runs for the whole match (Chapter~\ref{ch:rust1}), and not inside a ROS node if the design allows it.
+  \item Checks: (1) the message types of \emph{our} ROS release and the custom message packages are available and decode correctly (test with real recorded data and with a bag); (2) QoS compatibility with every publisher and subscriber that talks to it (Chapter~\ref{ch:ros2}), and the discovery over the robot's Wi-Fi/Ethernet set-up; (3) the DDS implementation of the ROS nodes (Cyclone, Fast DDS) interoperates with RustDDS, tested for the sizes and rates that we use; (4) cross-compilation for the robot works in CI; (5) behaviour when ROS updates (the team's ROS distribution changes about every two years); (6) the project's maintenance status and the API changes in recent releases; (7) the program can still be tested without ROS (mock the topic layer); (8) a measurement of latency and CPU load against the bridge. If these pass, the decision is reasonable; a time-boxed experiment is the best way to find out.
+  \item[\textbf{\ansnum.10}$\star$] \textbf{Not run} (no ROS~2 here):
+\begin{verbatim}
+class Bridge(Node):
+    def __init__(self):
+        super().__init__("sensor_bridge")
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.dest = ("127.0.0.1", 9100)
+        self.seq = 0
+        self.joints = []                 # latest joint angles
+        self.joints_t_us = 0             # their time stamp
+        self.create_subscription(JointState, "/joint_states",
+                                 self.on_joints, qos_profile_sensor_data)
+        self.create_subscription(Imu, "/imu/data", self.on_imu,
+                                 qos_profile_sensor_data)
+
+    def on_joints(self, msg):                 # only stores, never sends
+        self.joints = list(msg.position)
+        s = msg.header.stamp
+        self.joints_t_us = s.sec * 1_000_000 + s.nanosec // 1000
+
+    def on_imu(self, msg):                    # sends one frame per IMU message
+        self.seq += 1
+        s = msg.header.stamp
+        frame = robot_pb2.SensorFrame(
+            seq=self.seq,
+            t_us=s.sec * 1_000_000 + s.nanosec // 1000,
+            joints=self.joints,
+            joints_t_us=self.joints_t_us)     # a field added to the .proto
+        self.sock.sendto(frame.SerializeToString(), self.dest)
+\end{verbatim}
+(The proto gets the field \verb!uint64 joints_t_us = 5;!; adding it does not break old receivers, Chapter~\ref{ch:rust8}.) The joint angles are not sent in their own datagram because then the receiver would have to \emph{match} two streams with different rates and delays; with one frame per IMU message, the receiver gets a consistent snapshot and \emph{sees how old each part is}: if \verb!t_us - joints_t_us! is more than $50$\,ms the joint data is stale (the joint driver is slow or stopped), and the receiver may ignore it, use the last good value with a warning, or stop the robot, depending on the safety policy. This is the same idea as the ``latest value'' cell of Chapter~\ref{ch:rust6}, applied inside the bridge.
+\end{enumerate}

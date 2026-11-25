@@ -1,0 +1,24 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $n_h(n_x+n_h)+n_h=32\cdot38+32=1248$; GRU $3\cdot1248=3744$; LSTM $4\cdot1248=4992$.
+  \item $0.95^{100}=0.0059$; $0.98^{100}=0.133$; $1.05^{100}=131.5$. The first two make the information of $100$ steps ago practically invisible (the first almost zero, the second weak): vanishing gradient; the third explodes (the training diverges unless the gradient is clipped).
+  \item $c_t=0.8\cdot(-1)+0.3\cdot0.9=-0.53$; $h_t=0.5\cdot\tanh(-0.53)=0.5\cdot(-0.485)=-0.243$.
+  \item Forget $\approx1$, input $\approx0$: to \emph{remember} a value (the cell state stays unchanged, e.g.\ ``the opponent has the ball''). The opposite, forget $\approx0$, input $\approx1$: to \emph{reset} and store a new value, e.g.\ at the start of a new situation.
+  \item $8/200$\,Hz $=40$\,ms; $8\cdot6=48$ inputs; weights $48\cdot48+48=2352$ (with biases; $2304$ without).
+  \item Reset it to zero (and also the history of the filters/buffers around it): the state describes the situation before the fall, which no longer exists; the network would otherwise start with a wrong memory. Test the reset in the simulator, it is a typical source of strange behaviour after a restart.
+  \item $1000/50=20$ pieces. Carried: the hidden state (and the cell state) at the end of a piece, as the initial state of the next. Not carried: the gradient (it is cut at the boundary: it is computed only inside the piece).
+  \item Constant velocity extrapolates the straight line through the wall and ignores that the velocity reverses; after the bounce the true ball moves back while the prediction moves on, so the error can be about twice the distance travelled. Repeating the last position never moves in the wrong direction, so its error is bounded by the distance the ball really travels.
+  \item Kalman filter: needs no training data, behaves in a known way (it is explainable and has a measure of its uncertainty), is cheap and well tested in robotics. LSTM: can learn nonlinear dynamics that are hard to write down (bounces, collisions, how opponents move) from data.
+  \item[\textbf{\ansnum.10}] (a) With \texttt{W=0}, \texttt{b[:nh]=-10} (input gate), \texttt{b[nh:2*nh]=+10} (forget gate): $c_{20}=1\cdot\sigma(10)^{20}+\text{(tiny)}=0.99909$ (computed: $0.9991$). (b) Forget gate bias $-10$ and input gate bias $-10$: $c_t=0.00005\,c_{t-1}+0.00005\,g\approx0$; with the input gate bias $+10$ and $g$ near $0$ (candidate bias $0$) the new content is written and the old erased. (c) $h=\sigma(0)\tanh(c)=0.5\cdot\tanh(0.999)=0.5\cdot0.762=0.381$ at the end (the output gate is $0.5$).
+\begin{verbatim}
+nh, nx = 4, 3
+W0 = np.zeros((4 * nh, nx + nh)); b = np.zeros(4 * nh)
+b[:nh] = -10; b[nh:2*nh] = 10          # input gate off, forget gate on
+h, c = np.zeros(nh), np.ones(nh)
+for t in range(20):
+    h, c = lstm_step(np.random.randn(nx), h, c, W0, b)
+print(c)                               # [0.9991 0.9991 0.9991 0.9991]
+b[:nh] = -10; b[nh:2*nh] = -10         # (b): forget AND input off
+h, c = lstm_step(np.zeros(nx), h, np.ones(nh), W0, b)
+print(c)                               # about 4.5e-5 (erased)
+\end{verbatim}
+\end{enumerate}
