@@ -1,0 +1,32 @@
+name: Build and Release LaTeX
+
+on:
+  push:
+    branches: ["master"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Compile with pdflatex (x2)
+        uses: xu-cheng/latex-action@v4
+        with:
+          root_file: main.tex
+          compiler: pdflatex
+          args: -synctex=1 -interaction=nonstopmode -file-line-error
+          pre_compile: |
+            pdflatex -synctex=1 -interaction=nonstopmode -file-line-error main.tex
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build #${{ github.run_number }} (${{ github.sha }})
+          files: main.pdf
+          generate_release_notes: true
