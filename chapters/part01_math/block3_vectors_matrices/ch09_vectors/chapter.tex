@@ -1,0 +1,104 @@
+\bookchapter{Vectors}\label{ch:vectors}
+
+\section*{Explanation}
+A \emph{vector} is an ordered list of numbers. We can think of it in two ways: as a list of coordinates, or as an \emph{arrow} with a length and a direction. We write vectors in bold and usually as columns:
+\[
+\vv v=\begin{pmatrix}v_1\\v_2\end{pmatrix}=\begin{pmatrix}3\\2\end{pmatrix}.
+\]
+The numbers $v_1,v_2$ are the \emph{components}. A vector with $n$ components lives in $\R^n$. A vector does not have a fixed starting point: an arrow translated to another place is the \emph{same} vector.
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=0.9]
+  \draw[gray!40,very thin] (0,0) grid (6,5);
+  \draw[->] (0,0) -- (6.4,0) node[right]{$x$};
+  \draw[->] (0,0) -- (0,5.4) node[above]{$y$};
+  \draw[->,very thick,blue] (0,0) -- (3,2) node[midway,above left]{$\vv v$};
+  \draw[dashed] (0,0) -- (3,0) node[midway,below]{$v_1=3$};
+  \draw[dashed] (3,0) -- (3,2) node[midway,right]{$v_2=2$};
+  \draw[->,very thick,blue!50] (1,3) -- (4,5) node[midway,above left]{$\vv v$};
+\end{tikzpicture}
+
+\small\textbf{Figure 1.} The vector $\vv v=(3,2)$ from the origin, and the same vector drawn from another starting point.
+\end{center}
+
+Vectors are everywhere in robotics and AI:
+\begin{itemize}
+  \item the position $(x,y)$ or $(x,y,z)$ of a robot, the velocity $(v_x,v_y)$,
+  \item the inputs $(x_1,x_2,\dots,x_n)$ of a neural network, e.g.\ the $784$ pixels of a small image,
+  \item the weights $(w_1,\dots,w_n)$ of a neuron.
+\end{itemize}
+
+\section*{Adding, subtracting and scaling}
+All operations act component by component:
+\[
+\begin{pmatrix}a_1\\a_2\end{pmatrix}+\begin{pmatrix}b_1\\b_2\end{pmatrix}=\begin{pmatrix}a_1+b_1\\a_2+b_2\end{pmatrix},\qquad
+c\begin{pmatrix}v_1\\v_2\end{pmatrix}=\begin{pmatrix}cv_1\\cv_2\end{pmatrix}.
+\]
+\textbf{Addition} means ``first walk along $\vv a$, then along $\vv b$'' (tip-to-tail), and gives the diagonal of the parallelogram. The difference $\vv a-\vv b$ is the arrow from the tip of $\vv b$ to the tip of $\vv a$. \textbf{Scalar multiplication} stretches a vector by the factor $c$ (and reverses it if $c<0$).
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=1.1]
+  \draw[gray!40,very thin] (0,0) grid (5,4);
+  \draw[->] (0,0) -- (5.4,0) node[right]{$x$};
+  \draw[->] (0,0) -- (0,4.4) node[above]{$y$};
+  \draw[->,very thick,blue] (0,0) -- (3,1) node[midway,below right]{$\vv a$};
+  \draw[->,very thick,red] (0,0) -- (1,2) node[midway,above left]{$\vv b$};
+  \draw[->,thick,blue,dashed] (1,2) -- (4,3);
+  \draw[->,thick,red,dashed] (3,1) -- (4,3);
+  \draw[->,ultra thick,green!50!black] (0,0) -- (4,3) node[midway,above left]{$\vv a+\vv b$};
+  \draw[->,thick,orange!80!black] (1,2) -- (3,1) node[midway,above right]{$\vv a-\vv b$};
+\end{tikzpicture}
+
+\small\textbf{Figure 2.} With $\vv a=(3,1)$ and $\vv b=(1,2)$: the sum $\vv a+\vv b=(4,3)$ and the difference $\vv a-\vv b=(2,-1)$.
+\end{center}
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=0.9]
+  \draw[gray!40,very thin] (-3,-2) grid (5,3);
+  \draw[->] (-3,0) -- (5.4,0) node[right]{$x$};
+  \draw[->] (0,-2) -- (0,3.4) node[above]{$y$};
+  \draw[->,line width=4pt,red!50] (0,0) -- (4,2) node[above right,red!70!black]{$2\vv v$};
+  \draw[->,line width=2.4pt,blue!70] (0,0) -- (2,1) node[above left,blue!70!black]{$\vv v$};
+  \draw[->,line width=1pt,orange!90!black] (0,0) -- (1,0.5) node[below right,orange!70!black]{$\tfrac12\vv v$};
+  \draw[->,line width=2.4pt,green!50!black] (0,0) -- (-2,-1) node[below left]{$-\vv v$};
+\end{tikzpicture}
+
+\small\textbf{Figure 3.} Multiples of $\vv v=(2,1)$: they all lie on one line through the origin.
+\end{center}
+
+\begin{example}
+For $\vv a=(2,-1)$ and $\vv b=(-3,4)$: $\vv a+\vv b=(-1,3)$, $\vv a-\vv b=(5,-5)$, $3\vv a=(6,-3)$ and $2\vv a-\vv b=(4+3,-2-4)=(7,-6)$.
+\end{example}
+
+\section*{Length and direction}
+The \emph{length} (or \emph{norm}) of $\vv v$ follows from Pythagoras (Chapter~\ref{ch:pythagoras}):
+\[
+\norm{\vv v}=\sqrt{v_1^2+v_2^2+\dots+v_n^2}.
+\]
+A vector of length $1$ is a \emph{unit vector}. Dividing a vector by its length gives a unit vector in the same direction: $\hat{\vv v}=\vv v/\norm{\vv v}$. In 2D the direction angle is $\theta=\operatorname{atan2}(v_2,v_1)$.
+
+\begin{example}
+$\vv v=(3,4)$ has $\norm{\vv v}=5$ and the unit vector $(0.6,0.8)$. In 3D, $\norm{(1,2,2)}=\sqrt{1+4+4}=3$. The vector from point $P$ to point $Q$ is $Q-P$; its length is the distance between the points.
+\end{example}
+
+\begin{example}[Robot velocity]
+A robot with velocity $\vv v=(3,4)$ m/s has speed $\norm{\vv v}=5$ m/s and moves in the direction $\operatorname{atan2}(4,3)\approx53.13^\circ$. After $2$ s it has moved by $2\vv v=(6,8)$. Starting at $\vv p=(1,1)$ it is then at $\vv p+2\vv v=(7,9)$.
+\end{example}
+
+\begin{aibox}
+The input of a neural network is a vector, and so are its weights. The error of a prediction is the length of the vector $\vv y-\hat{\vv y}$, the difference between the true and the predicted outputs. Moving a robot is vector addition: new position $=$ old position $+$ velocity $\cdot$ time.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item For $\vv a=(2,-1)$ and $\vv b=(-3,4)$ compute $\vv a+\vv b$, $\vv a-\vv b$, $3\vv a$ and $2\vv a-\vv b$. Draw $\vv a$, $\vv b$ and $\vv a+\vv b$.
+  \item Compute $\norm{(5,12)}$, the unit vector in this direction, and $\norm{(2,-3,6)}$.
+  \item Find the vector from $P=(1,2)$ to $Q=(4,6)$ and its length.
+  \item A robot moves with velocity $(3,4)$ m/s. Find its speed and heading angle, and its displacement after $2$ s.
+  \item Which of these pairs are parallel (one is a multiple of the other)? $(2,4)$ and $(-1,-2)$; $(1,2)$ and $(2,3)$.
+  \item By which number must you multiply $(3,4)$ to get a vector of length $1$? Of length $10$?
+  \item $\star$ For $\vv a=(3,0)$ and $\vv b=(0,4)$ compare $\norm{\vv a+\vv b}$ with $\norm{\vv a}+\norm{\vv b}$. When would they be equal?
+  \item $\star$ The midpoint of two points $P$ and $Q$ is $\frac12(\vv p+\vv q)$. Compute it for $P=(2,-1,4)$ and $Q=(6,3,0)$.
+\end{enumerate}
+
+% =====================================================

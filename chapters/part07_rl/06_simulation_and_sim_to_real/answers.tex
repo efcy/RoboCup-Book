@@ -1,0 +1,25 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $100\,000/50=2000$ seconds of robot time per second. In $10$ minutes ($600$ s): $2000\cdot600=1\,200\,000$ s $=333.3$ hours.
+  \item $\tau=40\cdot0.2-1\cdot1=7$\,Nm. At the target: $\tau=40\cdot0-1\cdot2=-2$\,Nm. The damper term brakes the joint when it moves too fast, even if it is at the target.
+  \item $100$ Hz: one step is $10$\,ms, so $3$ steps. $50$ Hz: one step is $20$\,ms, so $1.5$, rounded up to $2$ steps.
+  \item (a) Yes, $0.4\le0.7\le1.2$. (b) No, $1.4>1.2$. The policy never saw such a slippery or grippy floor. (c) The interval has length $0.2$ and the whole range has length $0.8$: $0.2/0.8=25\,\%$.
+  \item Range: $18$ to $22$\,kg. $0.95\cdot20=19$\,kg and $1.08\cdot20=21.6$\,kg.
+  \item Squares: $0.0025,\,0.0004,\,0.0009,\,0,\,0.0016$, sum $0.0054$, mean $0.00108$. $\text{RMS}=\sqrt{0.00108}\approx0.033$\,rad.
+  \item (a) yes, (b) no (the real robot does not know it), (c) yes, (d) no (the real robot has to estimate it from camera images), (e) yes.
+  \item The policy has to work in situations that never occur in reality (extremely heavy, extremely slippery, \dots). It becomes cautious and slow, uses too little of the real robot's abilities, and may fail to learn at all because some worlds are unsolvable.
+  \item[\textbf{\ansnum.9}] Example:
+\begin{verbatim}
+import random
+
+def sample_world():
+    return {"friction": random.uniform(0.4, 1.2),
+            "latency_steps": random.choice([0, 1, 2])}
+
+worlds = [sample_world() for _ in range(1000)]
+mean_fr = sum(w["friction"] for w in worlds) / 1000
+share2 = sum(w["latency_steps"] == 2 for w in worlds) / 1000
+print(mean_fr, share2)
+\end{verbatim}
+  Expected values: mean friction $0.8$ (the middle of the range), share $1/3\approx0.33$. The simulated values differ a little because the sample is random.
+  \item[\textbf{\ansnum.10}] With latency the effect of the previous actions is not yet visible in the measured state, because they are still on their way to the motors. Without the previous action the policy cannot know what it has already commanded and may command the same correction twice (overshoot). Knowing its previous actions it can account for the movements that are still to come.
+\end{enumerate}

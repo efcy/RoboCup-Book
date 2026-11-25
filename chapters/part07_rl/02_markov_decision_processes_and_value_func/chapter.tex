@@ -1,0 +1,162 @@
+\bookchapter{Markov decision processes and value functions}\label{ch:rl2}
+
+\section*{Explanation}
+In Chapter~\ref{ch:rl1} we compared a few action sequences by computing their returns by hand. A robot cannot do that for every possible future. It needs a \emph{number for each situation} that says how good that situation is. This number is the \emph{value}, and computing values is the central idea of RL.
+
+\section*{Markov decision processes}
+The mathematical model behind the agent--environment loop is the \textbf{Markov decision process} (MDP). It consists of
+\begin{itemize}[nosep]
+  \item a set of \textbf{states} $S$ (cells of the corridor, positions of the robot),
+  \item a set of \textbf{actions} $A$ (left, right),
+  \item the \textbf{transition rule} $P(s'\mid s,a)$: the probability of ending in state $s'$ if action $a$ is taken in state $s$,
+  \item the \textbf{reward} $r$ for each transition,
+  \item the \textbf{discount factor} $\gamma$.
+\end{itemize}
+The word \emph{Markov} means: the state contains everything that matters for the future. Where the process goes next depends only on the current state and action, not on how it got there.
+
+\begin{example}[Is it a Markov state?]
+The state ``position of the ball'' alone is \emph{not} enough to predict where a rolling ball will be in a moment, because the speed is missing. The state ``position and velocity of the ball'' is enough (as long as nothing else interferes). When we design the state for a robot we therefore include velocities, not only positions.
+\end{example}
+
+\section*{The value of a state}
+Given a policy $\pi$, the \textbf{state value} $V^\pi(s)$ is the return that the agent can expect if it starts in state $s$ and then follows the policy:
+\[
+V^\pi(s)=\text{expected return starting in } s \text{ and following } \pi .
+\]
+For the corridor with the policy ``always right'' and $\gamma=0.9$ we can compute the values from the goal backwards. In cell~4 the next step reaches the goal: $V(4)=10$. In cell~3 the robot pays $-1$ and arrives in cell~4:
+\[
+V(3)=-1+0.9\cdot V(4)=-1+9=8 .
+\]
+In the same way $V(2)=-1+0.9\cdot8=6.2$ and $V(1)=-1+0.9\cdot6.2=4.58$. The last value agrees with the return that we computed in Chapter~\ref{ch:rl1}.
+
+\begin{center}
+\begin{tikzpicture}[cell/.style={draw,thick,minimum size=1.7cm}]
+  \foreach \i/\vl in {1/4.58,2/6.2,3/8,4/10}{
+    \node[cell,fill=blue!\the\numexpr 10+\i*12\relax] (c\i) at (1.9*\i,0) {\large\textbf{\vl}};
+    \node[font=\footnotesize,gray] at (1.9*\i,-1.2) {cell \i};
+  }
+  \node[cell,fill=green!25] (c5) at (9.5,0) {$\bigcirc$};
+  \node[font=\footnotesize,gray] at (9.5,-1.2) {goal};
+  \foreach \i/\j in {1/2,2/3,3/4,4/5}{\draw[-{Stealth},thick] (c\i.east) -- (c\j.west);}
+\end{tikzpicture}
+\captionof{figure}{Values $V(s)$ of the policy ``always right'' in the corridor ($\gamma=0.9$). The darker the cell, the higher its value: the values grow towards the goal.}\label{fig:rl2_values}
+\end{center}
+
+\section*{The Bellman equation}
+What we just did is the idea of the \textbf{Bellman equation}. The value of a state is the immediate reward plus the discounted value of the next state:
+\[
+V(s)=r+\gamma\,V(s').
+\]
+If the next state is random, we take the average over the possible next states, weighted with their probabilities:
+\[
+V^\pi(s)=\sum_{a}\pi(a\mid s)\sum_{s'}P(s'\mid s,a)\,\bigl[\,r+\gamma\,V^\pi(s')\,\bigr].
+\]
+This looks complicated, but it only says ``expected reward now plus discounted expected value afterwards''.
+
+\begin{keyidea}[Bellman equation]
+\[
+\text{value of a state}=\text{reward for one step}+\gamma\cdot\text{value of the next state.}
+\]
+The value of every state is tied to the values of its neighbours. This is what allows us to compute all values by repeating one simple step.
+\end{keyidea}
+
+\begin{example}[A slippery floor]
+Now the floor of the corridor is slippery: when the robot plays R it moves right with probability $0.8$, and with probability $0.2$ it stays in its cell and pays $-1$. Let us compute $V(4)$ for the policy ``always right'' with $\gamma=0.9$. With probability $0.8$ the robot reaches the goal (reward $10$, nothing follows), with probability $0.2$ it stays in cell~4 (reward $-1$) and has the value $V(4)$ again:
+\[
+V(4)=0.8\cdot10+0.2\,\bigl(-1+0.9\,V(4)\bigr)
+\quad\Rightarrow\quad
+V(4)\,(1-0.18)=7.8
+\quad\Rightarrow\quad
+V(4)=\frac{7.8}{0.82}\approx9.51 .
+\]
+The slipping costs a little: $9.51$ instead of $10$. In the same way $V(3)=0.8\,(-1+0.9\cdot9.51)+0.2\,(-1+0.9\,V(3))$, which gives $V(3)\approx7.13$.
+\end{example}
+
+\section*{Computing values by sweeps}
+We do not have to solve equations. \textbf{Iterative policy evaluation} starts with all values $0$ and applies the Bellman equation to every state again and again. Each round is called a \emph{sweep}. For the corridor and ``always right'' we get:
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{c|cccc}
+ & $V(1)$ & $V(2)$ & $V(3)$ & $V(4)$\\ \hline
+start & $0$ & $0$ & $0$ & $0$\\
+sweep 1 & $-1$ & $-1$ & $-1$ & $10$\\
+sweep 2 & $-1.9$ & $-1.9$ & $8$ & $10$\\
+sweep 3 & $-2.71$ & $6.2$ & $8$ & $10$\\
+sweep 4 & $4.58$ & $6.2$ & $8$ & $10$\\
+sweep 5 & $4.58$ & $6.2$ & $8$ & $10$\\
+\end{tabular}
+\end{center}
+After sweep 4 nothing changes any more. The correct information about the goal has travelled one cell per sweep from the right to the left, like water flowing downhill.
+
+\section*{Action values and the best policy}
+Besides $V(s)$ there is the \textbf{action value} $Q(s,a)$: the return if the robot takes action $a$ in state $s$ and afterwards behaves well. It answers the question ``what if I do \emph{this} now?''. Using the best values $V^*$ we get
+\[
+Q^*(s,a)=r+\gamma\,V^*(s') .
+\]
+The best policy simply picks the action with the largest $Q$:
+\[
+\pi^*(s)=\arg\max_a Q^*(s,a).
+\]
+
+\begin{example}
+Consider a $3\times3$ grid world. The goal is the top right cell. Every move costs $-1$, the move into the goal gives $+10$, moving into a wall means staying. Figure~\ref{fig:rl2_grid} shows the best values $V^*$ (with $\gamma=0.9$) and one best policy. For the middle cell the four actions have the values
+\begin{align*}
+Q^*(\text{up})&=-1+0.9\cdot10=8, & Q^*(\text{right})&=-1+0.9\cdot10=8,\\
+Q^*(\text{down})&=-1+0.9\cdot6.2=4.58, & Q^*(\text{left})&=-1+0.9\cdot6.2=4.58 .
+\end{align*}
+Up and right are tied for the best action (both lead to a cell with value $10$), and $V^*(\text{middle})=8$.
+\end{example}
+
+\begin{center}
+\begin{tikzpicture}[cell/.style={draw,thick,minimum size=2cm}]
+  \foreach \cx/\ry/\vl/\dr in {0/0/8/0, 1/0/10/0, 0/1/6.2/0, 1/1/8/0, 2/1/10/90, 0/2/4.58/0, 1/2/6.2/0, 2/2/8/90}{
+    \pgfmathsetmacro{\shd}{int(15+4*\vl)}
+    \node[cell,fill=blue!\shd] (n\cx\ry) at (2*\cx,-2*\ry) {};
+    \node[font=\large\bfseries,anchor=north west,inner sep=3pt] at (n\cx\ry.north west) {\vl};
+    \draw[-{Stealth},very thick,red!70!black] ([yshift=-0.2cm]n\cx\ry.center) -- ++(\dr:0.6);
+  }
+  \node[cell,fill=green!25] (g) at (4,0) {$\bigcirc$ goal};
+\end{tikzpicture}
+\captionof{figure}{Best values $V^*$ (numbers) and a best policy (arrows) in the $3\times3$ grid world with the goal at the top right ($\gamma=0.9$). From the farthest cell the robot needs four steps and $V^*=4.58$.}\label{fig:rl2_grid}
+\end{center}
+
+\section*{Value iteration}
+If the robot knows the rules of the world (the transition rule and rewards), it can find the best values with \textbf{value iteration}: start with $V=0$ everywhere and repeat for all states
+\[
+V(s)\leftarrow\max_a\bigl[\,r+\gamma\,V(s')\,\bigr].
+\]
+After enough sweeps $V$ equals $V^*$. For the corridor the Python code is only a few lines:
+
+\begin{verbatim}
+gamma = 0.9
+V = [0.0] * 6                  # cells 1..5, index 0 unused, cell 5 = goal
+for sweep in range(10):
+    new = V[:]
+    for s in range(1, 5):      # cells 1..4
+        values = []
+        for a in (-1, +1):     # left, right
+            s2 = max(1, s + a)
+            r = 10 if s2 == 5 else -1
+            values.append(r + gamma * (0 if s2 == 5 else V[s2]))
+        new[s] = max(values)
+    V = new
+print(V[1:5])                  # [4.58, 6.2, 8.0, 10.0]
+\end{verbatim}
+
+\begin{aibox}
+In real robot problems the world is too large and too complicated for value iteration: the state of a humanoid has dozens of continuous numbers, and its physics are not known as a table. The next chapters show how to learn values from \emph{experience} instead of from the rules, and how a neural network can store them.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Compute $V(1),\dots,V(4)$ for the policy ``always right'' in the corridor with $\gamma=0.5$ (step cost $-1$, goal reward $+10$).
+  \item Repeat the computation for $\gamma=0.9$ but with a step cost of $-2$ instead of $-1$. How does the value of cell~1 change compared to $4.58$?
+  \item Do four sweeps of iterative policy evaluation for the corridor with $\gamma=0.5$ and the policy ``always right'', starting with all values $0$. Write your results in a table like the one above.
+  \item In the corridor ($\gamma=0.9$, best values $10,8,6.2,4.58$ for cells $4,3,2,1$) compute $Q^*(3,\text{right})$ and $Q^*(3,\text{left})$. Which action is better?
+  \item In the $3\times3$ grid of Figure~\ref{fig:rl2_grid} compute $V^*$ for the cell below the middle cell (second column, bottom row) from the values of its neighbours.
+  \item The slippery corridor: compute $V(2)$ for ``always right'' with the slip probability $0.2$, using $V(3)\approx7.13$ and $\gamma=0.9$.
+  \item A robot arm controller observes the position of its hand but not the velocity. Explain why this may not be a Markov state, and what you would add.
+  \item[\textbf{\thechapter.8}] \texttt{[code]} Change the value iteration code so that the step cost is $-0.5$ and the corridor has $8$ cells. Print the values. Which cell has the highest value, and why?
+  \item[\textbf{\thechapter.9}$\star$] In the corridor ($\gamma=0.9$) the robot follows a stochastic policy: in cell~3 it plays right with probability $0.8$ and left with probability $0.2$. Using the best values of the neighbours ($V^*(4)=10$, $V^*(2)=6.2$) compute $V(3)$ with the Bellman equation.
+\end{enumerate}

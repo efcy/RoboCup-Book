@@ -1,0 +1,21 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $-2+0+12=10$.
+  \item $\vv a\cdot\vv b=1$, $\norm{\vv a}=1$, $\norm{\vv b}=2$, so $\cos\theta=\frac12$ and $\theta=60^\circ$.
+  \item $3-5+2=0$: yes, orthogonal.
+  \item $3k-12=0$, so $k=4$.
+  \item $z=1-1+1-0.5=0.5$. Sigmoid: $\sig(0.5)\approx0.622$. ReLU: $0.5$.
+  \item $z=-3$ (negative side), $z=0$ (on the boundary), $z=3$ (positive side).
+  \item $\frac{3\cdot2+4\cdot1}{5}=2$.
+  \item $1$ (same direction), $0$ (orthogonal), $-1$ (opposite directions).
+  \item $\norm{\vv a+\vv b}^2=(\vv a+\vv b)\cdot(\vv a+\vv b)=\vv a\cdot\vv a+\vv a\cdot\vv b+\vv b\cdot\vv a+\vv b\cdot\vv b=\norm{\vv a}^2+2\,\vv a\cdot\vv b+\norm{\vv b}^2$.
+  \item Example:
+\begin{verbatim}
+def dot(a, b):
+    total = 0
+    for i in range(len(a)):
+        total += a[i] * b[i]
+    return total
+
+print(dot([1, 2, 3], [-2, 0, 4]))   # 10
+\end{verbatim}
+\end{enumerate}

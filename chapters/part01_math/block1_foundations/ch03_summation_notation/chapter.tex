@@ -1,0 +1,85 @@
+\bookchapter{Summation notation}\label{ch:summation}
+
+\section*{Explanation}
+Adding many numbers is so common that mathematicians use a short symbol, the capital Greek letter sigma:
+\[
+\sum_{i=1}^{n}a_i=a_1+a_2+\dots+a_n.
+\]
+The letter $i$ is the \emph{index}, the number below $\Sigma$ is where it starts and the number above is where it ends. A sum is the same as a loop in a program:
+\begin{verbatim}
+total = 0
+for i in range(1, 5):      # i = 1, 2, 3, 4
+    total += i ** 2
+print(total)               # 30
+\end{verbatim}
+
+\begin{example}
+$\displaystyle\sum_{i=1}^{4}i^2=1+4+9+16=30$.
+\end{example}
+
+\textbf{Rules.} A constant factor can be pulled out, and sums can be split:
+\[
+\sum_{i=1}^n c\,a_i=c\sum_{i=1}^n a_i,\qquad
+\sum_{i=1}^n(a_i+b_i)=\sum_{i=1}^n a_i+\sum_{i=1}^n b_i,\qquad
+\sum_{i=1}^n c=n\,c.
+\]
+A useful formula is $\displaystyle\sum_{i=1}^n i=\frac{n(n+1)}{2}$.
+
+\section*{Three sums that appear everywhere in AI}
+\begin{itemize}
+  \item \textbf{Weighted sum} (what a neuron computes): $z=\displaystyle\sum_{i=1}^n w_ix_i+b$.
+  \item \textbf{Mean}: $\bar x=\dfrac1n\displaystyle\sum_{i=1}^n x_i$.
+  \item \textbf{Mean squared error} between predictions $\hat y_i$ and true values $y_i$:
+  \[
+  \mathrm{MSE}=\frac1n\sum_{i=1}^n(y_i-\hat y_i)^2.
+  \]
+\end{itemize}
+
+\begin{example}[Weighted sum]
+With $w=(0.5,-1,2)$ and $x=(4,2,1)$: $z=0.5\cdot4-1\cdot2+2\cdot1=2-2+2=2$.
+\end{example}
+
+\begin{example}[Mean squared error]
+Five data points $(x_i,y_i)$ are $(1,2),(2,2),(3,5),(4,4),(5,6)$ and the model predicts $\hat y=x$. The errors $y_i-\hat y_i$ are $1,0,2,0,1$ (the red segments in Figure~9). Then
+\[
+\mathrm{MSE}=\frac{1^2+0^2+2^2+0^2+1^2}{5}=\frac65=1.2.
+\]
+\end{example}
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[gr, width=8cm,height=6.5cm, xmin=0,xmax=6,ymin=0,ymax=7, xtick={0,...,6}, ytick={0,...,7}, legend pos=north west]
+  \addplot[blue,domain=0:6]{x};
+  \addlegendentry{model $\hat y=x$}
+  \addplot[only marks,mark=*,red,mark size=2.5pt] coordinates {(1,2)(2,2)(3,5)(4,4)(5,6)};
+  \addlegendentry{data $(x_i,y_i)$}
+  \draw[red!70!black,very thick] (axis cs:1,1) -- (axis cs:1,2);
+  \draw[red!70!black,very thick] (axis cs:3,3) -- (axis cs:3,5);
+  \draw[red!70!black,very thick] (axis cs:5,5) -- (axis cs:5,6);
+  \node[right,font=\scriptsize] at (axis cs:1,1.4) {$e_1=1$};
+  \node[right,font=\scriptsize] at (axis cs:3,3.9) {$e_3=2$};
+  \node[right,font=\scriptsize] at (axis cs:5,5.4) {$e_5=1$};
+\end{axis}
+\end{tikzpicture}
+
+\small\textbf{Figure 9.} Data points, a model and the errors (red). The MSE is the average of the \emph{squares} of the red lengths.
+\end{center}
+
+\begin{aibox}
+A neuron's weighted sum is exactly the dot product of Chapter~\ref{ch:dotproduct}. During training, a network minimises a loss such as the MSE: a sum over all training examples.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Write out and compute $\displaystyle\sum_{i=1}^5 i^2$.
+  \item Compute $\displaystyle\sum_{i=1}^4(2i+1)$.
+  \item Write $3+6+9+12+15$ using sigma notation and compute the value.
+  \item Compute the weighted sum $z=\sum w_ix_i$ for $w=(2,-1,0.5)$ and $x=(3,4,2)$. What is the result after adding the bias $b=-1$?
+  \item Find the mean and the variance $\frac1n\sum(x_i-\bar x)^2$ of the numbers 4, 8, 6, 2 and 10.
+  \item Compute the MSE for the true values $y=(1,0,1,1)$.\\ The predictions are $\hat y=(0.8,0.3,0.6,0.9)$.
+  \item $\star$ Show that $\displaystyle\sum_{i=1}^n(x_i-\bar x)=0$ for any data.
+  \item $\star$ Compute $\displaystyle\sum_{i=1}^{100}i$ by pairing first and last numbers ($1+100$, $2+99$, \dots). Check it with $\frac{n(n+1)}{2}$.
+  \item \texttt{[code]} Write a Python loop that computes the MSE of Problem 3.6.
+\end{enumerate}
+
+% =====================================================

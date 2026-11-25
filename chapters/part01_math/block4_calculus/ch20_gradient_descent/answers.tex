@@ -1,0 +1,15 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $f'=2(x-4)$. $x_1=0-0.25\cdot(-8)=2$, $x_2=2-0.25\cdot(-4)=3$, $x_3=3-0.25\cdot(-2)=3.5$. The iterates approach the minimum at $x=4$.
+  \item $x_1=0-1\cdot(-8)=8$, $x_2=8-1\cdot 8=0$, $x_3=8,\dots$ The iterates oscillate between $0$ and $8$ and never converge.
+  \item $\nabla f=(2x,4y)=(4,4)$, new point $(2-0.4,\,1-0.4)=(1.6,\,0.6)$.
+  \item $L'(0)=-24$, so $w_1=0+0.05\cdot 24=1.2$. The true minimiser is $w=3$.
+  \item (a) Convergence is correct but very slow. (b) Steps overshoot the minimum, the iterates oscillate or diverge.
+  \item[\textbf{8.6}] Example:
+\begin{verbatim}
+x, eta = 0.0, 0.25
+for n in range(20):
+    x = x - eta * 2 * (x - 4)
+    print(n + 1, x)
+\end{verbatim}
+  \item[\textbf{8.7}] $x_{n+1}=x_n-\eta\cdot 2x_n=(1-2\eta)x_n$, so $x_n=(1-2\eta)^nx_0$. This goes to $0$ when $|1-2\eta|<1$, i.e.\ $0<\eta<1$.
+\end{enumerate}

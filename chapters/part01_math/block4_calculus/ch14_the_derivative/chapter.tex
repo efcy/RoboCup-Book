@@ -1,0 +1,47 @@
+\bookchapter{The derivative}\label{ch:derivative}
+
+\section*{Explanation}
+\begin{definition}
+The \emph{derivative} of $f$ at the point $x$ is
+\[
+f'(x)=\lim_{h\to 0}\frac{f(x+h)-f(x)}{h},
+\]
+if this limit exists. Other notations: $\der{f}{x}$ or $\dot f$.
+\end{definition}
+
+The derivative has two important meanings:
+\begin{itemize}
+  \item \textbf{Geometric:} $f'(a)$ is the slope of the \emph{tangent line} to the graph at $x=a$. The tangent line is
+  \[
+  y = f(a) + f'(a)\,(x-a).
+  \]
+  \item \textbf{Physical:} If $s(t)$ is position, then velocity is $v(t)=s'(t)$ and acceleration is $a(t)=v'(t)=s''(t)$.
+\end{itemize}
+If $f'(x)>0$ the function is increasing at $x$, if $f'(x)<0$ it is decreasing, and if $f'(x)=0$ the graph is momentarily flat.
+
+\begin{example}
+Derivative of $f(x)=x^2$ from the definition:
+\[
+f'(x)=\lim_{h\to0}\frac{(x+h)^2-x^2}{h}=\lim_{h\to0}\frac{2xh+h^2}{h}=\lim_{h\to0}(2x+h)=2x.
+\]
+\end{example}
+
+\begin{example}
+Tangent line to $f(x)=x^2$ at $x=3$: $f(3)=9$ and $f'(3)=6$, so $y=9+6(x-3)=6x-9$.
+\end{example}
+
+\begin{example}
+A drone climbs with height $s(t)=t^3$ metres. Then $v(t)=3t^2$ and $a(t)=6t$. At $t=2$\,s: height $8$ m, speed $12$ m/s, acceleration $12$ m/s$^2$.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Use the limit definition to find $f'(x)$ for $f(x)=x^2+1$. Then compute $f'(2)$.
+  \item Use the limit definition to find $f'(x)$ for $f(x)=3x^2$.
+  \item Find the tangent line to $f(x)=x^2$ at $x=1$.
+  \item A robot has position $s(t)=5t-t^2$ (metres, $t$ in seconds). Find $v(t)$ and determine when the robot momentarily stands still.
+  \item The position of a car is $s(t)=t^3$. Find $v(t)$ and $a(t)$, and evaluate both at $t=2$.
+  \item[\textbf{2.6}$\star$] Use the limit definition to show that the derivative of $f(x)=x^3$ is $3x^2$. (Hint: $(x+h)^3=x^3+3x^2h+3xh^2+h^3$.)
+\end{enumerate}
+
+% =====================================================

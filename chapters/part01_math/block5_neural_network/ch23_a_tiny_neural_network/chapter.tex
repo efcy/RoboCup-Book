@@ -1,0 +1,407 @@
+\bookchapter{A Tiny Neural Network, Step by Step}\label{ch:nn}
+\section{The network}
+
+To understand how a neural network learns we use the smallest network that still shows every important idea. It has three neurons arranged in three layers: two inputs, two hidden neurons and one output neuron. (The two inputs are not neurons that compute anything, they just hold the data.)
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=0.95,
+  neuron/.style={circle,draw,thick,minimum size=1.15cm},
+  inp/.style={neuron,fill=blue!12},
+  hid/.style={neuron,fill=orange!18},
+  outn/.style={neuron,fill=green!18},
+  wt/.style={fill=white,inner sep=1.5pt,font=\small},
+  layercap/.style={font=\small\bfseries,text=black!70}]
+  \node[inp] (x1) at (0,1.5)  {$x_1$};
+  \node[inp] (x2) at (0,-1.5) {$x_2$};
+  \node[hid] (h1) at (4.2,1.5)  {$h_1$};
+  \node[hid] (h2) at (4.2,-1.5) {$h_2$};
+  \node[outn] (o) at (8.4,0) {$o$};
+  \node[right=0.7cm of o, align=left, font=\small] (loss) {Loss\\[-0.1em]$L=\tfrac12(o-t)^2$};
+
+  \draw[->,thick] (x1) -- (h1) node[pos=0.28,wt] {$w_{11}$};
+  \draw[->,thick] (x1) -- (h2) node[pos=0.28,wt] {$w_{12}$};
+  \draw[->,thick] (x2) -- (h1) node[pos=0.28,wt] {$w_{21}$};
+  \draw[->,thick] (x2) -- (h2) node[pos=0.28,wt] {$w_{22}$};
+  \draw[->,thick] (h1) -- (o) node[pos=0.5,wt] {$v_1$};
+  \draw[->,thick] (h2) -- (o) node[pos=0.5,wt] {$v_2$};
+  \draw[->,dashed] (o) -- (loss);
+
+  \node[layercap] at (0,2.75)   {Input layer};
+  \node[layercap] at (4.2,2.75) {Hidden layer};
+  \node[layercap] at (8.4,2.75) {Output layer};
+\end{tikzpicture}
+
+\small\textbf{Figure 1.} The network. Each arrow carries a weight.
+\end{center}
+
+\subsection*{Notation}
+\begin{itemize}
+  \item $x_1,x_2$: the inputs (the data we feed in).
+  \item $w_{ij}$: the weight on the arrow from input $x_i$ to hidden neuron $h_j$. For example $w_{21}$ connects $x_2$ to $h_1$.
+  \item $v_1,v_2$: the weights from the hidden neurons to the output neuron.
+  \item $z$: the \emph{weighted sum} arriving at a neuron (before the activation function). So $z_1,z_2$ belong to the hidden neurons and $z_o$ to the output neuron.
+  \item $h_1,h_2,o$: the \emph{activations}, i.e.\ what each neuron outputs.
+  \item $t$: the \emph{target}, the correct answer that the network should produce.
+  \item $L$: the \emph{loss}, a number that says how wrong the network is.
+\end{itemize}
+
+\subsection*{Activation function and loss}
+Each neuron computes a weighted sum of its inputs and then applies the \emph{sigmoid} activation function
+\[
+\sig(z)=\frac{1}{1+e^{-z}},
+\qquad
+\sig'(z)=\sig(z)\bigl(1-\sig(z)\bigr).
+\]
+The sigmoid squeezes any number into the interval $(0,1)$. As the loss we use half the squared error
+\[
+L=\tfrac12(o-t)^2.
+\]
+The factor $\tfrac12$ is only there to cancel the $2$ that appears when we differentiate.
+
+\begin{keyidea}[Simplification]
+Real neurons also have a \emph{bias} (an extra number added to the sum). We leave it out here so that the picture stays small. Biases are handled in exactly the same way as weights, with the input fixed to $1$.
+\end{keyidea}
+
+\subsection*{The numbers we will use}
+So that every step can be checked, we use a concrete example throughout the document.
+\[
+x_1=1,\quad x_2=0.5,\quad t=1,
+\]
+\[
+w_{11}=0.4,\quad w_{21}=0.3,\quad w_{12}=-0.2,\quad w_{22}=0.6,\quad v_1=0.7,\quad v_2=-0.5,
+\]
+and the learning rate $\eta=0.5$ (explained in Section~\ref{sec:update}).
+
+\section{The big picture: one training step}
+
+Training a network repeats four steps, again and again:
+\begin{enumerate}[label=\textbf{Step \arabic*.}, leftmargin=*, itemsep=0.2em]
+  \item \textbf{Forward propagation:} send the input through the network from left to right to get a prediction $o$.
+  \item \textbf{Compute the loss:} measure how far $o$ is from the target $t$.
+  \item \textbf{Backpropagation:} go through the network from right to left and compute, for every weight, how much the loss would change if that weight changed. These numbers are the \emph{gradient} $\pder{L}{w}$.
+  \item \textbf{Weight update:} change every weight a little in the direction that makes the loss smaller (gradient descent).
+\end{enumerate}
+After many repetitions with many examples, the weights are tuned so that the predictions are good.
+
+\section{Forward propagation}
+
+\subsection*{Idea}
+Information flows from the inputs to the output. Each neuron does the same two things: (a) add up all incoming signals, each multiplied by its weight, and (b) apply the activation function.
+
+\begin{stepbox}{Step F1: Weighted sums of the hidden neurons}
+Each hidden neuron multiplies every input by the weight on its arrow and adds the results (this is a dot product):
+\begin{align*}
+z_1&=w_{11}x_1+w_{21}x_2,\\
+z_2&=w_{12}x_1+w_{22}x_2.
+\end{align*}
+\end{stepbox}
+
+With our numbers:
+\begin{align*}
+z_1&=0.4\cdot1+0.3\cdot0.5=0.55,\\
+z_2&=(-0.2)\cdot1+0.6\cdot0.5=0.10.
+\end{align*}
+
+\begin{stepbox}{Step F2: Activations of the hidden neurons}
+Each sum is passed through the sigmoid:
+\[
+h_1=\sig(z_1),\qquad h_2=\sig(z_2).
+\]
+\end{stepbox}
+
+\[
+h_1=\sig(0.55)\approx0.6341,\qquad h_2=\sig(0.10)\approx0.5250.
+\]
+
+\begin{stepbox}{Step F3: Output neuron}
+The output neuron treats the hidden activations as its inputs:
+\[
+z_o=v_1h_1+v_2h_2,\qquad o=\sig(z_o).
+\]
+\end{stepbox}
+
+\[
+z_o=0.7\cdot0.6341+(-0.5)\cdot0.5250\approx0.4439-0.2625=0.1814,\qquad o=\sig(0.1814)\approx0.5452.
+\]
+
+\begin{stepbox}{Step F4: Loss}
+We compare the prediction with the target:
+\[
+L=\tfrac12(o-t)^2.
+\]
+\end{stepbox}
+
+\[
+L=\tfrac12(0.5452-1)^2=\tfrac12\cdot0.2068\approx0.1034.
+\]
+
+The network predicts $0.5452$ but the correct answer is $1$, so there is room for improvement.
+
+\subsection*{Matrix form}
+The hidden layer can be written compactly as a matrix--vector product followed by the activation applied to each entry. Row $j$ of the matrix holds the weights into hidden neuron $j$:
+\[
+\begin{pmatrix}z_1\\z_2\end{pmatrix}
+=\begin{pmatrix}w_{11}&w_{21}\\w_{12}&w_{22}\end{pmatrix}
+\begin{pmatrix}x_1\\x_2\end{pmatrix},
+\qquad
+\begin{pmatrix}h_1\\h_2\end{pmatrix}=\begin{pmatrix}\sig(z_1)\\\sig(z_2)\end{pmatrix}.
+\]
+Big networks do exactly this, only with much larger matrices.
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=0.95,
+  neuron/.style={circle,draw,thick,minimum size=1.15cm},
+  inp/.style={neuron,fill=blue!12},
+  hid/.style={neuron,fill=orange!18},
+  outn/.style={neuron,fill=green!18},
+  wt/.style={fill=white,inner sep=1.5pt,font=\small},
+  val/.style={font=\scriptsize,align=center}]
+  \node[inp] (x1) at (0,1.5)  {$x_1$};
+  \node[inp] (x2) at (0,-1.5) {$x_2$};
+  \node[hid] (h1) at (4.2,1.5)  {$h_1$};
+  \node[hid] (h2) at (4.2,-1.5) {$h_2$};
+  \node[outn] (o) at (8.4,0) {$o$};
+
+  \node[val,left=0.1cm of x1] {$1$};
+  \node[val,left=0.1cm of x2] {$0.5$};
+  \node[val,above=0.05cm of h1] {$z_1=0.55$\\$h_1=0.634$};
+  \node[val,below=0.05cm of h2] {$z_2=0.10$\\$h_2=0.525$};
+  \node[val,above=0.05cm of o] {$z_o=0.181$\\$o=0.545$};
+
+  \draw[->,thick] (x1) -- (h1) node[pos=0.28,wt] {$0.4$};
+  \draw[->,thick] (x1) -- (h2) node[pos=0.28,wt] {$-0.2$};
+  \draw[->,thick] (x2) -- (h1) node[pos=0.28,wt] {$0.3$};
+  \draw[->,thick] (x2) -- (h2) node[pos=0.28,wt] {$0.6$};
+  \draw[->,thick] (h1) -- (o) node[pos=0.5,wt] {$0.7$};
+  \draw[->,thick] (h2) -- (o) node[pos=0.5,wt] {$-0.5$};
+\end{tikzpicture}
+
+\small\textbf{Figure 2.} The result of the forward pass for our example numbers.
+\end{center}
+
+\section{Backpropagation}
+
+\subsection*{Idea}
+We want to know how to change each weight so that the loss decreases. The needed quantity is the partial derivative $\pder{L}{w}$ for every weight $w$. It tells us: ``if I increase this weight a little, how much does the loss go up or down?''
+
+The loss does not depend on a weight directly. It depends on it through a \emph{chain} of calculations. For example, $v_1$ influences $z_o$, which influences $o$, which influences $L$. The \textbf{chain rule} (see the calculus chapter) multiplies the derivatives along this chain:
+\[
+\pder{L}{v_1}=\pder{L}{o}\cdot\pder{o}{z_o}\cdot\pder{z_o}{v_1}.
+\]
+We start at the loss and walk backwards through the network, reusing results as we go. This is why the method is called \emph{backpropagation}.
+
+\begin{keyidea}[Error signal $\delta$]
+For every neuron we compute $\delta=\pder{L}{z}$, the sensitivity of the loss to that neuron's weighted sum. It is passed backwards, and every weight gradient is then simply $\delta$ times the value that flows into the weight.
+\end{keyidea}
+
+\subsection*{Output layer}
+
+\begin{stepbox}{Step B1: How does the loss change with the output?}
+From $L=\tfrac12(o-t)^2$ we get
+\[
+\pder{L}{o}=o-t.
+\]
+\end{stepbox}
+\[
+\pder{L}{o}=0.5452-1=-0.4548.
+\]
+The negative sign says: if $o$ increased, the loss would decrease. That makes sense, since the target $t=1$ is larger than $o$.
+
+\begin{stepbox}{Step B2: Pass the signal through the output activation}
+Because $o=\sig(z_o)$, the derivative of the sigmoid is needed:
+\[
+\delta_o=\pder{L}{z_o}=\pder{L}{o}\cdot\sig'(z_o)=(o-t)\cdot o(1-o).
+\]
+\end{stepbox}
+\[
+\sig'(z_o)=0.5452\cdot(1-0.5452)\approx0.2480,\qquad
+\delta_o=-0.4548\cdot0.2480\approx-0.1128.
+\]
+
+\begin{stepbox}{Step B3: Gradients of the output weights}
+Since $z_o=v_1h_1+v_2h_2$, we have $\pder{z_o}{v_1}=h_1$ and $\pder{z_o}{v_2}=h_2$. Therefore
+\[
+\pder{L}{v_1}=\delta_o\,h_1,\qquad \pder{L}{v_2}=\delta_o\,h_2.
+\]
+\end{stepbox}
+\[
+\pder{L}{v_1}=-0.1128\cdot0.6341\approx-0.0715,\qquad
+\pder{L}{v_2}=-0.1128\cdot0.5250\approx-0.0592.
+\]
+
+\subsection*{Hidden layer}
+Now we push the error one layer further back. The hidden neurons did not produce the error directly, but they influenced the output, so they are partly responsible.
+
+\begin{stepbox}{Step B4: How does the loss change with the hidden activations?}
+Because $z_o=v_1h_1+v_2h_2$, a change in $h_1$ changes $z_o$ by $v_1$ times as much, so
+\[
+\pder{L}{h_1}=\delta_o\,v_1,\qquad \pder{L}{h_2}=\delta_o\,v_2.
+\]
+\end{stepbox}
+\[
+\pder{L}{h_1}=-0.1128\cdot0.7\approx-0.0789,\qquad
+\pder{L}{h_2}=-0.1128\cdot(-0.5)\approx0.0564.
+\]
+The error is sent back along the same arrows, scaled by the weights.
+
+\begin{stepbox}{Step B5: Pass the signal through the hidden activations}
+As in Step B2 we multiply by the derivative of the sigmoid:
+\[
+\delta_1=\pder{L}{h_1}\cdot h_1(1-h_1),\qquad
+\delta_2=\pder{L}{h_2}\cdot h_2(1-h_2).
+\]
+\end{stepbox}
+\[
+h_1(1-h_1)\approx0.2320,\quad h_2(1-h_2)\approx0.2494,
+\]
+\[
+\delta_1=-0.0789\cdot0.2320\approx-0.0183,\qquad
+\delta_2=0.0564\cdot0.2494\approx0.0141.
+\]
+
+\begin{stepbox}{Step B6: Gradients of the hidden weights}
+Because $z_1=w_{11}x_1+w_{21}x_2$, the weight $w_{11}$ is multiplied by $x_1$, and so on. Hence
+\begin{align*}
+\pder{L}{w_{11}}&=\delta_1x_1, & \pder{L}{w_{21}}&=\delta_1x_2,\\
+\pder{L}{w_{12}}&=\delta_2x_1, & \pder{L}{w_{22}}&=\delta_2x_2.
+\end{align*}
+\end{stepbox}
+\begin{align*}
+\pder{L}{w_{11}}&=-0.0183\cdot1=-0.0183, & \pder{L}{w_{21}}&=-0.0183\cdot0.5\approx-0.0092,\\
+\pder{L}{w_{12}}&=0.0141\cdot1=0.0141, & \pder{L}{w_{22}}&=0.0141\cdot0.5\approx0.0070.
+\end{align*}
+
+\subsection*{Summary of the backward pass}
+\begin{center}
+\renewcommand{\arraystretch}{1.7}
+\begin{tabular}{lll}
+\textbf{Quantity} & \textbf{Formula} & \textbf{Value}\\\hline
+$\pder{L}{o}$ & $o-t$ & $-0.4548$\\
+$\delta_o$ & $(o-t)\,o(1-o)$ & $-0.1128$\\
+$\pder{L}{v_1},\ \pder{L}{v_2}$ & $\delta_o h_1,\ \delta_o h_2$ & $-0.0715,\ -0.0592$\\
+$\pder{L}{h_1},\ \pder{L}{h_2}$ & $\delta_o v_1,\ \delta_o v_2$ & $-0.0789,\ 0.0564$\\
+$\delta_1,\ \delta_2$ & $\pder{L}{h_j}\,h_j(1-h_j)$ & $-0.0183,\ 0.0141$\\
+$\pder{L}{w_{ij}}$ & $\delta_j\,x_i$ & $-0.0183,\ -0.0092,\ 0.0141,\ 0.0070$
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=0.95,
+  neuron/.style={circle,draw,thick,minimum size=1.15cm},
+  inp/.style={neuron,fill=blue!12},
+  hid/.style={neuron,fill=orange!18},
+  outn/.style={neuron,fill=green!18},
+  val/.style={font=\scriptsize,align=center,text=red!70!black}]
+  \node[inp] (x1) at (0,1.5)  {$x_1$};
+  \node[inp] (x2) at (0,-1.5) {$x_2$};
+  \node[hid] (h1) at (4.2,1.5)  {$h_1$};
+  \node[hid] (h2) at (4.2,-1.5) {$h_2$};
+  \node[outn] (o) at (8.4,0) {$o$};
+
+  \draw[<-,thick,red!70!black] (x1) -- (h1);
+  \draw[<-,thick,red!70!black] (x1) -- (h2);
+  \draw[<-,thick,red!70!black] (x2) -- (h1);
+  \draw[<-,thick,red!70!black] (x2) -- (h2);
+  \draw[<-,thick,red!70!black] (h1) -- (o);
+  \draw[<-,thick,red!70!black] (h2) -- (o);
+
+  \node[val,above=0.05cm of h1] {$\delta_1=-0.0183$};
+  \node[val,below=0.05cm of h2] {$\delta_2=0.0141$};
+  \node[val,above=0.05cm of o] {$\delta_o=-0.1128$};
+\end{tikzpicture}
+
+\small\textbf{Figure 3.} Backpropagation: the error signals $\delta$ flow from right to left along the same arrows (red).
+\end{center}
+
+\begin{keyidea}[Why is it efficient?]
+The signal $\delta_o$ is computed once and then reused for $\pder{L}{v_1}$, $\pder{L}{v_2}$ and for all the hidden weights. In a big network the same trick avoids recomputing the same products millions of times.
+\end{keyidea}
+
+\section{Weight update (gradient descent)}
+\label{sec:update}
+
+\subsection*{Idea}
+The gradient $\pder{L}{w}$ points in the direction in which the loss \emph{increases} fastest. To decrease the loss we move every weight a small step in the \emph{opposite} direction:
+\[
+w_{\text{new}}=w_{\text{old}}-\eta\,\pder{L}{w}.
+\]
+The number $\eta>0$ is the \emph{learning rate}. It controls the step size: too small and learning is slow, too large and the weights overshoot the minimum and training becomes unstable.
+
+\begin{keyidea}[Important]
+First compute \emph{all} gradients using the old weights, and only then update all weights together. (In Step B4 we needed the old value of $v_1$.)
+\end{keyidea}
+
+\subsection*{Our example ($\eta=0.5$)}
+\begin{align*}
+v_1&=0.7-0.5\cdot(-0.0715)\approx0.7358, & v_2&=-0.5-0.5\cdot(-0.0592)\approx-0.4704,\\
+w_{11}&=0.4-0.5\cdot(-0.0183)\approx0.4092, & w_{21}&=0.3-0.5\cdot(-0.0092)\approx0.3046,\\
+w_{12}&=-0.2-0.5\cdot0.0141\approx-0.2070, & w_{22}&=0.6-0.5\cdot0.0070\approx0.5965.
+\end{align*}
+
+Notice what happened: weights with a negative gradient increased, and weights with a positive gradient decreased. Every weight moved so as to push the output $o$ towards the target $t=1$.
+
+\subsection*{Did it work?}
+We run the forward pass again with the new weights:
+\begin{align*}
+h_1&=\sig(0.4092\cdot1+0.3046\cdot0.5)\approx0.6368,\\
+h_2&=\sig(-0.2070\cdot1+0.5965\cdot0.5)\approx0.5228,\\
+o&=\sig(0.7358\cdot0.6377-0.4704\cdot0.5228)\approx0.5554.
+\end{align*}
+The prediction moved from $0.5452$ to $0.5554$, closer to the target $1$. The loss dropped from $0.1034$ to
+\[
+L=\tfrac12(0.5554-1)^2\approx0.0988.
+\]
+One step is a small improvement. Repeating the four steps many times reduces the loss further and further.
+
+\section{The whole algorithm in Python}
+
+The code below performs exactly the steps of this document. Run it and compare the numbers.
+
+\begin{verbatim}
+import math
+
+def sigmoid(z):
+    return 1 / (1 + math.exp(-z))
+
+# data, target, learning rate
+x1, x2, t, eta = 1.0, 0.5, 1.0, 0.5
+# weights
+w11, w21, w12, w22 = 0.4, 0.3, -0.2, 0.6
+v1, v2 = 0.7, -0.5
+
+for step in range(1, 11):
+    # --- forward propagation ---
+    z1 = w11 * x1 + w21 * x2
+    z2 = w12 * x1 + w22 * x2
+    h1, h2 = sigmoid(z1), sigmoid(z2)
+    zo = v1 * h1 + v2 * h2
+    o = sigmoid(zo)
+    loss = 0.5 * (o - t) ** 2
+    print(step, "output:", round(o, 4), "loss:", round(loss, 4))
+
+    # --- backpropagation ---
+    delta_o = (o - t) * o * (1 - o)
+    g_v1, g_v2 = delta_o * h1, delta_o * h2
+    delta_1 = delta_o * v1 * h1 * (1 - h1)
+    delta_2 = delta_o * v2 * h2 * (1 - h2)
+    g_w11, g_w21 = delta_1 * x1, delta_1 * x2
+    g_w12, g_w22 = delta_2 * x1, delta_2 * x2
+
+    # --- weight update (all gradients were computed first) ---
+    v1, v2 = v1 - eta * g_v1, v2 - eta * g_v2
+    w11, w21 = w11 - eta * g_w11, w21 - eta * g_w21
+    w12, w22 = w12 - eta * g_w12, w22 - eta * g_w22
+\end{verbatim}
+
+\section{Practice problems}
+
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Look at the gradients in the summary table. Which weights will increase and which will decrease in the update? Explain why this is reasonable for target $t=1$.
+  \item Keep all numbers but change the target to $t=0$. Compute $\delta_o$ and $\pder{L}{v_1}$. In which direction does $v_1$ move now?
+  \item Suppose the inputs are $x_1=x_2=0$ and everything else stays the same. What are the gradients of $w_{11},w_{21},w_{12},w_{22}$? Why? Does $v_1$ still receive a gradient?
+  \item The derivative of the sigmoid is never larger than $\tfrac14$. Explain what happens to the size of the error signal $\delta$ when it is passed backwards through many sigmoid layers. (This is called the \emph{vanishing gradient} problem.)
+  \item \texttt{[code]} Use the program above. Increase the number of steps to $200$ and print the loss every 20 steps. What do you observe? Then try $\eta=0.01$ and $\eta=10$.
+  \item $\star$ \texttt{[code]} \emph{Gradient check:} compute $\pder{L}{v_1}$ numerically by evaluating the loss for $v_1\pm10^{-5}$ with central differences (see the calculus chapter on numerical derivatives) and compare with the value $-0.0715$ from backpropagation.
+  \item $\star$ Derive $\pder{L}{w_{11}}$ in one line using the chain rule, writing all factors explicitly:
+  $\pder{L}{o}\cdot\pder{o}{z_o}\cdot\pder{z_o}{h_1}\cdot\pder{h_1}{z_1}\cdot\pder{z_1}{w_{11}}$. Insert the numbers and check that you obtain $-0.0183$.
+\end{enumerate}

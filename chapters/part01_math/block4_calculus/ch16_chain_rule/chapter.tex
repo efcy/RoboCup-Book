@@ -1,0 +1,46 @@
+\bookchapter{The chain rule}\label{ch:chain}
+
+\section*{Explanation}
+Many functions are built by putting one function inside another, for example $(3x+1)^5$ is ``take $3x+1$, then raise to the fifth power''. We write this as $f(g(x))$ with inner function $g$ and outer function $f$.
+
+\begin{keyidea}[Chain rule]
+\[
+\bigl(f(g(x))\bigr)'=f'(g(x))\cdot g'(x),
+\qquad\text{or}\qquad
+\der{y}{x}=\der{y}{u}\cdot\der{u}{x}\ \ \text{with } y=f(u),\ u=g(x).
+\]
+In words: derivative of the outside (with the inside left alone) times derivative of the inside.
+\end{keyidea}
+
+\begin{example}
+$y=(3x+1)^5$. Let $u=3x+1$, so $y=u^5$. Then $\der{y}{u}=5u^4$ and $\der{u}{x}=3$, so $y'=5(3x+1)^4\cdot 3=15(3x+1)^4$.
+\end{example}
+
+\begin{example}
+$y=\sin(x^2)$. Outside: $\sin$, inside: $x^2$. So $y'=\cos(x^2)\cdot 2x$.
+\end{example}
+
+\begin{example}
+$y=e^{-x^2}$. Outside: $e^u$, inside: $u=-x^2$. So $y'=e^{-x^2}\cdot(-2x)=-2x\,e^{-x^2}$.
+\end{example}
+
+\begin{aibox}
+A neural network is a chain of functions: input $\to$ layer 1 $\to$ layer 2 $\to$ loss. To learn, we need the derivative of the loss with respect to a weight, and the chain rule computes it layer by layer. This is called \emph{backpropagation}. A tiny example: for a single weight $w$, input $x$, target $y$ and loss $L(w)=(wx-y)^2$ we get
+\[
+\der{L}{w}=2(wx-y)\cdot x.
+\]
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Differentiate $y=(2x-5)^4$.
+  \item Differentiate $y=\sin(3x)$.
+  \item Differentiate $y=e^{5x}$.
+  \item Differentiate $y=\sqrt{x^2+1}$.
+  \item Differentiate $y=\ln(x^2+1)$ (use $(\ln u)'=1/u$).
+  \item Let $L(w)=(2w-6)^2$. Compute $L'(w)$ and find the $w$ for which $L'(w)=0$.
+  \item A neuron has loss $L(w)=(wx-y)^2$ with $x=2$ and $y=5$. Compute $L'(1)$.
+  \item[\textbf{4.8}$\star$] Differentiate $y=\sin\bigl((x^2+1)^3\bigr)$. (Three nested functions: apply the chain rule twice.)
+\end{enumerate}
+
+% =====================================================

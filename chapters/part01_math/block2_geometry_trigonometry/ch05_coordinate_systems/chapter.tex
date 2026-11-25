@@ -1,0 +1,72 @@
+\bookchapter{Coordinate systems}\label{ch:coordinates}
+
+\section*{Explanation}
+To tell a computer or a robot \emph{where} something is, we use numbers. In the plane we use two numbers, the $x$- and $y$-coordinate, measured from a fixed point, the \emph{origin} $O=(0,0)$. The two axes cut the plane into four \emph{quadrants}, numbered counterclockwise.
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=0.8]
+  \draw[gray!40, very thin] (-4,-3) grid (5,4);
+  \draw[->,thick] (-4.3,0) -- (5.5,0) node[right]{$x$};
+  \draw[->,thick] (0,-3.3) -- (0,4.5) node[above]{$y$};
+  \foreach \x in {-4,-3,-2,-1,1,2,3,4,5} \node[below,font=\scriptsize] at (\x,0) {$\x$};
+  \foreach \y in {-3,-2,-1,1,2,3,4} \node[left,font=\scriptsize] at (0,\y) {$\y$};
+  \node[gray,font=\Large] at (4.4,3.4) {I};
+  \node[gray,font=\Large] at (-3.4,3.4) {II};
+  \node[gray,font=\Large] at (-3.4,-2.5) {III};
+  \node[gray,font=\Large] at (4.4,-2.5) {IV};
+  \draw[dashed,gray] (3,0) -- (3,2) -- (0,2);
+  \fill[red] (3,2) circle (2.5pt) node[above right]{$A(3,2)$};
+  \fill[red] (-2,3) circle (2.5pt) node[above left]{$B(-2,3)$};
+  \fill[red] (-3,-2) circle (2.5pt) node[below left]{$C(-3,-2)$};
+  \fill[red] (2,-2) circle (2.5pt) node[below right]{$D(2,-2)$};
+\end{tikzpicture}
+
+\small\textbf{Figure 1.} The coordinate plane with four quadrants and four points.
+\end{center}
+
+A point is written $(x,y)$. The first number says how far to go to the right (negative: left), the second how far up (negative: down). In the first quadrant both are positive. In the second $x<0,\ y>0$, in the third both are negative, and in the fourth $x>0,\ y<0$.
+
+\begin{keyidea}[Careful with images]
+Pictures from a camera use a different convention: the origin is the \emph{top-left} corner and the $y$-axis points \emph{down}. When you combine image coordinates with ordinary maths coordinates, you have to convert.
+\end{keyidea}
+
+\begin{example}[Midpoint]
+The midpoint of $P=(2,-1)$ and $Q=(8,5)$ is $\left(\frac{2+8}{2},\frac{-1+5}{2}\right)=(5,2)$.
+\end{example}
+
+\section*{Three dimensions}
+A point in space needs three numbers $(x,y,z)$. The three axes are perpendicular to each other and form a \emph{right-handed system}: if the fingers of the right hand curl from the $x$-axis towards the $y$-axis, the thumb points along the $z$-axis. In robotics the usual convention is: $x$ points \emph{forward}, $y$ points to the \emph{left}, $z$ points \emph{up}.
+
+\begin{center}
+\begin{tikzpicture}[x={(-0.6cm,-0.45cm)}, y={(1.05cm,0cm)}, z={(0cm,1.05cm)}, >=Stealth]
+  \draw[->,thick] (0,0,0) -- (4.5,0,0) node[below left]{$x$};
+  \draw[->,thick] (0,0,0) -- (0,4.5,0) node[right]{$y$};
+  \draw[->,thick] (0,0,0) -- (0,0,3.6) node[above]{$z$};
+  \draw[dashed,gray] (3,0,0) -- (3,3,0) -- (0,3,0);
+  \draw[dashed,gray] (3,0,0) -- (3,0,2) -- (0,0,2);
+  \draw[dashed,gray] (0,3,0) -- (0,3,2) -- (0,0,2);
+  \draw[dashed,gray] (3,3,0) -- (3,3,2);
+  \draw[dashed,gray] (3,0,2) -- (3,3,2) -- (0,3,2);
+  \fill[red] (3,3,2) circle (2.5pt) node[above right]{$P(3,3,2)$};
+\end{tikzpicture}
+
+\small\textbf{Figure 2.} A right-handed coordinate system. The dashed box shows how the three coordinates of $P$ are measured along the axes.
+\end{center}
+
+\textbf{Reference frames (first look).} Coordinates always refer to a chosen \emph{frame}, i.e.\ an origin and a set of axes. The same ball can have coordinates $(4,5)$ in the frame of the field (the \emph{world frame}) and completely different coordinates in the frame attached to a robot, which moves and turns. Robots constantly convert between these frames. We will do this in Chapter~\ref{ch:frames}, after we have the necessary trigonometry.
+
+\begin{aibox}
+Every data point of a neural network is a list of coordinates (a vector, see Chapter~\ref{ch:vectors}). A robot's position is $(x,y)$ in 2D or $(x,y,z)$ in 3D. Images are grids of pixel coordinates.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item In which quadrant (or on which axis) do the points $(-3,4)$, $(5,-2)$, $(-1,-6)$ and $(0,3)$ lie?
+  \item Find the midpoint of $(2,-1)$ and $(8,5)$, and the midpoint of $(-4,3)$ and $(2,-7)$.
+  \item A robot is at $(1,1)$ and moves $3$ units in the $x$-direction and $-2$ units in the $y$-direction. Where does it end up?
+  \item For the point $(2,-3,5)$: give its projection onto the $xy$-plane and its distance from the $xy$-plane.
+  \item In a right-handed system the $x$-axis of a robot points forward and the $z$-axis points up. Does the $y$-axis point left or right?
+  \item $\star$ Describe in words the effect on a point of (a) $(x,y)\mapsto(-x,y)$ and (b) $(x,y)\mapsto(y,x)$.
+\end{enumerate}
+
+% =====================================================

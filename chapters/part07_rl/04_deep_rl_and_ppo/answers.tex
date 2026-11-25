@@ -1,0 +1,24 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $20^{10}=1.024\cdot10^{13}$ entries. At $4$ bytes each: $4.096\cdot10^{13}$ bytes $\approx41$ terabytes (per action).
+  \item $(30\cdot64+64)+(64\cdot64+64)+(64\cdot10+10)=1984+4160+650=6794$.
+  \item $\delta=1+0.9\cdot6-4.2=2.2>0$: the action was better than expected, so it is reinforced.
+  \item Advantages $0,+2,-2$. The first action stays unchanged, the second becomes more probable, the third less probable.
+  \item (a) $\min(0.9\cdot1.5,\ 0.9\cdot1.5)=1.35$. (b) $\min(1.95,\ 1.2\cdot1.5=1.8)=1.8$. (c) $\min(-1.95,\ 1.2\cdot(-1.5)=-1.8)=-1.95$. (d) $\min(-1.05,\ 0.8\cdot(-1.5)=-1.2)=-1.2$.
+  \item The objective is constant there, so its derivative with respect to $\rho$ (and thus with respect to the network weights) is $0$. The gradient step does not push the probability of this action any further up. The policy cannot run away from the old policy.
+  \item $a=0.3+0.1z$: $0.2$, $0.3$ and $0.5$\,rad. Between $0.2$ and $0.4$ is one standard deviation around the mean, so about $68\,\%$ of the samples.
+  \item Example:
+\begin{verbatim}
+import numpy as np
+import matplotlib.pyplot as plt
+
+A, eps = 1.0, 0.2
+rho = np.linspace(0, 2, 200)
+L = np.minimum(rho * A, np.clip(rho, 1 - eps, 1 + eps) * A)
+plt.plot(rho, L)
+plt.xlabel("ratio rho")
+plt.ylabel("objective")
+plt.grid(True)
+plt.show()
+\end{verbatim}
+  \item[\textbf{\ansnum.9}] Loss $=(4.2-6)^2=3.24$. The derivative with respect to $V$ is $2(V-G)=2\cdot(-1.8)=-3.6<0$. Gradient descent moves $V$ against the derivative, so $V_\phi(s)$ \emph{increases} towards $G=6$.
+\end{enumerate}

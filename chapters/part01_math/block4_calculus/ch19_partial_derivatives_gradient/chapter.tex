@@ -1,0 +1,45 @@
+\bookchapter{Partial derivatives and the gradient}\label{ch:gradient}
+
+\section*{Explanation}
+Neural networks have thousands or millions of weights, so the loss is a function of \emph{many} variables, such as $f(x,y)$. A \emph{partial derivative} measures the change in one variable while all others are held fixed:
+\[
+\pder{f}{x}=\text{derivative of }f\text{ with respect to }x\text{, treating }y\text{ as a constant.}
+\]
+\begin{definition}
+The \emph{gradient} of $f(x,y)$ collects the partial derivatives in a vector:
+\[
+\nabla f(x,y)=\begin{pmatrix}\pder{f}{x}\\[1em]\pder{f}{y}\end{pmatrix}.
+\]
+\end{definition}
+
+\begin{keyidea}
+The gradient points in the direction of \emph{steepest ascent}. Its length $\|\nabla f\|$ is the steepness. The vector $-\nabla f$ points in the direction of steepest \emph{descent}. At a minimum, $\nabla f=\mathbf 0$.
+\end{keyidea}
+
+\begin{example}
+$f(x,y)=x^2+3xy+y^2$. Then $\pder{f}{x}=2x+3y$ and $\pder{f}{y}=3x+2y$. At the point $(1,2)$:
+\[
+\nabla f(1,2)=\begin{pmatrix}2+6\\3+4\end{pmatrix}=\begin{pmatrix}8\\7\end{pmatrix},\qquad \|\nabla f(1,2)\|=\sqrt{113}\approx 10.6.
+\]
+\end{example}
+
+\begin{example}[A loss with two parameters]
+A line $\hat y=wx+b$ is fitted to a data point $(x,y)=(2,5)$ with loss $L(w,b)=(wx+b-y)^2=(2w+b-5)^2$. By the chain rule,
+\[
+\pder{L}{w}=2(2w+b-5)\cdot 2,\qquad \pder{L}{b}=2(2w+b-5)\cdot 1.
+\]
+At $(w,b)=(1,0)$ the residual is $2+0-5=-3$, so $\nabla L=(-12,\,-6)^\top$.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Find $\pder{f}{x}$ and $\pder{f}{y}$ for $f(x,y)=x^2y$.
+  \item Find both partial derivatives of $f(x,y)=3x^2+xy-y^2$.
+  \item Compute $\nabla f(1,-2)$ for $f(x,y)=x^2+y^2$. In which direction does $f$ decrease fastest?
+  \item Find both partial derivatives of $f(x,y)=e^{xy}$.
+  \item Find $\nabla f$ for $f(x,y,z)=xy+yz+zx$ and evaluate it at $(1,2,3)$.
+  \item For $f(x,y)=x^2+y^2$ show that $\nabla f=\mathbf 0$ only at the origin. Why is this the minimum?
+  \item[\textbf{7.7}$\star$] For $L(w,b)=(wx+b-y)^2$ with $x=3$ and $y=7$ compute $\nabla L$ at $(w,b)=(1,1)$.
+\end{enumerate}
+
+% =====================================================

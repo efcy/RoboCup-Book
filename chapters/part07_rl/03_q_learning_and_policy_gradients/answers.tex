@@ -1,0 +1,24 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $Q(2,R)=0+0.5\,(-1+0.9\cdot3.75-0)=0.5\cdot2.375=1.1875$.
+  \item $\delta=10-7.5=2.5$ (no future value, the episode ends). New value: $7.5+0.5\cdot2.5=8.75$.
+  \item The rule becomes $Q\leftarrow r+\gamma\max Q(s',\cdot)$: the old value is forgotten completely. $Q(3,R)=-1+0.9\cdot10=8$.
+  \item (a) The table changes very slowly, learning takes a long time, but the values are smooth. (b) Every new noisy reward almost overwrites the old estimate, so the values jump around and may never settle.
+  \item Cell~1: R ($2.0>0.5$). Cell~2: L ($1.0>0.2$). Cell~3: R ($3.5>3.0$). (Cell~2 is a wrong choice caused by an unfinished table, further training will correct it.)
+  \item $\varepsilon_0=0.5$, $\varepsilon_1=0.45$, $\varepsilon_2=0.405$, $\varepsilon_3=0.3645$. $\varepsilon_{15}=0.5\cdot0.9^{15}\approx0.103$, $\varepsilon_{16}=0.5\cdot0.9^{16}\approx0.093<0.1$. So episode $k=16$.
+  \item $e^1=2.718$, $e^0=1$, $e^{-1}=0.368$, sum $4.086$. Probabilities: $0.665$, $0.245$, $0.090$.
+  \item Gradient $(0.5,-0.5)$. New scores $(0,0)+0.1\cdot(-1)\cdot(0.5,-0.5)=(-0.05,\,0.05)$. New probability of action~1: $\sigma(-0.1)\approx0.475$.
+  \item Example (changes in the loop):
+\begin{verbatim}
+for episode in range(300):
+    s = 1
+    steps = 0
+    while s != N:
+        ...                  # as before
+        s = s2
+        steps += 1
+    if episode % 10 == 0:
+        print(episode, steps)
+\end{verbatim}
+  With $\varepsilon=0$ the robot still finds the goal here, because ties in the zero-initialised table are broken randomly and because the first success creates a positive value on the path to the goal. In larger worlds, however, a greedy robot can get stuck with the first behaviour that works. With $\varepsilon=1$ the robot acts completely randomly: it learns correct $Q$ values (Q-learning is ``off-policy'') but its episodes stay long, because it never uses what it has learned.
+  \item[\textbf{\ansnum.10}] $\log\pi_a=\theta_a-\log\sum_je^{\theta_j}$. Derivative with respect to $\theta_i$: the first term gives $1$ if $i=a$ and $0$ otherwise. The second term gives $\frac{e^{\theta_i}}{\sum_je^{\theta_j}}=\pi_i$ (chain rule), with a minus sign. So the result is $\mathbf 1[i=a]-\pi_i$.
+\end{enumerate}

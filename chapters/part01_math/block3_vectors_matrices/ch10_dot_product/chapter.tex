@@ -1,0 +1,127 @@
+\bookchapter{The dot product}\label{ch:dotproduct}
+
+\section*{Explanation}
+The \emph{dot product} of two vectors of the same length multiplies the components in pairs and adds the results:
+\[
+\vv a\cdot\vv b=a_1b_1+a_2b_2+\dots+a_nb_n=\sum_{i=1}^n a_ib_i.
+\]
+The result is a \emph{number}, not a vector. It satisfies $\vv a\cdot\vv b=\vv b\cdot\vv a$ and $\vv a\cdot\vv a=\norm{\vv a}^2$.
+
+\begin{example}
+$(1,2,3)\cdot(4,-5,6)=4-10+18=12$.
+\end{example}
+
+\section*{Geometric meaning}
+The same number can be computed from the lengths and the angle $\theta$ between the vectors:
+\[
+\boxed{\vv a\cdot\vv b=\norm{\vv a}\,\norm{\vv b}\cos\theta.}
+\]
+The quantity $\norm{\vv b}\cos\theta$ is the length of the shadow (the \emph{projection}) of $\vv b$ on the direction of $\vv a$. So the dot product measures how much two vectors point in the \emph{same direction}.
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=1.1]
+  \draw[gray!40,very thin] (0,0) grid (5,3);
+  \draw[->,very thick,blue] (0,0) -- (4,0) node[right]{$\vv a=(4,0)$};
+  \draw[->,very thick,red] (0,0) -- (3,2) node[above right]{$\vv b=(3,2)$};
+  \draw[dashed] (3,2) -- (3,0);
+  \draw[green!50!black,ultra thick] (0,-0.12) -- (3,-0.12) node[midway,below]{$\norm{\vv b}\cos\theta=3$};
+  \draw (0.8,0) arc (0:33.69:0.8);
+  \node at (1.1,0.28) {$\theta$};
+\end{tikzpicture}
+
+\small\textbf{Figure 4.} The projection of $\vv b$ on $\vv a$ has length $3$, so $\vv a\cdot\vv b=\norm{\vv a}\cdot3=4\cdot3=12$.
+\end{center}
+
+\begin{example}
+For $\vv a=(4,0)$ and $\vv b=(3,2)$: $\vv a\cdot\vv b=12$, $\norm{\vv a}=4$, $\norm{\vv b}=\sqrt{13}$. So $\cos\theta=\dfrac{12}{4\sqrt{13}}\approx0.832$ and $\theta\approx33.7^\circ$.
+\end{example}
+
+The sign of the dot product tells us about the angle:
+\begin{itemize}
+  \item $\vv a\cdot\vv b>0$: angle below $90^\circ$ (the vectors point roughly the same way),
+  \item $\vv a\cdot\vv b=0$: angle exactly $90^\circ$ (the vectors are \emph{orthogonal}, perpendicular),
+  \item $\vv a\cdot\vv b<0$: angle above $90^\circ$ (roughly opposite directions).
+\end{itemize}
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=0.9]
+  \begin{scope}[xshift=0cm]
+    \draw[->,very thick,blue] (0,0) -- (2.4,0) node[right]{$\vv a$};
+    \draw[->,very thick,red] (0,0) -- (1.5,1.3) node[above]{$\vv b$};
+    \draw (0.7,0) arc (0:41:0.7);
+    \node at (0.5,-0.6) {$\vv a\cdot\vv b>0$};
+  \end{scope}
+  \begin{scope}[xshift=5cm]
+    \draw[->,very thick,blue] (0,0) -- (2.4,0) node[right]{$\vv a$};
+    \draw[->,very thick,red] (0,0) -- (0,1.6) node[above]{$\vv b$};
+    \draw (0.3,0) -- (0.3,0.3) -- (0,0.3);
+    \node at (0.5,-0.6) {$\vv a\cdot\vv b=0$};
+  \end{scope}
+  \begin{scope}[xshift=10cm]
+    \draw[->,very thick,blue] (0,0) -- (2.4,0) node[right]{$\vv a$};
+    \draw[->,very thick,red] (0,0) -- (-1.2,1.3) node[above]{$\vv b$};
+    \draw (0.7,0) arc (0:132:0.7);
+    \node at (0.5,-0.6) {$\vv a\cdot\vv b<0$};
+  \end{scope}
+\end{tikzpicture}
+
+\small\textbf{Figure 5.} The sign of the dot product depends on the angle between the vectors.
+\end{center}
+
+\begin{example}
+$(2,3)\cdot(3,-2)=6-6=0$, so these two vectors are orthogonal.
+\end{example}
+
+\begin{example}[Forward speed of a robot]
+A robot with heading $30^\circ$ has the unit direction vector $\vv h=(\cos30^\circ,\sin30^\circ)\approx(0.866,0.5)$. If it is pushed with the velocity $\vv v=(2,1)$ m/s, its speed in the forward direction is $\vv v\cdot\vv h\approx2\cdot0.866+1\cdot0.5=2.23$ m/s.
+\end{example}
+
+\section*{The dot product is a neuron}
+A neuron with weight vector $\vv w$, input vector $\vv x$ and bias $b$ first computes
+\[
+z=\vv w\cdot\vv x+b=w_1x_1+w_2x_2+\dots+w_nx_n+b,
+\]
+and then applies the activation function. This number is large and positive when the input points in the same direction as the weights, so the neuron measures \emph{how well the input matches a pattern}.
+
+For two inputs the equation $z=0$ describes a \emph{line}, the decision boundary of the neuron. The weight vector $\vv w$ is perpendicular to this line and points to the side where $z>0$.
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=0.85]
+  \draw[gray!40,very thin] (-1,-1) grid (5,5);
+  \begin{scope}
+    \clip (-1,-1) rectangle (5,5);
+    \fill[blue!12] (-0.5,5) -- (5,5) -- (5,-1) -- (2.5,-1) -- cycle;
+    \draw[very thick,red] (-0.5,5) -- (2.5,-1);
+  \end{scope}
+  \draw[->] (-1,0) -- (5.3,0) node[right]{$x_1$};
+  \draw[->] (0,-1) -- (0,5.3) node[above]{$x_2$};
+  \draw[->,very thick,blue] (1,2) -- (3,3) node[right]{$\vv w=(2,1)$};
+  \fill (3,2) circle (2.5pt) node[right]{$A$};
+  \fill (0,1) circle (2.5pt) node[left]{$B$};
+  \node[font=\small] at (4,4.4) {$z>0$};
+  \node[font=\small] at (0.9,-0.6) {$z<0$};
+  \node[red!70!black,font=\small,right] at (2.25,-0.4) {$z=0$};
+\end{tikzpicture}
+
+\small\textbf{Figure 6.} A neuron with $\vv w=(2,1)$ and $b=-4$. The red line is $2x_1+x_2-4=0$. At $A=(3,2)$ we get $z=4>0$, at $B=(0,1)$ we get $z=-3<0$.
+\end{center}
+
+\begin{aibox}
+Every neuron in a network computes a dot product followed by an activation function. Learning means adjusting $\vv w$ and $b$ until the line (or in higher dimensions the \emph{hyperplane}) separates the data correctly. The \emph{cosine similarity} $\dfrac{\vv a\cdot\vv b}{\norm{\vv a}\norm{\vv b}}=\cos\theta$ compares directions of vectors, for example to measure how similar two images or two words are.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Compute $(1,2,3)\cdot(-2,0,4)$.
+  \item Find the angle between $(1,0)$ and $(1,\sqrt3)$.
+  \item Are $(3,-1,2)$ and $(1,5,1)$ orthogonal?
+  \item For which value of $k$ are $(k,2)$ and $(3,-6)$ orthogonal?
+  \item A neuron has weights $\vv w=(0.5,-1,2)$, bias $b=-0.5$ and input $\vv x=(2,1,0.5)$. Compute $z$ and the output with the sigmoid and with ReLU activation.
+  \item A neuron with $\vv w=(1,1)$ and $b=-3$ is given the points $(0,0)$, $(2,1)$ and $(4,2)$. Compute $z$ for each point and say on which side of the decision boundary it lies.
+  \item Compute the scalar projection of $\vv b=(2,1)$ onto $\vv a=(3,4)$, i.e.\ $\dfrac{\vv a\cdot\vv b}{\norm{\vv a}}$.
+  \item $\star$ Compute the cosine similarity of $(1,2,3)$ and $(2,4,6)$, of $(1,0)$ and $(0,1)$, and of $(1,2)$ and $(-1,-2)$. What do the three results mean?
+  \item $\star$ Use $\vv a\cdot\vv a=\norm{\vv a}^2$ to show that $\norm{\vv a+\vv b}^2=\norm{\vv a}^2+2\,\vv a\cdot\vv b+\norm{\vv b}^2$.
+  \item \texttt{[code]} Write a Python function \texttt{dot(a, b)} using a loop (no libraries) and test it on Problem 2.1.
+\end{enumerate}
+
+% =====================================================

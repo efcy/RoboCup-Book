@@ -1,0 +1,26 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item (a) $\exp(-0.01/0.0625)=\exp(-0.16)\approx0.852$. (b) $\exp(-0.01/0.25)=\exp(-0.04)\approx0.961$.
+  \item $r=2.0\cdot0.852-0.001\cdot300+0.5=1.704-0.3+0.5\approx1.90$.
+  \item (1) Make the tracking bump wider ($\sigma=0.5$): slow walking then earns more tracking reward ($0.836$ per step for $0.5$\,m/s), because the robot gets a useful signal even when it is far from the commanded speed. (2) Reduce the torque weight at the beginning (or increase the tracking weight): walking is then not punished so much, and the weight can be increased later. (Also possible: lower the alive bonus, so that standing is less attractive.)
+  \item (a) $F=0.99\cdot(-3.2)+4=0.832$. (b) $F=0.99\cdot(-2.4)+2=-0.376$ (moving away is punished).
+  \item $F_1=0.9\cdot(-2)+3=1.2$, $F_2=0.9\cdot(-3)+2=-0.7$. Discounted sum: $1.2+0.9\cdot(-0.7)=0.57$. Formula: $0.81\cdot(-3)-(-3)=0.57$. Both agree.
+  \item (a) The robot stands in the goal area and does nothing. (b) It throws itself forward or jumps, since the torso is then very fast for a moment. (c) It ends the episode as soon as possible, for example by falling, because every further step costs.
+  \item Staying: $40\cdot(-0.5)=-20$, falling: $-10$. The robot prefers to fall. With only $10$ steps left staying costs $-5>-10$, so it prefers to stay. An alive bonus of $+0.5$ makes each step worth $0$ or more, so staying beats falling.
+  \item Example:
+\begin{verbatim}
+import math
+
+def reward(v, v_cmd, torque_sq, sigma):
+    track = math.exp(-((v_cmd - v) ** 2) / sigma ** 2)
+    return 2.0 * track - 0.001 * torque_sq + 0.5
+
+cases = [("stand still", 0.0, 25), ("walk 0.5", 0.5, 400),
+         ("walk 0.8", 0.8, 400), ("walk 1.0", 1.0, 400)]
+for sigma in (0.25, 0.5):
+    for name, v, tau in cases:
+        print(sigma, name, round(reward(v, 1.0, tau, sigma), 3))
+\end{verbatim}
+  For $\sigma=0.25$ the values are $0.475$, $0.137$, $1.155$ and $2.1$. For $\sigma=0.5$ they are $0.512$, $0.836$, $1.804$ and $2.1$ (slow walking now beats standing).
+  \item Example: (1) stand stable and walk slowly to the ball, (2) walk to the ball at the commanded speed from different directions, (3) touch the ball and push it forward, (4) dribble the ball into the goal, first with a fixed ball position, later with random positions and opponents.
+  \item[\textbf{\ansnum.10}] $\sum_{t=0}^{T-1}\gamma^t\bigl(\gamma\Phi(s_{t+1})-\Phi(s_t)\bigr)=\sum_{t=0}^{T-1}\gamma^{t+1}\Phi(s_{t+1})-\sum_{t=0}^{T-1}\gamma^t\Phi(s_t)$. The first sum has the terms $\gamma^1\Phi(s_1),\dots,\gamma^T\Phi(s_T)$, the second $\gamma^0\Phi(s_0),\dots,\gamma^{T-1}\Phi(s_{T-1})$. All terms with indices $1,\dots,T-1$ appear in both sums and cancel. What remains is $\gamma^T\Phi(s_T)-\Phi(s_0)$.
+\end{enumerate}

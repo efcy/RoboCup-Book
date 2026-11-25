@@ -1,0 +1,19 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $\frac\pi2$, $\frac\pi4$, $\frac{3\pi}{2}$, $\frac{\pi}{12}$.
+  \item $60^\circ$, $150^\circ$, $2\cdot\frac{180}{\pi}\approx114.6^\circ$.
+  \item Adjacent $=\sqrt{169-25}=12$. $\sin\theta=\frac5{13}\approx0.385$, $\cos\theta=\frac{12}{13}\approx0.923$, $\tan\theta=\frac5{12}\approx0.417$, $\theta=\arcsin\frac5{13}\approx22.6^\circ$.
+  \item $\frac12$, $\frac12$, $\frac{\sqrt2}2$, $1$, $-1$, $-1$, $\frac12$, $-1$.
+  \item $\cos^2\theta=1-0.36=0.64$. In the second quadrant the cosine is negative, so $\cos\theta=-0.8$ and $\tan\theta=\frac{0.6}{-0.8}=-0.75$.
+  \item $(0.8\cos60^\circ,\,0.8\sin60^\circ)=(0.4,\ 0.693)$ m.
+  \item $s=5\cdot4=20$ cm. One turn rolls $2\pi\cdot5\approx31.4$ cm, so $\frac{100}{31.4}\approx3.18$ turns.
+  \item $(2\cos\frac\pi3,\,2\sin\frac\pi3)=(1,\sqrt3)\approx(1,1.732)$. And $r=\sqrt2$, $\theta=\frac{3\pi}{4}$.
+  \item The angle $-\theta$ points to the mirror image of the point at angle $\theta$ across the $x$-axis. A mirror image across the $x$-axis keeps the $x$-coordinate ($\cos$) and flips the sign of the $y$-coordinate ($\sin$).
+  \item At $90^\circ$ the ray from the origin is vertical and never meets the vertical line $x=1$ on which the tangent is measured. In formulas, $\tan\theta=\frac{\sin\theta}{\cos\theta}$ and $\cos90^\circ=0$, so we would divide by zero.
+  \item Example:
+\begin{verbatim}
+import math
+for x, y in [(3, 4), (-3, 4), (-3, -4), (3, -4)]:
+    print((x, y), round(math.degrees(math.atan2(y, x)), 2))
+# (3, 4) 53.13   (-3, 4) 126.87   (-3, -4) -126.87   (3, -4) -53.13
+\end{verbatim}
+\end{enumerate}

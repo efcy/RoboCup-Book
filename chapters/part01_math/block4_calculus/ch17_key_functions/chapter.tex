@@ -1,0 +1,51 @@
+\bookchapter{Derivatives of key functions}\label{ch:keyfunctions}
+
+\section*{Explanation}
+These derivatives should be memorised, since they appear constantly.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.7}
+\begin{tabular}{ll|ll}
+$f(x)$ & $f'(x)$ & $f(x)$ & $f'(x)$\\\hline
+$x^n$ & $n x^{n-1}$ & $\sin x$ & $\cos x$\\
+$e^x$ & $e^x$ & $\cos x$ & $-\sin x$\\
+$\ln x$ & $\dfrac1x$ & $\tan x$ & $\dfrac{1}{\cos^2 x}$\\
+$a^x$ & $a^x\ln a$ & $\sqrt{x}$ & $\dfrac{1}{2\sqrt x}$
+\end{tabular}
+\end{center}
+
+\textbf{Activation functions.} Neural networks use special functions called \emph{activation functions}. Their derivatives are needed for learning.
+
+\begin{itemize}
+  \item \textbf{Sigmoid:} $\sigma(x)=\dfrac{1}{1+e^{-x}}$, an S-shaped curve with values between $0$ and $1$.
+  \item \textbf{ReLU:} $\mathrm{ReLU}(x)=\max(0,x)$, which is $0$ for negative inputs and $x$ for positive inputs.
+\end{itemize}
+
+\begin{example}[Derivative of the sigmoid]
+Write $\sigma(x)=(1+e^{-x})^{-1}$. By the chain rule,
+\[
+\sigma'(x)=-(1+e^{-x})^{-2}\cdot(-e^{-x})=\frac{e^{-x}}{(1+e^{-x})^2}.
+\]
+Notice $\sigma(x)\bigl(1-\sigma(x)\bigr)=\dfrac{1}{1+e^{-x}}\cdot\dfrac{e^{-x}}{1+e^{-x}}$, which is the same. Hence
+\[
+\boxed{\sigma'(x)=\sigma(x)\bigl(1-\sigma(x)\bigr)}
+\]
+In particular $\sigma(0)=\tfrac12$ and $\sigma'(0)=\tfrac14$.
+\end{example}
+
+\begin{example}[Derivative of ReLU]
+For $x>0$ we have $\mathrm{ReLU}(x)=x$, so the derivative is $1$. For $x<0$ we have $\mathrm{ReLU}(x)=0$, so the derivative is $0$. At $x=0$ the graph has a corner and there is no derivative; in practice, programs simply define it as $0$ (or $1$).
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Differentiate $f(x)=3e^x+\ln x$.
+  \item Differentiate $f(x)=2\sin x-\cos x$.
+  \item Differentiate $f(x)=e^{-x}$.
+  \item What is the derivative of $\mathrm{ReLU}$ at $x=-3$ and at $x=0.5$?
+  \item A neuron outputs $a(x)=\sigma(2x)$. Use the chain rule to find $\der{a}{x}$ and evaluate it at $x=0$.
+  \item The sigmoid satisfies $\sigma(x)\in(0,1)$. Use $\sigma'=\sigma(1-\sigma)$ to explain why $\sigma'(x)\le \tfrac14$ for every $x$. (Hint: where does $u(1-u)$ have its maximum?)
+  \item[\textbf{5.7}$\star$] Show that $\tanh(x)=\dfrac{e^x-e^{-x}}{e^x+e^{-x}}$ has derivative $1-\tanh^2(x)$.
+\end{enumerate}
+
+% =====================================================

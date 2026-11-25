@@ -1,0 +1,21 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $0$, $1$, $1$, $0$, $3.5$.
+  \item $\sigma(0)=0.5$, $\sigma(2)\approx0.881$, $\sigma(-2)\approx0.119$. The sum is $1$, because $\sigma(-z)=1-\sigma(z)$.
+  \item Only tanh can output negative numbers (values in $(-1,1)$). Only ReLU can output numbers larger than $1$.
+  \item $z=0.5-0.5-0.2+0.1=-0.1$. Step: $0$. Sigmoid: $\approx0.475$. ReLU: $0$. tanh: $\approx-0.0997$.
+  \item $f(g(x))=a_1(a_2x+b_2)+b_1=(a_1a_2)x+(a_1b_2+b_1)$: linear with slope $a_1a_2$ and intercept $a_1b_2+b_1$.
+  \item For $|z|$ larger than about $5$ the curve is nearly horizontal. At $z=10$ the output is essentially $1$ and barely changes if $z$ changes slightly, so the neuron is ``saturated''.
+  \item $2\sigma(2z)-1=\dfrac{2}{1+e^{-2z}}-1=\dfrac{1-e^{-2z}}{1+e^{-2z}}$. Multiplying numerator and denominator by $e^{z}$ gives $\dfrac{e^{z}-e^{-z}}{e^{z}+e^{-z}}=\tanh z$.
+  \item Example:
+\begin{verbatim}
+import numpy as np
+import matplotlib.pyplot as plt
+
+z = np.linspace(-5, 5, 400)
+plt.plot(z, np.where(z >= 0, 1, 0), label="step")
+plt.plot(z, 1 / (1 + np.exp(-z)), label="sigmoid")
+plt.plot(z, np.maximum(0, z), label="ReLU")
+plt.plot(z, np.tanh(z), label="tanh")
+plt.ylim(-1.5, 2); plt.grid(True); plt.legend(); plt.show()
+\end{verbatim}
+\end{enumerate}

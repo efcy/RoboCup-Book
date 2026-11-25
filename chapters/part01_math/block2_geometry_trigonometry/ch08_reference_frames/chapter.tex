@@ -1,0 +1,96 @@
+\bookchapter{Reference frames and robot geometry}\label{ch:frames}
+
+\section*{Two frames, one world}
+A robot at position $(x_0,y_0)$ in the world frame, facing in direction $\theta$ (measured counterclockwise from the world $x$-axis), has its own frame: its $x_R$-axis points forward and its $y_R$-axis points to the left. A point has different coordinates in the two frames, $(x_W,y_W)$ and $(x_R,y_R)$.
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=0.9]
+  \draw[gray!40,very thin] (0,0) grid (7,6);
+  \draw[->,thick] (0,0) -- (7.4,0) node[right]{$x_W$};
+  \draw[->,thick] (0,0) -- (0,6.4) node[above]{$y_W$};
+  \draw[dotted,gray] (4,5) -- (4,0) node[below,font=\small]{$4$};
+  \draw[dotted,gray] (4,5) -- (0,5) node[left,font=\small]{$5$};
+  \begin{scope}[shift={(3,2)},rotate=30]
+    \draw[fill=orange!25] (-0.45,-0.3) rectangle (0.45,0.3);
+    \draw[->,red,very thick] (0,0) -- (3.4,0) node[right]{$x_R$};
+    \draw[->,red,very thick] (0,0) -- (0,3.2) node[above]{$y_R$};
+    \draw[dotted,red] (2.366,2.098) -- (2.366,0);
+    \draw[dotted,red] (2.366,2.098) -- (0,2.098);
+  \end{scope}
+  \fill[orange!80!black] (4,5) circle (3pt) node[above right]{ball};
+  \fill (3,2) circle (1.5pt);
+  \node[below right,font=\small] at (3,2) {robot $(3,2)$};
+  \draw (4.2,2) arc (0:30:1.2);
+  \node[font=\small] at (4.75,2.3) {$\theta$};
+\end{tikzpicture}
+
+\small\textbf{Figure 14.} The world frame (black) and the frame of a robot at $(3,2)$ turned by $\theta=30^\circ$ (red). The ball has world coordinates $(4,5)$ and robot coordinates $\approx(2.37,2.10)$.
+\end{center}
+
+\textbf{Robot to world.} Rotate the robot-frame coordinates by $\theta$ and add the position of the robot:
+\[
+x_W=x_0+x_R\cos\theta-y_R\sin\theta,\qquad
+y_W=y_0+x_R\sin\theta+y_R\cos\theta.
+\]
+\textbf{World to robot.} Subtract the position, then rotate back by $-\theta$. With $d_x=x_W-x_0$ and $d_y=y_W-y_0$:
+\[
+x_R=d_x\cos\theta+d_y\sin\theta,\qquad
+y_R=-d_x\sin\theta+d_y\cos\theta.
+\]
+In Chapter~\ref{ch:rotation} we will write both conversions compactly with matrices.
+
+\begin{example}[World $\to$ robot]
+Robot at $(3,2)$, $\theta=30^\circ$, ball at $(4,5)$. Then $d=(1,3)$ and
+\[
+x_R=1\cdot0.866+3\cdot0.5\approx2.366,\qquad y_R=-1\cdot0.5+3\cdot0.866\approx2.098.
+\]
+The ball is $2.37$ m ahead and $2.10$ m to the left. Check: the distance is the same in both frames, $\sqrt{2.366^2+2.098^2}=\sqrt{10}=\sqrt{1^2+3^2}\approx3.16$.
+\end{example}
+
+\begin{example}[Robot $\to$ world]
+A robot at $(5,2)$ faces west ($\theta=180^\circ$, so $\cos\theta=-1$, $\sin\theta=0$) and sees a ball at $(x_R,y_R)=(2,1)$. Then $x_W=5+2\cdot(-1)-1\cdot0=3$ and $y_W=2+2\cdot0+1\cdot(-1)=1$. The ball is at $(3,1)$. This makes sense: ahead of a west-facing robot means moving towards smaller $x$, and its left is the direction of smaller $y$.
+\end{example}
+
+\section*{Bearing and turn angle}
+To face a target at $(x_T,y_T)$, the robot computes the \emph{bearing} (direction to the target in the world frame) with $\operatorname{atan2}$ and subtracts its current heading:
+\[
+\text{bearing}=\operatorname{atan2}(y_T-y_0,\,x_T-x_0),\qquad
+\text{turn}=\text{bearing}-\theta.
+\]
+Add or subtract $360^\circ$ so that the turn lies between $-180^\circ$ and $180^\circ$. A positive turn means counterclockwise (left), a negative turn means clockwise (right).
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=0.9]
+  \draw[->] (-4,0) -- (2.5,0) node[right]{$x$};
+  \draw[->] (0,-0.5) -- (0,4.5) node[above]{$y$};
+  \draw[->,very thick,blue] (0,0) -- (0,3) node[above right]{heading $\theta=90^\circ$};
+  \draw[->,very thick,red] (0,0) -- (-3,3);
+  \fill[red] (-3,3) circle (3pt) node[left]{target $(-3,3)$};
+  \draw[blue] (90:1.3) arc (90:135:1.3);
+  \node at (112:1.75) {$45^\circ$};
+  \draw[gray] (0:0.7) arc (0:135:0.7);
+  \node[gray,font=\small] at (45:1.0) {$135^\circ$};
+\end{tikzpicture}
+
+\small\textbf{Figure 15.} Bearing $135^\circ$ minus heading $90^\circ$ gives a turn of $45^\circ$ counterclockwise.
+\end{center}
+
+\begin{example}
+Robot at the origin, heading $90^\circ$, target at $(-3,3)$. The bearing is $\operatorname{atan2}(3,-3)=135^\circ$, the turn is $135^\circ-90^\circ=45^\circ$ to the left, and the distance is $\sqrt{18}\approx4.24$. The robot turns left by $45^\circ$ and drives $4.24$ m forward.
+\end{example}
+
+\begin{aibox}
+Many RoboCup-style tasks need exactly this: a robot sees the ball in its own camera frame, converts to field coordinates to share the position with teammates, and converts back to decide how to turn and how far to drive. A neural network that detects the ball typically outputs coordinates in the \emph{image} frame, so the conversion between frames is part of every real pipeline.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A robot at $(2,1)$ faces $90^\circ$ (along the $y$-axis). A ball is at world position $(2,6)$. Find the ball's coordinates in the robot frame.
+  \item A robot at the origin faces $0^\circ$. The target is at $(4,4)$. Find the bearing, the turn angle and the distance.
+  \item A robot at $(1,1)$ faces $180^\circ$. The target is at $(4,5)$. Find the bearing, the turn angle (say whether left or right), and the distance.
+  \item A robot at $(4,1)$ faces $90^\circ$ and sees a ball at $(x_R,y_R)=(2,1)$. Where is the ball in world coordinates?
+  \item \texttt{[code]} Write a Python function \texttt{world\_to\_robot(xw, yw, x0, y0, theta)} that returns $(x_R,y_R)$, and test it with the example of Figure~14.
+  \item $\star$ For a robot at the origin, show that $x_R^2+y_R^2=x_W^2+y_W^2$, i.e.\ that changing the frame does not change distances.
+\end{enumerate}
+
+\newpage

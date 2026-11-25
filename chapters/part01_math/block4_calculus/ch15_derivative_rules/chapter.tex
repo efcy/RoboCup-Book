@@ -1,0 +1,51 @@
+\bookchapter{Derivative rules}\label{ch:rules}
+
+\section*{Explanation}
+Computing limits every time is slow. The following rules let us differentiate quickly. Let $c$ and $n$ be constants and $f,g$ differentiable functions.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.8}
+\begin{tabular}{ll}
+\textbf{Rule} & \textbf{Formula}\\\hline
+Constant & $(c)'=0$\\
+Power rule & $(x^n)'=n\,x^{n-1}$\\
+Constant multiple & $(c\,f)'=c\,f'$\\
+Sum rule & $(f+g)'=f'+g'$\\
+Product rule & $(f\,g)'=f'\,g+f\,g'$\\
+Quotient rule & $\left(\dfrac{f}{g}\right)'=\dfrac{f'\,g-f\,g'}{g^2}$
+\end{tabular}
+\end{center}
+
+The power rule also works for negative and fractional exponents, for example $\dfrac1x=x^{-1}$ and $\sqrt{x}=x^{1/2}$.
+
+\begin{example}
+$f(x)=4x^3-2x^2+7x-9$ gives $f'(x)=12x^2-4x+7$.
+\end{example}
+
+\begin{example}
+$f(x)=\sqrt{x}=x^{1/2}$ gives $f'(x)=\tfrac12 x^{-1/2}=\dfrac{1}{2\sqrt{x}}$.
+\end{example}
+
+\begin{example}[Product rule]
+$f(x)=x^2e^x$. With $u=x^2$, $v=e^x$: $f'(x)=2x\,e^x+x^2e^x=e^x(x^2+2x)$.
+\end{example}
+
+\begin{example}[Quotient rule]
+$f(x)=\dfrac{x}{x^2+1}$. Then
+\[
+f'(x)=\frac{1\cdot(x^2+1)-x\cdot 2x}{(x^2+1)^2}=\frac{1-x^2}{(x^2+1)^2}.
+\]
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Differentiate $f(x)=x^5$.
+  \item Differentiate $f(x)=4x^3-2x^2+7x-9$ and then evaluate at $x=1$.
+  \item Differentiate $f(x)=\dfrac{1}{x^3}$.
+  \item Differentiate $f(x)=5\sqrt{x}$.
+  \item Differentiate $f(x)=x^2\sin x$ (use the product rule; $(\sin x)'=\cos x$).
+  \item Differentiate $f(x)=\dfrac{x^2+1}{x-1}$ (use the quotient rule).
+  \item[\textbf{3.7}$\star$] Use the product rule twice to differentiate $f(x)=x\,e^x\sin x$.
+\end{enumerate}
+
+% =====================================================

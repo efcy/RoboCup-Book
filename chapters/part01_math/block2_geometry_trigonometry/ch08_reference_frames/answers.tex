@@ -1,0 +1,25 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $d=(0,5)$, $\theta=90^\circ$: $x_R=0\cdot0+5\cdot1=5$, $y_R=-0\cdot1+5\cdot0=0$. The ball is $5$ m straight ahead: $(5,0)$.
+  \item Bearing $\operatorname{atan2}(4,4)=45^\circ$, turn $45^\circ-0^\circ=45^\circ$ (left), distance $\sqrt{32}\approx5.66$.
+  \item $d=(3,4)$: bearing $\operatorname{atan2}(4,3)\approx53.13^\circ$, turn $=53.13^\circ-180^\circ=-126.87^\circ$, i.e.\ turn \emph{right} (clockwise) by $126.87^\circ$. Distance $5$.
+  \item $x_W=4+2\cdot0-1\cdot1=3$, $y_W=1+2\cdot1+1\cdot0=3$. The ball is at $(3,3)$. (Ahead $2$ gives $(4,3)$, one to the left of a north-facing robot is towards smaller $x$: $(3,3)$.)
+  \item Example:
+\begin{verbatim}
+import math
+
+def world_to_robot(xw, yw, x0, y0, theta):
+    dx, dy = xw - x0, yw - y0
+    xr =  dx * math.cos(theta) + dy * math.sin(theta)
+    yr = -dx * math.sin(theta) + dy * math.cos(theta)
+    return xr, yr
+
+print(world_to_robot(4, 5, 3, 2, math.radians(30)))
+# (2.366..., 2.098...)
+\end{verbatim}
+  \item With $x_R=x_W\cos\theta+y_W\sin\theta$ and $y_R=-x_W\sin\theta+y_W\cos\theta$:
+  \begin{align*}
+  x_R^2+y_R^2&=x_W^2c^2+2x_Wy_Wcs+y_W^2s^2+x_W^2s^2-2x_Wy_Wcs+y_W^2c^2\\
+  &=(x_W^2+y_W^2)(c^2+s^2)=x_W^2+y_W^2,
+  \end{align*}
+  where $c=\cos\theta$, $s=\sin\theta$ and $c^2+s^2=1$.
+\end{enumerate}

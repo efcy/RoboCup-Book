@@ -1,0 +1,38 @@
+\bookchapter{Numerical derivatives}\label{ch:numerical}
+
+\section*{Explanation}
+A computer can approximate a derivative without any rules, using a very small step $h$ (for example $h=10^{-5}$):
+\begin{align*}
+f'(x)&\approx\frac{f(x+h)-f(x)}{h} &&\text{(forward difference)},\\
+f'(x)&\approx\frac{f(x+h)-f(x-h)}{2h} &&\text{(central difference)}.
+\end{align*}
+The central difference is usually more accurate. This is useful for checking derivatives computed by hand (\emph{gradient checking}).
+
+\begin{example}
+$f(x)=x^2$ at $x=3$ with $h=0.1$:
+\[
+\text{forward: }\frac{3.1^2-3^2}{0.1}=\frac{9.61-9}{0.1}=6.1,\qquad
+\text{central: }\frac{3.1^2-2.9^2}{0.2}=\frac{9.61-8.41}{0.2}=6.
+\]
+The exact value is $f'(3)=6$.
+\end{example}
+
+\begin{example}[Python]
+\begin{verbatim}
+def derivative(f, x, h=1e-5):
+    return (f(x + h) - f(x - h)) / (2 * h)
+
+print(derivative(lambda x: x**2, 3))   # approx. 6.0
+\end{verbatim}
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Approximate $f'(2)$ for $f(x)=x^3$ with the central difference and $h=0.1$. Compare with the exact value.
+  \item Approximate $f'(1)$ for $f(x)=x^2$ with the forward difference and $h=0.5$. Compare with the exact value.
+  \item \texttt{[code]} Use the function \texttt{derivative} above to approximate $\sin'(0)$, $\sin'(\pi/2)$ and $\exp'(1)$. Compare with $\cos$ and $e$.
+  \item \texttt{[code]} Implement the sigmoid, compute its numerical derivative at $x=0$ and compare to $\tfrac14$.
+  \item[\textbf{9.5}$\star$] \texttt{[code]} Experiment: for $f(x)=e^x$ at $x=1$ compute the error of the forward difference for $h=10^{-1},10^{-3},10^{-5},10^{-8},10^{-12}$. What do you observe for very small $h$? (Computers store numbers with limited precision.)
+\end{enumerate}
+
+% =====================================================

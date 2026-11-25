@@ -1,0 +1,174 @@
+\bookchapter{Q-learning and policy gradients}\label{ch:rl3}
+
+\section*{Explanation}
+In Chapter~\ref{ch:rl2} the robot knew the rules of the world and computed the values with value iteration. A real robot does not know the rules. It only knows what it \emph{experiences}: ``I was in this state, did this, got this reward and landed here''. This chapter shows two ways to learn from such experience:
+\begin{itemize}[nosep]
+  \item \textbf{Q-learning} learns a table of action values $Q(s,a)$ and derives the behaviour from it (``value-based'').
+  \item \textbf{Policy gradients} change the policy directly, so that good actions become more probable (``policy-based'').
+\end{itemize}
+
+\section*{The Q-learning update}
+We keep a table with one number $Q(s,a)$ for every state--action pair, at the beginning all zeros. After every step the robot has an experience $(s,a,r,s')$ and corrects the entry for $(s,a)$:
+\[
+Q(s,a)\;\leftarrow\;Q(s,a)+\alpha\,\Bigl(\underbrace{r+\gamma\max_{a'}Q(s',a')}_{\text{new estimate (target)}}-\underbrace{Q(s,a)}_{\text{old estimate}}\Bigr).
+\]
+This is the same ``old value plus a correction'' pattern as in the averaging formula of Chapter~\ref{ch:rl1}. The parameter $\alpha$ (for example $0.1$ or $0.5$) is the \textbf{learning rate}. The difference in the brackets is the \textbf{TD error} (temporal-difference error)
+\[
+\delta=r+\gamma\max_{a'}Q(s',a')-Q(s,a).
+\]
+If $\delta>0$ the outcome was better than expected, so $Q(s,a)$ goes up. If $\delta<0$ it was worse, so $Q(s,a)$ goes down. When $\delta=0$ everywhere, the table is consistent with the Bellman equation of the last chapter.
+
+\begin{keyidea}[Q-learning]
+Q-learning is the Bellman equation turned into a learning rule: move $Q(s,a)$ a little towards ``reward plus discounted best value of the next state''. It needs no model of the world, only experiences.
+\end{keyidea}
+
+\begin{example}[Four updates by hand]
+Corridor, $\alpha=0.5$, $\gamma=0.9$, all $Q$ values start at $0$.
+\begin{enumerate}[nosep]
+  \item The robot stands in cell~4 and plays R. It reaches the goal, $r=10$ (nothing follows): $Q(4,R)=0+0.5\,(10-0)=5$.
+  \item Later it plays R in cell~3 and lands in cell~4, $r=-1$. The best value there is $\max Q(4,\cdot)=5$: $Q(3,R)=0+0.5\,(-1+0.9\cdot5-0)=0.5\cdot3.5=1.75$.
+  \item Another visit of cell~4: $Q(4,R)=5+0.5\,(10-5)=7.5$.
+  \item Another visit of cell~3: $Q(3,R)=1.75+0.5\,(-1+0.9\cdot7.5-1.75)=1.75+0.5\cdot4=3.75$.
+\end{enumerate}
+The values $5\to7.5\to\dots$ are heading to $10$ and $1.75\to3.75\to\dots$ to $8$, the true values of the last chapter. The information about the goal flows backwards, one cell for every few visits.
+\end{example}
+
+\section*{The Q-learning algorithm}
+\begin{stepbox}{Q-learning in a loop}
+Repeat for many episodes:
+\begin{enumerate}[nosep]
+  \item Start in the start state $s$.
+  \item Choose an action $a$ with the $\varepsilon$-greedy rule (best-known action, or a random one with probability $\varepsilon$).
+  \item Execute it and observe $r$ and $s'$.
+  \item Update $Q(s,a)$ with the formula above.
+  \item Set $s\leftarrow s'$. If $s$ is the goal, end the episode.
+\end{enumerate}
+\end{stepbox}
+
+The whole algorithm for the corridor is short:
+
+\begin{verbatim}
+import random
+
+alpha, gamma, eps = 0.5, 0.9, 0.2
+N = 5                      # cells 1..5, cell 5 is the goal
+Q = {(s, a): 0.0 for s in range(1, N) for a in (-1, +1)}
+
+def step(s, a):
+    s2 = max(1, s + a)     # the left wall keeps the robot in place
+    r = 10 if s2 == N else -1
+    return s2, r
+
+for episode in range(300):
+    s = 1
+    while s != N:
+        if random.random() < eps:                 # explore
+            a = random.choice((-1, +1))
+        else:                                     # exploit (ties: random)
+            best = max(Q[(s, -1)], Q[(s, +1)])
+            a = random.choice([x for x in (-1, +1) if Q[(s, x)] == best])
+        s2, r = step(s, a)
+        future = 0.0 if s2 == N else max(Q[(s2, -1)], Q[(s2, +1)])
+        Q[(s, a)] += alpha * (r + gamma * future - Q[(s, a)])
+        s = s2
+
+for s in range(1, N):
+    print(s, round(Q[(s, -1)], 2), round(Q[(s, +1)], 2))
+\end{verbatim}
+
+After training the program prints the table below. Left column: $Q(s,\text{left})$, right column: $Q(s,\text{right})$. They equal the best values $Q^*$ that we could compute by hand in Chapter~\ref{ch:rl2}:
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{c|cc}
+cell & $Q(s,\text{left})$ & $Q(s,\text{right})$\\ \hline
+1 & $3.12$ & $\mathbf{4.58}$\\
+2 & $3.12$ & $\mathbf{6.2}$\\
+3 & $4.58$ & $\mathbf{8.0}$\\
+4 & $6.2$ & $\mathbf{10.0}$
+\end{tabular}
+\end{center}
+In every cell the right action has the larger value, so the greedy policy is ``always right'', the best policy.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[gr, axis lines=left, xlabel near ticks, ylabel near ticks, width=10cm,height=6cm, xlabel={episode}, ylabel={steps until the goal}, xmin=1,xmax=30,ymin=3,ymax=12, xtick={1,5,10,15,20,25,30}, ytick={4,6,8,10,12}, legend pos=north east]
+  \addplot[blue,thick,mark=*,mark size=1.3pt] coordinates {
+    (1,11.7)(2,9.2)(3,6.3)(4,5.4)(5,4.8)(6,4.8)(7,4.9)(8,5.1)(9,4.9)(10,5.0)
+    (11,4.7)(12,4.9)(13,4.9)(14,4.8)(15,4.9)(16,4.8)(17,4.7)(18,4.9)(19,4.9)(20,4.9)
+    (21,4.9)(22,4.7)(23,4.8)(24,5.0)(25,4.9)(26,4.9)(27,4.8)(28,4.9)(29,4.9)(30,4.9)};
+  \addlegendentry{Q-learning ($\varepsilon=0.2$)}
+  \addplot[red,dashed,thick,domain=1:30]{4};
+  \addlegendentry{shortest path: 4 steps}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{Learning curve of Q-learning in the corridor, averaged over $200$ runs. After about $5$ episodes the robot needs close to the minimum of $4$ steps. It stays slightly above $4$ because $20\,\%$ of its actions are still random (exploration).}\label{fig:rl3_curve}
+\end{center}
+
+\begin{aibox}
+A Q-table has one entry for every state and action. The corridor has $8$ entries. A humanoid with continuous joint angles has \emph{infinitely many} states, so a table is impossible. Chapter~\ref{ch:rl4} replaces the table by a neural network that outputs $Q$ or the policy for any state.
+\end{aibox}
+
+\section*{Policy gradients}
+Q-learning chooses actions indirectly: first learn values, then pick the largest. For robot control it is often better to learn the policy directly. Suppose the policy $\pi_\theta(a\mid s)$ is a function with adjustable numbers $\theta$ (later: the weights of a neural network). For a small number of actions a typical choice is the \textbf{softmax}, which turns scores $\theta_i$ into probabilities:
+\[
+\pi_\theta(i)=\frac{e^{\theta_i}}{\sum_j e^{\theta_j}} .
+\]
+For two actions with scores $\theta_1,\theta_2$ the probability of action~1 is $\sigma(\theta_1-\theta_2)$ with the sigmoid function from Part~I (see Figure~\ref{fig:rl3_softmax}).
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[gr, axis lines=left, xlabel near ticks, ylabel near ticks, width=9cm,height=5.6cm, xlabel={score difference $\theta_1-\theta_2$}, ylabel={$\pi(\text{action }1)$}, xmin=-6,xmax=6,ymin=0,ymax=1.05, xtick={-6,-4,...,6}, ytick={0,0.25,0.5,0.75,1}]
+  \addplot[blue,thick,domain=-6:6,samples=60]{1/(1+exp(-x))};
+  \addplot[only marks,mark=*,red] coordinates {(0,0.5)(1,0.731)(2,0.881)(-2,0.119)};
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{Two actions: the probability of action~1 as a function of the score difference. Equal scores give $50\,\%$. A difference of $2$ gives $88\,\%$.}\label{fig:rl3_softmax}
+\end{center}
+
+\textbf{The idea.} Play an episode, look at the return $G$, and then change $\theta$ so that the actions that were played become \emph{more} probable if $G$ was high, and \emph{less} probable if $G$ was low. The update rule (called REINFORCE) is
+\[
+\theta\;\leftarrow\;\theta+\alpha\,G\,\nabla_\theta\log\pi_\theta(a\mid s).
+\]
+The gradient $\nabla_\theta\log\pi_\theta(a\mid s)$ points in the direction in which the probability of the action $a$ grows fastest (gradient ascent, the same idea as gradient descent from Chapter~\ref{ch:gd} with the opposite sign). The return $G$ scales the step: a high return pushes strongly towards the action, a negative return pushes away from it.
+
+For the softmax the gradient is simple. For the played action $a$:
+\[
+\frac{\partial\log\pi(a)}{\partial\theta_i}=\begin{cases}1-\pi(i)&\text{if }i=a,\\-\pi(i)&\text{if }i\ne a.\end{cases}
+\]
+
+\begin{example}[One policy gradient step]
+Two actions, scores $\theta=(0,0)$, so $\pi=(0.5,0.5)$. The robot plays action~1 and gets the return $G=2$. The gradient is $(1-0.5,\,-0.5)=(0.5,-0.5)$. With $\alpha=0.1$:
+\[
+\theta_{\text{new}}=(0,0)+0.1\cdot2\cdot(0.5,-0.5)=(0.1,-0.1).
+\]
+The new probability of action~1 is $\sigma(0.2)=0.55$ (before: $0.50$). If the return had been $G=-1$ the scores would have become $(-0.05,0.05)$ and the probability of action~1 would drop to $0.475$.
+\end{example}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{p{3cm}p{5.4cm}p{5.4cm}}
+ & \textbf{Q-learning (value-based)} & \textbf{Policy gradient}\\ \hline
+Learns & values $Q(s,a)$ & the policy $\pi(a\mid s)$ directly\\
+Actions & small set of choices & also continuous actions (for example joint angles)\\
+Strength & uses every experience efficiently & works well with neural networks and robots\\
+Weakness & hard with continuous actions & noisy, needs many episodes\\
+\end{tabular}
+\end{center}
+
+\begin{keyidea}[Which one for robots?]
+Humanoid robots output many continuous numbers (target angles for all joints). Therefore modern robot learning mostly uses policy-gradient ideas, often combined with a learned value function (``actor--critic'', Chapter~\ref{ch:rl4}).
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item With $\alpha=0.5$, $\gamma=0.9$, a reward $r=-1$ and $\max_{a'}Q(3,a')=3.75$: update $Q(2,R)$ which is currently $0$.
+  \item The robot is in cell~4, plays R and gets $r=10$. Currently $Q(4,R)=7.5$. Compute the TD error $\delta$ and the new $Q(4,R)$ with $\alpha=0.5$.
+  \item Choose $\alpha=1$. What does the update rule become? Compute the new $Q(3,R)$ when $r=-1$, $\gamma=0.9$ and $\max Q(4,\cdot)=10$.
+  \item What happens if $\alpha$ is (a) very small, (b) very large? Think of the averaging formula $Q_n=Q_{n-1}+\frac1n(r-Q_{n-1})$ for noisy rewards.
+  \item A partly trained table has cell~1: $(L:0.5,\;R:2.0)$, cell~2: $(L:1.0,\;R:0.2)$, cell~3: $(L:3.0,\;R:3.5)$. Which action does the greedy policy choose in each cell?
+  \item The exploration rate shrinks as $\varepsilon_k=0.5\cdot0.9^k$ in episode $k$. Compute $\varepsilon_0,\dots,\varepsilon_3$ and find the first episode with $\varepsilon_k<0.1$.
+  \item Compute the softmax probabilities for the scores $(1,0,-1)$.
+  \item Two actions with scores $(0,0)$. Action~1 is played and the return is $G=-1$. Compute the new scores for $\alpha=0.1$ and the new probability of action~1.
+  \item \texttt{[code]} Extend the Q-learning program: count the steps of every episode and print the number of steps every $10$th episode. Then try $\varepsilon=0$ and $\varepsilon=1$. What do you observe?
+  \item[\textbf{\thechapter.10}$\star$] Show that for the softmax $\pi_i=e^{\theta_i}/\sum_je^{\theta_j}$ the derivative of $\log\pi_a$ with respect to $\theta_i$ is $1-\pi_i$ if $i=a$ and $-\pi_i$ otherwise. (Hint: $\log\pi_a=\theta_a-\log\sum_je^{\theta_j}$.)
+\end{enumerate}

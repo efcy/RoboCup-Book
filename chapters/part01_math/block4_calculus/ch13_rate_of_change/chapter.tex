@@ -1,0 +1,42 @@
+\bookchapter{Rate of change and slope}\label{ch:rate}
+
+\section*{Explanation}
+A \emph{function} $f$ assigns to every input $x$ an output $f(x)$. We often want to know how fast the output changes when the input changes. For a straight line this is the \emph{slope}:
+\[
+\text{slope} = \frac{\text{change in output}}{\text{change in input}} = \frac{\Delta y}{\Delta x}.
+\]
+For a curve the steepness is different at every point. Between two points $x=a$ and $x=b$ we can still compute the \emph{average rate of change}:
+\[
+\frac{f(b)-f(a)}{b-a}.
+\]
+Geometrically this is the slope of the \emph{secant line} through the points $(a,f(a))$ and $(b,f(b))$. If we move $b$ closer and closer to $a$, the secant line approaches the line that just touches the curve at $a$. This idea of ``getting closer and closer'' is called a \emph{limit}. We write $h = b-a$ and look at what happens when $h$ becomes very small, $h\to 0$.
+
+\begin{keyidea}
+Average rate of change over $[a,b]$: $\dfrac{f(b)-f(a)}{b-a}$. The instantaneous rate of change is what this approaches when the interval shrinks to a single point.
+\end{keyidea}
+
+\begin{example}
+A robot drives so that its distance from the start is $s(t)=t^2$ metres after $t$ seconds. Its average speed between $t=1$ and $t=3$ is
+\[
+\frac{s(3)-s(1)}{3-1}=\frac{9-1}{2}=4\ \text{m/s}.
+\]
+\end{example}
+
+\begin{example}
+We shrink the interval around $t=1$ for the same robot. On $[1,1+h]$:
+\[
+\frac{(1+h)^2-1}{h}=\frac{2h+h^2}{h}=2+h.
+\]
+For $h=1$ we get $3$, for $h=0.1$ we get $2.1$, for $h=0.001$ we get $2.001$. The values approach $2$, so the robot's speed at exactly $t=1$ is $2$ m/s.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Compute the average rate of change of $f(x)=3x+2$ between $x=1$ and $x=5$. What do you notice?
+  \item A car has position $s(t)=t^2+t$ (in metres). Find its average velocity between $t=0$ and $t=4$.
+  \item For $f(x)=x^2$, simplify $\dfrac{f(2+h)-f(2)}{h}$. What value does the expression approach as $h\to0$?
+  \item A robot's distance is $s(t)=2t^2$ metres. Find its average speed on $[1,3]$.
+  \item[\textbf{1.5}$\star$] Fill in a table of $\dfrac{f(3+h)-f(3)}{h}$ for $f(x)=x^2$ with $h=1,\,0.1,\,0.01,\,0.001$. Guess the limit.
+\end{enumerate}
+
+% =====================================================

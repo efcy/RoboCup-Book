@@ -1,0 +1,214 @@
+\bookchapter{Angles, radians and trigonometry}\label{ch:trig}
+
+\section*{Degrees and radians}
+Angles are measured in \emph{degrees} (a full circle is $360^\circ$) or in \emph{radians} (a full circle is $2\pi$). The radian is the natural unit of mathematics: an angle of $1$ radian is the angle for which the arc on a circle has the same length as the radius.
+\[
+\text{radians}=\text{degrees}\cdot\frac{\pi}{180},\qquad
+\text{degrees}=\text{radians}\cdot\frac{180}{\pi},\qquad
+1\text{ rad}\approx57.3^\circ.
+\]
+For an angle $\theta$ in radians, the arc length on a circle with radius $r$ is
+\[
+s=r\,\theta.
+\]
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth]
+  \draw[thick] (0,0) circle (2.2);
+  \draw[thick] (0,0) -- (2.2,0) node[midway,below]{$r$};
+  \draw[thick] (0,0) -- (57.296:2.2) node[midway,above left]{$r$};
+  \draw[red,very thick] (2.2,0) arc (0:57.296:2.2);
+  \node[red,right] at (30:2.3) {arc length $s=r$};
+  \draw (0.8,0) arc (0:57.296:0.8);
+  \node at (28:1.2) {$1$ rad};
+  \fill (0,0) circle (1.5pt);
+\end{tikzpicture}
+
+\small\textbf{Figure 3.} One radian: the arc is exactly as long as the radius ($\approx57.3^\circ$).
+\end{center}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{c|cccccccc}
+Degrees & $0^\circ$ & $30^\circ$ & $45^\circ$ & $60^\circ$ & $90^\circ$ & $180^\circ$ & $270^\circ$ & $360^\circ$\\\hline
+Radians & $0$ & $\frac\pi6$ & $\frac\pi4$ & $\frac\pi3$ & $\frac\pi2$ & $\pi$ & $\frac{3\pi}{2}$ & $2\pi$
+\end{tabular}
+\end{center}
+
+\begin{example}[Wheel]
+A wheel with radius $4$ cm turns by $5$ radians. A point on the rim travels $s=4\cdot5=20$ cm. Three full turns give $3\cdot2\pi\cdot4\approx75.4$ cm. This is how a robot computes how far it drove from the wheel rotation.
+\end{example}
+
+\section*{Sine, cosine and tangent in a right triangle}
+In a right triangle with an angle $\theta$:
+\[
+\sin\theta=\frac{\text{opposite}}{\text{hypotenuse}},\qquad
+\cos\theta=\frac{\text{adjacent}}{\text{hypotenuse}},\qquad
+\tan\theta=\frac{\text{opposite}}{\text{adjacent}}.
+\]
+(A memory aid is SOH--CAH--TOA.)
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=1.1]
+  \coordinate (A) at (0,0);
+  \coordinate (B) at (4,0);
+  \coordinate (C) at (4,3);
+  \draw[thick,fill=yellow!20] (A) -- (B) -- (C) -- cycle;
+  \draw (3.7,0) -- (3.7,0.3) -- (4,0.3);
+  \draw (0.9,0) arc (0:36.87:0.9);
+  \node at (1.25,0.28) {$\theta$};
+  \node[below] at (2,0) {adjacent};
+  \node[right] at (4,1.5) {opposite};
+  \node[above left] at (2,1.5) {hypotenuse};
+\end{tikzpicture}
+
+\small\textbf{Figure 4.} The sides of a right triangle, seen from the angle $\theta$.
+\end{center}
+
+\begin{example}
+A right triangle has legs $3$ (opposite) and $4$ (adjacent), so the hypotenuse is $5$ (see Chapter~\ref{ch:pythagoras}). Then $\sin\theta=\frac35$, $\cos\theta=\frac45$, $\tan\theta=\frac34$, and $\theta=\arctan\frac34\approx36.87^\circ$.
+\end{example}
+
+\section*{The unit circle}
+The right triangle only works for angles below $90^\circ$. The \emph{unit circle} (radius $1$, centre at the origin) works for every angle. If we start at the point $(1,0)$ and walk counterclockwise along the circle until the angle at the origin is $\theta$, we arrive at the point
+\[
+(\cos\theta,\ \sin\theta).
+\]
+So $\cos\theta$ is the $x$-coordinate and $\sin\theta$ is the $y$-coordinate. Negative angles go clockwise. The tangent is $\tan\theta=\dfrac{\sin\theta}{\cos\theta}$.
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=1]
+  \draw[->] (-3.6,0) -- (4.5,0) node[right]{$x$};
+  \draw[->] (0,-3.4) -- (0,3.6) node[above]{$y$};
+  \draw[thick] (0,0) circle (3);
+  \draw[thick] (0,0) -- (3,{3*tan(40)});
+  \draw[blue,very thick] (0,0) -- ({3*cos(40)},0) node[midway,below]{$\cos\theta$};
+  \draw[red,very thick] ({3*cos(40)},0) -- ({3*cos(40)},{3*sin(40)}) node[midway,left]{$\sin\theta$};
+  \draw[green!50!black,very thick] (3,0) -- (3,{3*tan(40)}) node[midway,right]{$\tan\theta$};
+  \fill (40:3) circle (2pt) node[above left]{$P$};
+  \draw (0.9,0) arc (0:40:0.9);
+  \node at (20:1.25) {$\theta$};
+  \node[font=\small] at (-1.5,-0.35) {radius $=1$};
+\end{tikzpicture}
+
+\small\textbf{Figure 5.} On the unit circle, $\cos\theta$ and $\sin\theta$ are the coordinates of $P$. The tangent is the length of the green segment at $x=1$.
+\end{center}
+
+Because $P$ lies on the circle, Pythagoras (Chapter~\ref{ch:pythagoras}) gives the most important identity:
+\[
+\boxed{\sin^2\theta+\cos^2\theta=1.}
+\]
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=0.95]
+  \draw[->] (-4.2,0) -- (4.6,0) node[right]{$x$};
+  \draw[->] (0,-4.0) -- (0,4.2) node[above]{$y$};
+  \draw[thick] (0,0) circle (3);
+  \foreach \ang/\rad in {0/0, 30/{\pi/6}, 45/{\pi/4}, 60/{\pi/3}, 90/{\pi/2}, 120/{2\pi/3}, 135/{3\pi/4}, 150/{5\pi/6}, 180/\pi, 210/{7\pi/6}, 225/{5\pi/4}, 240/{4\pi/3}, 270/{3\pi/2}, 300/{5\pi/3}, 315/{7\pi/4}, 330/{11\pi/6}} {
+    \draw[gray] (0,0) -- (\ang:3);
+    \fill (\ang:3) circle (1.6pt);
+    \node[font=\scriptsize] at (\ang:3.55) {$\ang^\circ$};
+    \node[font=\tiny,text=blue!70!black] at (\ang:2.3) {$\rad$};
+  }
+\end{tikzpicture}
+
+\small\textbf{Figure 6.} Important angles on the unit circle in degrees (outside) and radians (inside).
+\end{center}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.8}
+\begin{tabular}{c|ccccc}
+$\theta$ & $0^\circ$ & $30^\circ$ & $45^\circ$ & $60^\circ$ & $90^\circ$\\\hline
+$\sin\theta$ & $0$ & $\frac12$ & $\frac{\sqrt2}{2}$ & $\frac{\sqrt3}{2}$ & $1$\\
+$\cos\theta$ & $1$ & $\frac{\sqrt3}{2}$ & $\frac{\sqrt2}{2}$ & $\frac12$ & $0$\\
+$\tan\theta$ & $0$ & $\frac{\sqrt3}{3}$ & $1$ & $\sqrt3$ & undefined
+\end{tabular}
+\end{center}
+A memory trick for the sine row: $\frac{\sqrt0}{2},\frac{\sqrt1}{2},\frac{\sqrt2}{2},\frac{\sqrt3}{2},\frac{\sqrt4}{2}$. The cosine row is the same list backwards. For other quadrants use symmetry. The signs are: sine is positive in quadrants I and II, cosine in I and IV. In general $\sin(-\theta)=-\sin\theta$, $\cos(-\theta)=\cos\theta$, and after a full turn the values repeat: $\sin(\theta+2\pi)=\sin\theta$.
+
+\section*{Graphs of sine, cosine and tangent}
+If we plot the height $\sin\theta$ against the angle $\theta$ we get a wave. Cosine is the same wave shifted left by $\frac\pi2$. Both repeat every $2\pi$ and stay between $-1$ and $1$. The tangent repeats every $\pi$ and has vertical asymptotes where $\cos\theta=0$.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[grn, width=14cm,height=5.5cm, trig format plots=rad,
+  xmin=-0.3,xmax=6.6,ymin=-1.4,ymax=1.4,
+  xtick={0,1.5708,3.1416,4.7124,6.2832},
+  xticklabels={$0$,$\frac{\pi}{2}$,$\pi$,$\frac{3\pi}{2}$,$2\pi$},
+  ytick={-1,0,1}, xlabel={$\theta$},
+  legend style={at={(0.5,1.03)},anchor=south,legend columns=2}]
+  \addplot[blue,domain=0:2*pi]{sin(x)};
+  \addlegendentry{$\sin\theta$}
+  \addplot[red,domain=0:2*pi]{cos(x)};
+  \addlegendentry{$\cos\theta$}
+\end{axis}
+\end{tikzpicture}
+
+\begin{tikzpicture}
+\begin{axis}[grn, width=14cm,height=5.5cm, trig format plots=rad, samples=400,
+  restrict y to domain=-4:4, unbounded coords=jump,
+  xmin=-3.2,xmax=3.2,ymin=-4,ymax=4,
+  xtick={-3.1416,-1.5708,0,1.5708,3.1416},
+  xticklabels={$-\pi$,$-\frac{\pi}{2}$,$0$,$\frac{\pi}{2}$,$\pi$},
+  ytick={-4,-2,0,2,4}, xlabel={$\theta$}]
+  \addplot[green!50!black,domain=-3.2:3.2]{tan(x)};
+\end{axis}
+\end{tikzpicture}
+
+\small\textbf{Figure 7.} Top: sine and cosine. Bottom: tangent, with asymptotes at $\pm\frac\pi2$.
+\end{center}
+
+\section*{Inverse functions and polar coordinates}
+The inverse functions $\arcsin$, $\arccos$ and $\arctan$ give back the angle: for example $\arctan\frac34\approx36.87^\circ$. For finding the direction of a point $(x,y)$ in \emph{all four} quadrants we use $\operatorname{atan2}(y,x)$, which looks at the signs of both numbers (a plain $\arctan\frac yx$ cannot tell $(1,1)$ from $(-1,-1)$).
+
+A point can also be described by its distance $r$ from the origin and the angle $\theta$ of the direction. These are the \emph{polar coordinates} $(r,\theta)$.
+\[
+x=r\cos\theta,\quad y=r\sin\theta,\qquad
+r=\sqrt{x^2+y^2},\quad\theta=\operatorname{atan2}(y,x).
+\]
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth]
+  \draw[->] (-0.5,0) -- (5,0) node[right]{$x$};
+  \draw[->] (0,-0.5) -- (0,3.5) node[above]{$y$};
+  \coordinate (P) at (35:3.8);
+  \draw[very thick,blue] (0,0) -- (P) node[midway,above left]{$r$};
+  \draw[dashed] (P) -- ({3.8*cos(35)},0) node[below]{$x=r\cos\theta$};
+  \draw[dashed] (P) -- (0,{3.8*sin(35)}) node[left]{$y=r\sin\theta$};
+  \draw (1.1,0) arc (0:35:1.1);
+  \node at (17:1.5) {$\theta$};
+  \fill[red] (P) circle (2.5pt) node[above right]{$P$};
+\end{tikzpicture}
+
+\small\textbf{Figure 8.} Polar coordinates $(r,\theta)$ and Cartesian coordinates $(x,y)$ of the same point.
+\end{center}
+
+\begin{example}[Robot arm]
+An arm of length $0.5$ m points at an angle of $40^\circ$ above the horizontal. The tip is at
+$x=0.5\cos40^\circ\approx0.383$ m and $y=0.5\sin40^\circ\approx0.321$ m.
+\end{example}
+
+\begin{example}
+The point $(-1,1)$ has $r=\sqrt2\approx1.414$ and $\theta=\operatorname{atan2}(1,-1)=135^\circ=\frac{3\pi}{4}$.
+\end{example}
+
+\begin{aibox}
+Joint angles of robot arms, the orientation of a wheel and the heading of a robot are all angles, and their effect on positions is computed with sine and cosine. Sine, cosine and rotations also appear in positional encodings of modern neural networks.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Convert to radians: $90^\circ$, $45^\circ$, $270^\circ$, $15^\circ$.
+  \item Convert to degrees: $\frac\pi3$, $\frac{5\pi}{6}$, $2$ rad.
+  \item A right triangle has an opposite side of $5$ and a hypotenuse of $13$. Find the adjacent side, $\sin\theta$, $\cos\theta$, $\tan\theta$, and the angle $\theta$.
+  \item Give the exact values of $\sin30^\circ$, $\cos60^\circ$, $\sin45^\circ$, $\tan45^\circ$, $\cos180^\circ$, $\sin270^\circ$, $\cos\frac\pi3$ and $\sin\left(-\frac\pi2\right)$.
+  \item An angle $\theta$ in the second quadrant has $\sin\theta=0.6$. Find $\cos\theta$ and $\tan\theta$.
+  \item A robot arm of length $0.8$ m points $60^\circ$ above the horizontal. Where is its tip?
+  \item A wheel with radius $5$ cm turns by $4$ rad. How far does it roll? How many full turns are needed to roll $1$ m?
+  \item Convert to Cartesian coordinates: $(r,\theta)=(2,\frac\pi3)$. Convert to polar coordinates: $(x,y)=(-1,1)$.
+  \item $\star$ Use the unit circle to explain why $\sin(-\theta)=-\sin\theta$ and $\cos(-\theta)=\cos\theta$.
+  \item $\star$ Why is $\tan90^\circ$ undefined? Use Figure~5.
+  \item \texttt{[code]} Use \texttt{math.atan2} to compute the angle in degrees of the vectors $(3,4)$, $(-3,4)$, $(-3,-4)$ and $(3,-4)$.
+\end{enumerate}
+
+% =====================================================

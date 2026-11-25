@@ -1,0 +1,45 @@
+\bookchapter{Introduction to integrals}\label{ch:integrals}
+
+\section*{Explanation}
+Integration is the reverse of differentiation. An \emph{antiderivative} of $f$ is a function $F$ with $F'=f$. The family of all antiderivatives is the \emph{indefinite integral}
+\[
+\int f(x)\,\dd x=F(x)+C.
+\]
+The \emph{definite integral} gives the signed area under the graph between $a$ and $b$:
+\[
+\int_a^b f(x)\,\dd x=F(b)-F(a).
+\]
+Useful antiderivatives:
+\begin{align*}
+\int x^n\,\dd x&=\frac{x^{n+1}}{n+1}+C\ (n\neq-1), & \int e^x\,\dd x&=e^x+C,\\
+\int\cos x\,\dd x&=\sin x+C, & \int\sin x\,\dd x&=-\cos x+C.
+\end{align*}
+
+\begin{example}
+$\displaystyle\int_0^3 x^2\,\dd x=\left[\frac{x^3}{3}\right]_0^3=\frac{27}{3}-0=9.$
+\end{example}
+
+\begin{example}[Odometry]
+A robot has speed $v(t)=2t$ m/s. The distance travelled during the first $4$ seconds is
+\[
+\int_0^4 2t\,\dd t=\bigl[t^2\bigr]_0^4=16\text{ m}.
+\]
+\end{example}
+
+\begin{aibox}
+\textbf{Odometry:} a robot estimates its position by integrating its measured velocity over time. \textbf{PID control:} the \emph{I} term of a PID controller is the integral of the error over time, and the \emph{D} term is its derivative.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Find $\int 3x^2\,\dd x$.
+  \item Find $\int(2x+1)\,\dd x$.
+  \item Compute $\displaystyle\int_0^2 x^2\,\dd x$.
+  \item Compute $\displaystyle\int_1^3 2x\,\dd x$ and verify it by computing the area of a trapezoid under the line $y=2x$.
+  \item A robot drives with constant speed $3$ m/s for $5$ seconds. Compute the distance with an integral.
+  \item A robot has speed $v(t)=4t$ m/s. How far does it travel during the first $3$ seconds?
+  \item Compute $\displaystyle\int_0^{\pi}\sin x\,\dd x$.
+  \item[\textbf{10.8}$\star$] A robot has velocity $v(t)=6t-t^2$ m/s and starts at position $0$. Find its position $s(t)$ and its position after $3$ seconds.
+\end{enumerate}
+
+\newpage

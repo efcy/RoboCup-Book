@@ -1,0 +1,176 @@
+\bookchapter{Rotation and translation matrices}\label{ch:rotation}
+
+\section*{Rotation in the plane}
+Which matrix rotates every vector by the angle $\theta$ (counterclockwise) about the origin? The columns of the matrix are the images of $\vv e_1$ and $\vv e_2$. Rotating $\vv e_1=(1,0)$ gives $(\cos\theta,\sin\theta)$ and rotating $\vv e_2=(0,1)$ gives $(-\sin\theta,\cos\theta)$. Hence
+\[
+\boxed{R(\theta)=\begin{pmatrix}\cos\theta&-\sin\theta\\\sin\theta&\cos\theta\end{pmatrix}.}
+\]
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=3.2]
+  \draw[->] (-0.8,0) -- (1.25,0) node[right]{$x$};
+  \draw[->] (0,-0.15) -- (0,1.2) node[above]{$y$};
+  \draw[dashed,gray] (-0.5,0.866) arc (120:0:1);
+  \draw[->,thick,red!50] (0,0) -- (1,0) node[below right,font=\small]{$\vv e_1$};
+  \draw[->,thick,green!50!black!50] (0,0) -- (0,1) node[above right,font=\small]{$\vv e_2$};
+  \draw[->,very thick,red] (0,0) -- (30:1) node[right,font=\small]{$R\vv e_1=(\cos\theta,\sin\theta)$};
+  \draw[->,very thick,green!50!black] (0,0) -- (120:1) node[above left,font=\small]{$R\vv e_2=(-\sin\theta,\cos\theta)$};
+  \draw (0.3,0) arc (0:30:0.3);
+  \node[font=\small] at (15:0.42) {$\theta$};
+  \draw (0,0.3) arc (90:120:0.3);
+  \node[font=\small] at (105:0.42) {$\theta$};
+\end{tikzpicture}
+
+\small\textbf{Figure 8.} Rotating the basis vectors by $\theta=30^\circ$ gives the columns of $R(\theta)$.
+\end{center}
+
+\begin{example}
+Rotate $\vv v=(3,1)$ by $30^\circ$. With $\cos30^\circ\approx0.866$ and $\sin30^\circ=0.5$:
+\[
+R(30^\circ)\vv v=\begin{pmatrix}0.866&-0.5\\0.5&0.866\end{pmatrix}\begin{pmatrix}3\\1\end{pmatrix}
+=\begin{pmatrix}2.598-0.5\\1.5+0.866\end{pmatrix}\approx\begin{pmatrix}2.098\\2.366\end{pmatrix}.
+\]
+The length is unchanged: $\sqrt{3^2+1^2}=\sqrt{10}$ and $\sqrt{2.098^2+2.366^2}=\sqrt{10}$.
+\end{example}
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=1.0]
+  \draw[gray!40,very thin] (0,0) grid (4,3.5);
+  \draw[->] (0,0) -- (4.4,0) node[right]{$x$};
+  \draw[->] (0,0) -- (0,3.9) node[above]{$y$};
+  \draw[dashed,gray] (18.43:3.1623) arc (18.43:48.43:3.1623);
+  \draw[->,very thick,blue] (0,0) -- (3,1) node[right]{$\vv v=(3,1)$};
+  \draw[->,very thick,red] (0,0) -- (2.098,2.366) node[above right]{$R(30^\circ)\vv v\approx(2.10,\,2.37)$};
+  \draw (18.43:1.4) arc (18.43:48.43:1.4);
+  \node at (33:1.8) {$30^\circ$};
+\end{tikzpicture}
+
+\small\textbf{Figure 9.} A rotation moves the tip of a vector along a circle and keeps its length.
+\end{center}
+
+\textbf{Properties of rotation matrices}
+\begin{itemize}
+  \item Rotations add up: $R(\alpha)R(\beta)=R(\alpha+\beta)$. For instance $R(30^\circ)R(60^\circ)=R(90^\circ)=\begin{pmatrix}0&-1\\1&0\end{pmatrix}$.
+  \item The inverse is the transpose: $R(\theta)^{-1}=R(\theta)^\top=R(-\theta)$ (rotating back).
+  \item Lengths and angles do not change.
+\end{itemize}
+
+\section*{Translation and homogeneous coordinates}
+A translation by $\vv t=(t_x,t_y)$ is just $\vv p\mapsto\vv p+\vv t$. It cannot be written as a $2\times2$ matrix, because it moves the origin. The trick is to add a third coordinate that is always $1$: the point $(x,y)$ becomes $(x,y,1)$ (\emph{homogeneous coordinates}). Then
+\[
+\begin{pmatrix}1&0&t_x\\0&1&t_y\\0&0&1\end{pmatrix}\begin{pmatrix}x\\y\\1\end{pmatrix}=\begin{pmatrix}x+t_x\\y+t_y\\1\end{pmatrix},\qquad
+\begin{pmatrix}\cos\theta&-\sin\theta&0\\\sin\theta&\cos\theta&0\\0&0&1\end{pmatrix}\begin{pmatrix}x\\y\\1\end{pmatrix}=\begin{pmatrix}x\cos\theta-y\sin\theta\\x\sin\theta+y\cos\theta\\1\end{pmatrix}.
+\]
+Now both translation and rotation are matrices, and we can combine them by multiplying. A matrix of the form
+\[
+T=\begin{pmatrix}\cos\theta&-\sin\theta&t_x\\\sin\theta&\cos\theta&t_y\\0&0&1\end{pmatrix}
+\]
+first rotates by $\theta$ and then translates by $\vv t$.
+
+\begin{keyidea}[Order matters]
+Matrix products are applied from the right. ``Rotate, then translate'' (matrix $T_{\vv t}R$) gives a different result than ``translate, then rotate'' ($R\,T_{\vv t}$), where $R$ and $T_{\vv t}$ are the $3\times3$ rotation and translation matrices from above.
+\end{keyidea}
+
+\begin{center}
+\begin{minipage}{0.49\textwidth}
+\centering
+\begin{tikzpicture}[>=Stealth, scale=0.62]
+  \draw[gray!40,very thin] (-1.5,-0.5) grid (5.5,3.5);
+  \draw[->] (-1.5,0) -- (5.7,0); \draw[->] (0,-0.5) -- (0,3.7);
+  \filldraw[fill=gray!30,draw=black] (0,0) -- (2,0) -- (0,1) -- cycle;
+  \filldraw[fill=orange!20,draw=orange!80!black,dashed] (0,0) -- (0,2) -- (-1,0) -- cycle;
+  \filldraw[fill=blue!25,draw=blue!70!black,thick] (3,0) -- (3,2) -- (2,0) -- cycle;
+  \node[font=\scriptsize] at (1.0,0.45) {start};
+  \node[font=\scriptsize,orange!70!black] at (-1.0,2.6) {rotated};
+  \node[font=\scriptsize,blue!70!black] at (4.0,1.6) {final};
+\end{tikzpicture}
+
+\small Rotate by $90^\circ$, then translate by $(3,0)$.
+\end{minipage}\hfill
+\begin{minipage}{0.49\textwidth}
+\centering
+\begin{tikzpicture}[>=Stealth, scale=0.62]
+  \draw[gray!40,very thin] (-1.5,-0.5) grid (5.5,5.5);
+  \draw[->] (-1.5,0) -- (5.7,0); \draw[->] (0,-0.5) -- (0,5.7);
+  \filldraw[fill=gray!30,draw=black] (0,0) -- (2,0) -- (0,1) -- cycle;
+  \filldraw[fill=orange!20,draw=orange!80!black,dashed] (3,0) -- (5,0) -- (3,1) -- cycle;
+  \filldraw[fill=red!20,draw=red!70!black,thick] (0,3) -- (0,5) -- (-1,3) -- cycle;
+  \node[font=\scriptsize] at (1.0,0.45) {start};
+  \node[font=\scriptsize,orange!70!black] at (4.2,1.4) {moved};
+  \node[font=\scriptsize,red!70!black] at (1.2,4.2) {final};
+\end{tikzpicture}
+
+\small Translate by $(3,0)$, then rotate by $90^\circ$.
+\end{minipage}
+
+\small\textbf{Figure 10.} The same two operations in a different order give a different result.
+\end{center}
+
+\section*{Robot poses as matrices}
+The \emph{pose} of a robot (position $(x_0,y_0)$ and heading $\theta$) is a matrix of the form $T$ above. It converts coordinates from the robot frame into the world frame: $\vv p_W=T\,\vv p_R$ (with the third coordinate $1$). This is exactly the pair of formulas from Chapter~\ref{ch:frames}, now in one line.
+
+\begin{example}
+Robot at $(3,2)$ with heading $30^\circ$, ball at $(x_R,y_R)=(2.366,2.098)$ in the robot frame:
+\[
+\begin{pmatrix}0.866&-0.5&3\\0.5&0.866&2\\0&0&1\end{pmatrix}\begin{pmatrix}2.366\\2.098\\1\end{pmatrix}
+=\begin{pmatrix}2.049-1.049+3\\1.183+1.817+2\\1\end{pmatrix}=\begin{pmatrix}4\\5\\1\end{pmatrix}.
+\]
+The ball is at $(4,5)$ in the world frame. The opposite conversion uses the inverse matrix $T^{-1}$.
+\end{example}
+
+\section*{Robot arm with two joints}
+A planar arm has a first link of length $l_1$ at angle $\theta_1$ (measured from the $x$-axis) and a second link of length $l_2$ whose angle $\theta_2$ is measured \emph{relative to the first link}. The position of the tip follows from adding two vectors:
+\[
+x=l_1\cos\theta_1+l_2\cos(\theta_1+\theta_2),\qquad
+y=l_1\sin\theta_1+l_2\sin(\theta_1+\theta_2).
+\]
+In matrix form: first compute the tip in the frame of the first link, $\left(l_1,0\right)+R(\theta_2)\left(l_2,0\right)=(l_1+l_2\cos\theta_2,\ l_2\sin\theta_2)$, then rotate everything by $\theta_1$.
+
+\begin{center}
+\begin{tikzpicture}[>=Stealth, scale=1.9]
+  \coordinate (O) at (0,0);
+  \coordinate (E) at (30:2);
+  \coordinate (T) at ($(E)+(75:1.5)$);
+  \draw[->] (-0.3,0) -- (2.9,0) node[right]{$x$};
+  \draw[->] (0,-0.2) -- (0,2.9) node[above]{$y$};
+  \draw[line width=3pt,blue!70] (O) -- (E);
+  \draw[line width=3pt,red!70] (E) -- (T);
+  \draw[dashed] (E) -- ++(30:0.8);
+  \fill[white,draw=black,thick] (O) circle (2.5pt);
+  \fill[white,draw=black,thick] (E) circle (2.5pt) node[below right,font=\small]{elbow};
+  \fill[black] (T) circle (2.5pt) node[above right,font=\small]{tip $(2.12,\,2.45)$};
+  \draw (0.5,0) arc (0:30:0.5);
+  \node[font=\small] at (15:0.72) {$\theta_1$};
+  \draw ($(E)+(30:0.4)$) arc (30:75:0.4);
+  \node[font=\small] at ($(E)+(52:0.62)$) {$\theta_2$};
+  \node[blue!70!black,font=\small,below left] at (0.85,0.55) {$l_1=2$};
+  \node[red!70!black,font=\small,left] at (2.0,1.65) {$l_2=1.5$};
+\end{tikzpicture}
+
+\small\textbf{Figure 11.} A two-joint arm with $l_1=2$, $l_2=1.5$, $\theta_1=30^\circ$, $\theta_2=45^\circ$.
+\end{center}
+
+\begin{example}
+For the arm of Figure~11: $x=2\cos30^\circ+1.5\cos75^\circ\approx1.732+0.388=2.120$ and $y=2\sin30^\circ+1.5\sin75^\circ\approx1+1.449=2.449$. Via matrices: $(2+1.5\cos45^\circ,\ 1.5\sin45^\circ)\approx(3.061,1.061)$, rotated by $30^\circ$ gives $(2.120,\,2.449)$.
+\end{example}
+
+\begin{aibox}
+Computing the position of a robot's hand from its joint angles is called \emph{forward kinematics}, and it is a chain of rotation and translation matrices. Finding the angles for a desired hand position is \emph{inverse kinematics} (a topic for later in your robotics studies). Notice the similarity to a neural network: both are long chains of matrix operations in which the output of one step is the input of the next.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Rotate $(1,0)$, $(0,2)$ and $(3,4)$ by $90^\circ$ using $R(90^\circ)=\begin{pmatrix}0&-1\\1&0\end{pmatrix}$.
+  \item Rotate $(2,0)$ by $45^\circ$.
+  \item Rotate $(1,1)$ by $-90^\circ$ (clockwise).
+  \item Compute $R(30^\circ)R(30^\circ)$ and check that it equals $R(60^\circ)$.
+  \item Write down $R(30^\circ)^{-1}$ and check by multiplication that $R(30^\circ)R(30^\circ)^{-1}=I$.
+  \item Translate the point $(2,3)$ by $\vv t=(-1,4)$. Write the $3\times3$ matrix and apply it to $(2,3,1)$.
+  \item Apply the following to the triangle with corners $(0,0)$, $(2,0)$, $(0,1)$: first rotate by $180^\circ$, then translate by $(1,1)$.
+  \item A robot with pose $(x_0,y_0,\theta)=(2,1,90^\circ)$ sees a ball at $(3,-1)$ in its own frame. Where is the ball in the world frame?
+  \item $\star$ A planar arm has $l_1=2$, $l_2=1$, $\theta_1=45^\circ$, $\theta_2=45^\circ$. Find the position of the tip.
+  \item $\star$ What is the smallest and the largest distance from the base that the tip of the arm in Problem 4.9 can reach if $\theta_2$ is changed?
+  \item \texttt{[code]} Write Python functions \texttt{rot(theta)} (a $2\times2$ matrix as nested lists) and \texttt{apply(M, v)}. Check the example $R(30^\circ)(3,1)$.
+\end{enumerate}
+
+\newpage

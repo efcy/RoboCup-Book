@@ -1,0 +1,175 @@
+\bookchapter{Deep RL and PPO}\label{ch:rl4}
+
+\section*{Explanation}
+Tables work for the corridor. A real robot needs more. In this chapter we replace the table by a neural network. We then meet the method that is used most often to train walking and kicking robots: \textbf{PPO} (Proximal Policy Optimisation).
+
+\section*{Why tables fail}
+A humanoid robot has about a dozen joints in its legs alone. Suppose we describe every joint angle by only $100$ possible values. The number of different leg configurations is
+\[
+100^{12}=10^{24}.
+\]
+A Q-table with one 4-byte number per entry would need about $4\cdot10^{24}$ bytes, that is four trillion terabytes. And this does not yet include speeds, the ball or the other players. Moreover the robot will \emph{never} visit most of these states. Even more important: similar states should get similar values. A table cannot know that a joint angle of $30.0^\circ$ is almost the same as $30.1^\circ$. A neural network can.
+
+\begin{keyidea}[Function approximation]
+Instead of storing one number per state, we use a neural network with weights $\theta$ that \emph{computes} the value or the action for any state. Similar states automatically give similar outputs, and the network is trained with gradient descent as in Chapter~\ref{ch:gd} (gradient descent).
+\end{keyidea}
+
+\begin{example}[How large is a policy network?]
+A policy network gets a state vector of $48$ numbers (joint angles and speeds, body tilt, wanted walking command, \dots), has two hidden layers with $256$ and $128$ neurons, and outputs $12$ target angles. The number of weights and biases is
+\[
+(48\cdot256+256)+(256\cdot128+128)+(128\cdot12+12)=12544+32896+1548=46\,988 .
+\]
+Only about $47\,000$ numbers, but they define the behaviour for \emph{every} possible state. (The numbers $48$, $256$, $128$ and $12$ are an example, not the sizes of a specific robot.)
+\end{example}
+
+\section*{Deep Q-networks}
+The first big success was the \textbf{deep Q-network} (DQN): the Q-table is replaced by a network that takes a state and outputs one $Q$ value per action. It is trained with the same target as in Q-learning, $r+\gamma\max_{a'}Q(s',a')$, and uses two tricks to stay stable. A \emph{replay buffer} stores past experiences and trains on random samples from it. A \emph{target network}, a slowly updated copy, provides the targets. DQN works well when there is a small number of actions (such as the buttons of a game controller). For a robot with continuous joint targets we need something else.
+
+\section*{Actor and critic}
+Most robot learning methods use two networks (or one network with two outputs), shown in Figure~\ref{fig:rl4_ac}:
+\begin{itemize}[nosep]
+  \item the \textbf{actor} is the policy $\pi_\theta(a\mid s)$ that chooses the actions,
+  \item the \textbf{critic} is a value network $V_\phi(s)$ that estimates how good a state is.
+\end{itemize}
+
+\begin{center}
+\begin{tikzpicture}[node distance=2.6cm, box/.style={draw,rounded corners,thick,minimum width=2.6cm,minimum height=1.2cm,align=center,font=\small}]
+  \node[box,fill=gray!10] (s) {state $s$};
+  \node[box,fill=blue!10,right=1.8cm of s,yshift=1cm] (act) {\textbf{Actor}\\$\pi_\theta(a\mid s)$};
+  \node[box,fill=orange!15,right=1.8cm of s,yshift=-1cm] (cri) {\textbf{Critic}\\$V_\phi(s)$};
+  \node[box,fill=green!10,right=1.9cm of act] (a) {action $a$\\(joint targets)};
+  \node[box,fill=green!10,right=1.9cm of cri] (v) {value\\(expected return)};
+  \draw[-{Stealth},thick] (s) -- (act);
+  \draw[-{Stealth},thick] (s) -- (cri);
+  \draw[-{Stealth},thick] (act) -- (a);
+  \draw[-{Stealth},thick] (cri) -- (v);
+  \draw[-{Stealth},thick,red!70!black,dashed] (v) -- ++(1.9,0) |- node[pos=0.25,right,font=\scriptsize,text width=2.2cm]{advantage tells the actor if the action was good} (act.north east);
+\end{tikzpicture}
+\captionof{figure}{Actor and critic. The actor chooses the action. The critic judges the state, and from its judgement we compute the \emph{advantage}, which tells the actor whether an action was better than expected.}\label{fig:rl4_ac}
+\end{center}
+
+\textbf{Advantage.} In the policy-gradient update of Chapter~\ref{ch:rl3} the return $G$ decides how strongly an action is pushed. There is a problem: in a good state \emph{all} returns are high, so \emph{all} actions would be pushed up. What counts is whether an action was better than usual in that state. The \textbf{advantage} measures exactly this:
+\[
+A_t=G_t-V(s_t)\qquad\text{or in one step}\qquad A_t\approx\delta_t=r_{t+1}+\gamma\,V(s_{t+1})-V(s_t).
+\]
+If $A>0$ the action was better than the critic expected, so the actor makes it more probable. If $A<0$ it was worse, so the actor makes it less probable.
+
+\begin{example}
+The robot gets $r=2$ and moves to a state that the critic values at $V(s')=5$. Before, the critic expected $V(s)=4$. With $\gamma=0.9$
+\[
+\delta=2+0.9\cdot5-4=2.5>0 .
+\]
+The action was better than expected, so it is reinforced.
+\end{example}
+
+\begin{example}[Why a baseline helps]
+In a state with $V=100$ three actions have the returns $100$, $102$ and $98$. Without the critic all three would be pushed up, only by different amounts. With the advantages $0$, $+2$ and $-2$ the first action is left unchanged, the second is made more probable and the third less probable. Subtracting $V$ removes the common part, which makes learning much less noisy.
+\end{example}
+
+\textbf{Continuous actions.} A robot needs real numbers as actions. A common choice is a \emph{Gaussian policy}: the actor network outputs the mean $\mu$ of each joint target, and the robot samples
+\[
+a=\mu+\sigma\cdot z,\qquad z\ \text{a random number from the normal distribution.}
+\]
+With $\mu=0.30$\,rad and $\sigma=0.1$\,rad the sampled target is $0.20$, $0.30$ or $0.50$\,rad for $z=-1,0,2$. Early in training $\sigma$ is large (the robot tries many things). Later $\sigma$ shrinks and the robot acts almost deterministically.
+
+\section*{PPO: small safe steps}
+Policy-gradient training has a danger. If a single update changes the network too much, the robot may suddenly behave completely differently, for example forget how to stay upright. The next experiences then come from this bad policy, and learning may never recover. PPO prevents this by limiting how far the new policy may move away from the old one in one update.
+
+Let $\pi_{\text{old}}$ be the policy that collected the data and $\pi_\theta$ the policy that is being updated. For an action $a$ in state $s$ the \textbf{probability ratio} is
+\[
+\rho=\frac{\pi_\theta(a\mid s)}{\pi_{\text{old}}(a\mid s)} .
+\]
+$\rho=1$ means no change, $\rho=1.5$ means the action became $50\,\%$ more probable. PPO maximises the \textbf{clipped objective}
+\[
+L=\min\bigl(\rho\,A,\ \operatorname{clip}(\rho,\,1-\varepsilon,\,1+\varepsilon)\,A\bigr),
+\]
+where $\operatorname{clip}(\rho,1-\varepsilon,1+\varepsilon)$ cuts $\rho$ to the interval $[1-\varepsilon,\,1+\varepsilon]$. A typical value is $\varepsilon=0.2$.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=2 by 1,horizontal sep=1.8cm}, width=7cm,height=5.4cm, axis lines=middle, grid=both, grid style={line width=0.1pt,draw=gray!30}, major grid style={line width=0.2pt,draw=gray!50}, tick label style={font=\footnotesize}, xlabel={ratio $\rho$}, xmin=0,xmax=2, every axis plot/.append style={thick}, samples=2]
+  \nextgroupplot[title={\small advantage $A=+1$}, ymin=-0.2,ymax=1.8, ytick={0,0.8,1,1.2,1.5}, xtick={0,0.8,1,1.2,2}, ylabel={objective $L$}]
+  \addplot[blue,domain=0:2,samples=80]{min(x,max(0.8,min(1.2,x)))};
+  \addplot[only marks,mark=*,red] coordinates {(1.2,1.2)};
+  \nextgroupplot[title={\small advantage $A=-1$}, ymin=-1.8,ymax=0.2, ytick={0,-0.8,-1,-1.2,-1.5}, xtick={0,0.8,1,1.2,2}]
+  \addplot[blue,domain=0:2,samples=80]{min(-x,-max(0.8,min(1.2,x)))};
+  \addplot[only marks,mark=*,red] coordinates {(0.8,-0.8)};
+\end{groupplot}
+\end{tikzpicture}
+\captionof{figure}{The PPO objective for $\varepsilon=0.2$. Left: for a good action ($A>0$) the objective grows until $\rho=1.2$ and then becomes flat, so there is no more reason to make the action even more probable. Right: for a bad action ($A<0$) it stops improving at $\rho=0.8$.}\label{fig:rl4_ppo}
+\end{center}
+
+\begin{example}[Clipped objective, $\varepsilon=0.2$]\leavevmode
+\begin{itemize}[nosep,topsep=2pt]
+  \item $\rho=1.5$, $A=2$: $\min(3,\,2.4)=2.4$. The gain is capped.
+  \item $\rho=1.1$, $A=2$: $\min(2.2,\,2.2)=2.2$. Inside the interval nothing is clipped.
+  \item $\rho=0.5$, $A=-1$: $\min(-0.5,\,-0.8)=-0.8$.
+  \item $\rho=1.5$, $A=-2$: $\min(-3,\,-2.4)=-3$. A bad action that became more probable is \emph{not} protected by the clip, so it is still pushed back.
+\end{itemize}
+\end{example}
+
+\begin{keyidea}[PPO in one sentence]
+Improve the policy with advantage-weighted gradient steps, but do not let the probability of any action change by more than about $\varepsilon$ in one round. This makes training stable enough to teach humanoid robots to walk.
+\end{keyidea}
+
+\section*{The training loop}
+RL on a robot is always the same cycle (Figure~\ref{fig:rl4_loop}). Thousands of copies of the robot run at the same time in a simulator on a GPU. Each copy sends back short experiences. After a batch of experience the networks are updated a few times with minibatch gradient descent and the cycle starts again.
+
+\begin{center}
+\begin{tikzpicture}[node distance=1.0cm, box/.style={draw,rounded corners,thick,minimum width=3.1cm,minimum height=1.3cm,align=center,font=\small}]
+  \node[box,fill=green!10] (sim) {1. Run the policy in\\many simulated robots};
+  \node[box,fill=gray!10,right=1.2cm of sim] (adv) {2. Compute returns\\and advantages};
+  \node[box,fill=blue!10,right=1.2cm of adv] (upd) {3. Update actor and\\critic (several epochs)};
+  \draw[-{Stealth},thick] (sim) -- (adv);
+  \draw[-{Stealth},thick] (adv) -- (upd);
+  \draw[-{Stealth},thick] (upd.south) -- ++(0,-0.9) -| node[pos=0.25,below,font=\small]{new policy} (sim.south);
+\end{tikzpicture}
+\captionof{figure}{The PPO training loop. Steps 1 to 3 are repeated thousands of times.}\label{fig:rl4_loop}
+\end{center}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{5cm}p{7.5cm}}
+\textbf{Setting} & \textbf{Typical starting value}\\ \hline
+discount factor $\gamma$ & $0.99$\\
+clip range $\varepsilon$ & $0.2$\\
+learning rate of the networks & about $3\cdot10^{-4}$ (often reduced during training)\\
+epochs per batch of data & $5$ to $10$\\
+parallel simulated robots & hundreds to thousands\\
+\end{tabular}
+\end{center}
+These are common starting values in the literature. The best settings depend on the task.
+
+The idea of the loop as pseudo-code:
+\begin{verbatim}
+for iteration in range(num_iterations):
+    # 1. collect experience with the current (old) policy
+    data = run_policy_in_parallel_simulators(policy, steps=24)
+    # 2. advantages from the critic
+    advantages = compute_advantages(data, critic, gamma)
+    # 3. several gradient steps on the clipped objective
+    for epoch in range(5):
+        for batch in split_into_minibatches(data):
+            ratio = new_prob(batch) / old_prob(batch)
+            loss_actor = -min(ratio * A, clip(ratio, 0.8, 1.2) * A).mean()
+            loss_critic = ((critic(batch.state) - batch.return_) ** 2).mean()
+            gradient_step(loss_actor + 0.5 * loss_critic)
+\end{verbatim}
+In practice you do not write this yourself. Libraries provide PPO, and robot simulators come with ready-made training scripts. But now you know what happens inside: a neural network, gradient descent (Chapter~\ref{ch:gd}) and the probabilities of Chapter~\ref{ch:rl3}.
+
+\begin{aibox}
+The same recipe, simulated robots $+$ a reward $+$ PPO, is used to train legged robots to walk over rough terrain, humanoids to run and recover from pushes, and robot hands to turn objects. Chapter~\ref{ch:rl5} is about designing the reward, and Chapter~\ref{ch:rl6} about moving the trained policy from the simulator to the real robot.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A robot has $10$ joints and every joint angle is described by $20$ values. How many entries does the Q-table have per action? How many terabytes does it need with $4$ bytes per entry? (A terabyte is $10^{12}$ bytes.)
+  \item Count the weights and biases of a policy network with the layer sizes $30\to64\to64\to10$.
+  \item $r=1$, $\gamma=0.9$, $V(s')=6$ and $V(s)=4.2$. Compute the one-step advantage $\delta$. Is the action reinforced?
+  \item In a state with $V=100$ the three actions have the returns $100,102,98$. Compute the advantages. Which action does the actor make more probable, which less?
+  \item Compute the clipped PPO objective for $\varepsilon=0.2$ in these cases: (a) $\rho=0.9$, $A=1.5$, (b) $\rho=1.3$, $A=1.5$, (c) $\rho=1.3$, $A=-1.5$, (d) $\rho=0.7$, $A=-1.5$.
+  \item For $A>0$ and $\rho>1+\varepsilon$ the PPO objective does not depend on $\rho$ any more. What does this mean for the gradient and why is this useful?
+  \item A Gaussian policy has $\mu=0.3$\,rad and $\sigma=0.1$\,rad. Which actions result for $z=-1,\,0,\,2$? Roughly how often does the sampled action lie between $0.2$ and $0.4$\,rad? (About $68\,\%$ of normally distributed samples lie within one standard deviation.)
+  \item \texttt{[code]} Use Python and matplotlib to plot the clipped objective $\min(\rho A,\operatorname{clip}(\rho,0.8,1.2)A)$ for $A=1$ and $\rho\in[0,2]$. Compare it with Figure~\ref{fig:rl4_ppo}.
+  \item[\textbf{\thechapter.9}$\star$] The critic is trained to predict returns by minimising $(V_\phi(s)-G)^2$. Compute this loss for $V_\phi(s)=4.2$ and $G=6$. In which direction does a gradient descent step change $V_\phi(s)$? (Use the derivative with respect to $V_\phi$.)
+\end{enumerate}
