@@ -1,0 +1,12 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item (a) $28\cdot28=784$. (b) $1920\cdot1080\cdot3=6\,220\,800$ numbers, i.e.\ $6\,220\,800$ bytes, about $6.2$ MB.
+  \item $0\to0\to-1$. $51\to0.2\to-0.6$. $128\to0.502\to0.004$. $255\to1\to1$.
+  \item OpenCV order is blue, green, red, so $B=0$, $G=128$, $R=255$. In RGB order the pixel is $(255,128,0)$: orange.
+  \item Shape \texttt{(8, 3, 224, 224)}. Values: $8\cdot3\cdot224\cdot224=1\,204\,224$, times $4$ bytes $=4\,816\,896$ bytes, about $4.8$ MB.
+  \item (a) $22\,050\cdot4=88\,200$ samples. (b) $22\,050/2=11\,025$ Hz.
+  \item Aliasing. The Nyquist frequency is $8$ kHz. The $20$ kHz tone appears as a wrong lower tone ($|20-16|=4$ kHz). Frequencies up to $8$ kHz can be recorded safely.
+  \item $1+\lfloor(32\,000-400)/160\rfloor=1+197=198$ frames. The table has $198\times64$ numbers.
+  \item Vocabulary order (the, ball, is, in, goal). First sentence: $(2,1,1,1,1)$. Second: ``the goal is the goal'' has the$=2$, goal$=2$, is$=1$: $(2,0,1,0,2)$. Dot product $4+0+1+0+2=7$. Lengths $\sqrt{4+1+1+1+1}=\sqrt8$ and $\sqrt{4+0+1+0+4}=3$. Cosine $=7/(2.828\cdot3)=0.825$.
+  \item \emph{the robot}, \emph{robot kicks}, \emph{kicks the}, \emph{the ball}. Example: ``dog bites man'' and ``man bites dog'' have the same bag of words, but different bigrams.
+  \item[\textbf{\ansnum.10}] Pair counts: \texttt{a a}: $4$; \texttt{a b}: $3$. So \texttt{a}+\texttt{a} $\to$ \texttt{aa} is merged first. Afterwards: \texttt{aa} (4 times) is one token \texttt{aa}; \emph{ab} is still \texttt{a b}; \emph{b} is \texttt{b}.
+\end{enumerate}

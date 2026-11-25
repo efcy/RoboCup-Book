@@ -1,9 +1,297 @@
 \bookchapter{Preparing data for neural networks}\label{ch:ai2}
-\begin{keyidea}[Planned content]
-This chapter is not written yet. It will cover:
-\begin{itemize}[nosep]
-  \item Images as arrays
-  \item Audio: sampling and spectrograms
-  \item Text: tokens
-\end{itemize}
+
+\section*{Explanation}
+A neural network is a function that takes \emph{numbers} and returns numbers (Chapter~\ref{ch:nn}). A photo, a sound and a sentence are not numbers yet. Before a network can work with them we must \textbf{represent} them as numbers, usually as a list or a table of numbers called a \textbf{vector} or a \textbf{tensor}. This chapter shows how this is done for images, audio and text, and how the network then uses the numbers.
+
+\begin{keyidea}[Data preparation in one sentence]
+Turn the raw data into an array of numbers of a \emph{fixed shape} with values in a \emph{small, sensible range}, then feed it to the network.
 \end{keyidea}
+
+\section*{Images}
+\subsection*{Pixels}
+A digital image is a grid of small squares, the \textbf{pixels}. In a \textbf{grayscale} image every pixel is one number, usually an integer from $0$ (black) to $255$ (white), which fits into one byte. The computer stores the image as a table with the rows from top to bottom. Figure~\ref{fig:ai2_pixels} shows an image of $5\times5$ pixels (an arrow) and the numbers behind it.
+
+\begin{center}
+\begin{tikzpicture}[scale=0.9]
+  \foreach \rowvals [count=\ri from 0] in {{0,0,255,0,0},{0,255,255,255,0},{255,255,255,255,255},{0,0,128,0,0},{0,0,128,0,0}} {
+    \foreach \px [count=\ci from 0] in \rowvals {
+      \pgfmathsetmacro{\gr}{100-\px/255*100}
+      \pgfmathsetmacro{\yy}{-\ri}
+      \fill[black!\gr] (\ci,\yy) rectangle (\ci+1,\yy-1);
+      \draw[gray] (\ci,\yy) rectangle (\ci+1,\yy-1);
+    }
+  }
+  \node[font=\scriptsize\sffamily] at (2.5,-5.4) {image};
+  \begin{scope}[xshift=7.5cm]
+    \foreach \rowvals [count=\ri from 0] in {{0,0,255,0,0},{0,255,255,255,0},{255,255,255,255,255},{0,0,128,0,0},{0,0,128,0,0}} {
+      \foreach \px [count=\ci from 0] in \rowvals {
+        \draw[gray] (\ci*1.0,-\ri) rectangle (\ci*1.0+1,-\ri-1);
+        \node[font=\scriptsize] at (\ci+0.5,-\ri-0.5) {\px};
+      }
+    }
+    \node[font=\scriptsize\sffamily] at (2.5,-5.4) {array of numbers};
+  \end{scope}
+  \draw[-{Stealth},thick] (5.4,-2.5) -- (6.9,-2.5);
+\end{tikzpicture}
+\captionof{figure}{An image is a table of numbers. $0$ is black, $255$ is white and $128$ is mid-gray.}\label{fig:ai2_pixels}
+\end{center}
+
+In Python a grayscale image is a two-dimensional array of shape \texttt{(height, width)}:
+\begin{verbatim}
+import numpy as np
+img = np.array([[  0,   0, 255,   0,   0],
+                [  0, 255, 255, 255,   0],
+                [255, 255, 255, 255, 255],
+                [  0,   0, 128,   0,   0],
+                [  0,   0, 128,   0,   0]], dtype=np.uint8)
+print(img.shape)    # (5, 5)
+print(img[2, 0])    # row 2, column 0 -> 255
+\end{verbatim}
+Note the order: first the \emph{row} (the $y$ direction, counted downwards), then the \emph{column}. This is the opposite of the usual $(x,y)$ in mathematics.
+
+\subsection*{Colour images}
+A colour image has \textbf{three channels}: red, green and blue (RGB). Each pixel has three numbers. Mixing them gives every colour: $(255,0,0)$ is red, $(0,0,0)$ is black, $(255,255,255)$ is white and $(255,128,0)$ is orange. The whole image is a three-dimensional array. The libraries disagree on the order of the axes, which is a classic source of bugs:
+\begin{itemize}[nosep]
+  \item \texttt{(height, width, 3)}, called HWC: used by PIL, OpenCV, matplotlib.
+  \item \texttt{(3, height, width)}, called CHW: used by PyTorch.
+\end{itemize}
+OpenCV also stores the channels in the order \emph{blue, green, red} (BGR), not RGB.
+
+\begin{center}
+\begin{tikzpicture}
+  \foreach \i/\col/\nm in {2/blue/B,1/green/G,0/red/R}{
+    \fill[\col!35,draw=\col!60!black,thick] (\i*0.45,\i*0.45) rectangle ++(2.6,2.0);
+    \node[font=\scriptsize\sffamily\bfseries,\col!50!black] at (\i*0.45+1.3,\i*0.45+1.0) {\nm channel};
+  }
+  \draw[Stealth-Stealth] (0,-0.35) -- node[below,font=\scriptsize]{width $W$} (2.6,-0.35);
+  \draw[Stealth-Stealth] (-0.35,0) -- node[left,font=\scriptsize]{height $H$} (-0.35,2.0);
+  \node[font=\small,align=left,anchor=west] at (4.6,1.6) {shape \texttt{(H, W, 3)}\\number of values: $H\cdot W\cdot3$};
+  \node[font=\small,align=left,anchor=west] at (4.6,0.4) {$640\times480$ photo:\\$640\cdot480\cdot3=921\,600$ numbers};
+\end{tikzpicture}
+\captionof{figure}{A colour image consists of three stacked tables, one per colour channel.}\label{fig:ai2_rgb}
+\end{center}
+
+\subsection*{Preparing the image for the network}
+Typical steps before an image goes into a network:
+\begin{enumerate}[nosep]
+  \item \textbf{Resize} to the input size of the network (for example $640\times640$). To avoid distorting the shape, the picture is often scaled so that the long side fits and the rest is filled with gray (\emph{letterboxing}).
+  \item \textbf{Convert} to the right channel order (BGR to RGB, HWC to CHW).
+  \item \textbf{Normalise.} The raw values $0\ldots255$ are too big for the activation functions and the gradient descent of Chapter~\ref{ch:gd}. We divide by $255$ to get $0\ldots1$ and often also subtract a mean and divide by a standard deviation, e.g.
+  \[
+  x'=\frac{x/255-0.5}{0.5},
+  \]
+  which maps $0\ldots255$ to $-1\ldots1$. The pixel value $128$ becomes $x/255=0.502$ and then $x'=0.004\approx0$.
+  \item \textbf{Add a batch axis.} Networks process many images at once, so the final shape is \texttt{(N, 3, H, W)} with $N$ images.
+\end{enumerate}
+\begin{verbatim}
+import numpy as np
+from PIL import Image
+
+img = Image.open("frame.jpg").convert("RGB").resize((640, 640))
+x = np.asarray(img, dtype=np.float32) / 255.0   # (640, 640, 3)
+x = (x - 0.5) / 0.5                             # range -1 ... 1
+x = x.transpose(2, 0, 1)                        # HWC -> CHW
+x = x[np.newaxis]                               # (1, 3, 640, 640)
+\end{verbatim}
+A batch of $16$ such images with $32$-bit floats needs $16\cdot3\cdot640\cdot640\cdot4=78\,643\,200$ bytes, about $79$ MB. This is why graphics memory matters (Part~IV).
+
+\subsection*{How the network uses the numbers}
+The simplest network treats the image as a long list. A $28\times28$ gray image is \textbf{flattened} to $784$ numbers $x_1,\dots,x_{784}$, and every neuron of the first layer computes $y=\varphi(w_1x_1+\dots+w_{784}x_{784}+b)$. Figure~\ref{fig:ai2_flat} shows the idea with a tiny $3\times3$ image.
+
+\begin{center}
+\begin{tikzpicture}[inp/.style={circle,draw,thick,minimum size=0.55cm,inner sep=0pt,font=\scriptsize}]
+  \foreach \ri in {0,1,2}{
+    \foreach \ci in {0,1,2}{
+      \pgfmathtruncatemacro{\nn}{3*\ri+\ci+1}
+      \draw[thick,fill=gray!15] (\ci*0.6,-\ri*0.6) rectangle ++(0.6,-0.6);
+      \node[font=\scriptsize] at (\ci*0.6+0.3,-\ri*0.6-0.3) {$p_{\nn}$};
+    }
+  }
+  \node[font=\scriptsize\sffamily] at (0.9,-2.1) {$3\times3$ image};
+  \draw[-{Stealth},thick] (2.1,-0.9) -- node[above,font=\scriptsize]{flatten} (3.3,-0.9);
+  \foreach \nn in {1,...,9}{
+    \node[inp] (in\nn) at (4.2,{0.45-0.6*\nn+0.6}) {$x_{\nn}$};
+  }
+  \node[circle,draw,thick,fill=orange!20,minimum size=0.9cm] (neuron) at (7.6,-1.8) {$\varphi$};
+  \foreach \nn in {1,...,9}{ \draw[-{Stealth},gray] (in\nn) -- (neuron); }
+  \draw[-{Stealth},thick] (neuron) -- node[above,font=\scriptsize]{$y$} (9.0,-1.8);
+  \node[font=\scriptsize\sffamily] at (4.2,-5.9) {$9$ inputs};
+\end{tikzpicture}
+\captionof{figure}{Flattening: the $9$ pixels become the $9$ inputs of a neuron. A real $28\times28$ image has $784$ inputs, and one neuron needs $785$ weights (including the bias $b$).}\label{fig:ai2_flat}
+\end{center}
+
+\begin{aibox}
+Flattening throws away the information which pixels are \emph{neighbours}. A cat that moves by one pixel looks like a completely different list. For this reason networks for images keep the grid and slide small filters over it (convolutions, Chapter~\ref{ch:ai3}), but the input is still the same normalised array.
+\end{aibox}
+
+\section*{Audio}
+\subsection*{Sound as numbers}
+Sound is a quickly changing air pressure. A microphone converts it to a voltage (Part~IV), and an \textbf{analog-to-digital converter} measures this voltage many times per second. The number of measurements per second is the \textbf{sampling rate} in Hertz (Hz). Speech is commonly recorded at $16\,000$ Hz, music at $44\,100$ Hz.
+
+\begin{example}
+One second of speech at $16$ kHz is $16\,000$ numbers. Three seconds are $48\,000$ numbers. A CD (stereo, $2$ bytes per number, $44\,100$ Hz) produces $44\,100\cdot2\cdot2=176\,400$ bytes per second.
+\end{example}
+
+How fast must we sample? The \textbf{Nyquist theorem} says: a sampling rate $f_s$ can represent frequencies only up to $f_s/2$. At $16$ kHz this is $8$ kHz, enough for speech (and for a referee's whistle at about $2$--$4$ kHz). A higher frequency is not just lost, it appears as a wrong, lower frequency, the \textbf{alias}. In Figure~\ref{fig:ai2_alias} a $7$ Hz wave is sampled with only $8$ Hz and looks like a slow $1$ Hz wave. Microphone electronics therefore use a low-pass filter before the sampling.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[gr, width=11cm,height=5cm, xmin=0,xmax=1, ymin=-1.3,ymax=1.3, xlabel={time (s)}, ylabel={amplitude}, axis lines=left, xlabel near ticks, ylabel near ticks, legend style={at={(1.02,0.5)},anchor=west,font=\scriptsize}]
+  \addplot[blue!60!black,thick,samples=300,domain=0:1]{sin(deg(2*pi*7*x))};
+  \addlegendentry{true wave, $7$ Hz}
+  \addplot[red!70!black,dashed,thick,samples=300,domain=0:1]{-sin(deg(2*pi*x))};
+  \addlegendentry{alias, $1$ Hz}
+  \addplot[only marks,mark=*,mark size=2.6pt,black,samples=9,domain=0:1]{sin(deg(2*pi*7*x))};
+  \addlegendentry{samples, $8$ Hz}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{Aliasing. The $8$ samples per second (dots) are exactly the same for the fast $7$ Hz wave and for the slow dashed $1$ Hz wave. After sampling we cannot tell them apart.}\label{fig:ai2_alias}
+\end{center}
+
+\subsection*{From a waveform to a spectrogram}
+The raw list of $16\,000$ numbers per second is hard to interpret for a network, because the information is in the \emph{frequencies}. The usual preparation is:
+\begin{enumerate}[nosep]
+  \item Cut the signal into short overlapping \textbf{frames}, e.g.\ $25$ ms ($400$ samples at $16$ kHz) with a step (hop) of $10$ ms ($160$ samples).
+  \item For every frame compute which frequencies it contains (the Fourier transform). The result is a column of numbers, one per frequency.
+  \item Put the columns next to each other: the \textbf{spectrogram}, a picture with time on the horizontal axis, frequency on the vertical axis and brightness for the loudness.
+  \item Group the frequencies into $40$ or $80$ \textbf{mel} bands and take the logarithm of the loudness (loudness is perceived roughly logarithmically).
+\end{enumerate}
+The number of frames for one second is $1+\lfloor(16\,000-400)/160\rfloor=98$, for three seconds $298$. A one-second clip with $40$ mel bands becomes a table of $98\times40$ numbers, which is just a small grayscale image. The network can therefore use the same tools as for images.
+
+\begin{center}
+\includegraphics[width=\textwidth]{ai/audio_spectrogram.png}
+\captionof{figure}{An audio signal in three views: the waveform (top), the spectrogram (middle) and the log-mel spectrogram that is given to the network (bottom).}\label{fig:ai2_spec}
+\end{center}
+
+The \textbf{mel scale} makes the frequency axis similar to our hearing: we hear the difference between $200$ and $300$ Hz as large, but between $7200$ and $7300$ Hz as tiny. The conversion is $m=2595\log_{10}\!\bigl(1+\frac{f}{700}\bigr)$. It gives $1000$ Hz $\to$ $1000$ mel, $4000$ Hz $\to$ $2146$ mel and $8000$ Hz $\to$ $2840$ mel: the upper half of the frequencies takes only a small part of the mel axis.
+
+\begin{aibox}
+Modern speech models sometimes take the raw waveform, but the log-mel spectrogram is still the most common input. For a robot, the same tools find a whistle, recognise a voice command or detect that a motor sounds wrong.
+\end{aibox}
+
+\section*{Text}
+Text has a special problem: words are not numbers, and there are very many of them. The process of cutting text into pieces and giving each piece a number is called \textbf{tokenisation}. A \textbf{token} is one piece: a word, part of a word, or a single character. Every token gets an integer, its \textbf{ID}, from a fixed list, the \textbf{vocabulary}.
+
+\subsection*{Bag of words}
+The oldest idea: count the words and ignore their order, like throwing the words into a bag. Take three sentences:
+\begin{center}
+$S_1$: ``the robot kicks the ball'' \quad $S_2$: ``the robot sees the ball'' \quad $S_3$: ``the goalie catches the ball''
+\end{center}
+The vocabulary has $7$ words: \emph{the, robot, kicks, ball, sees, goalie, catches}. Each sentence becomes a vector of counts:
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{l|ccccccc}
+ & the & robot & kicks & ball & sees & goalie & catches\\ \hline
+$S_1$ & 2 & 1 & 1 & 1 & 0 & 0 & 0\\
+$S_2$ & 2 & 1 & 0 & 1 & 1 & 0 & 0\\
+$S_3$ & 2 & 0 & 0 & 1 & 0 & 1 & 1\\
+\end{tabular}
+\end{center}
+Now texts can be compared with the \textbf{cosine similarity} of the vectors (the cosine of the angle between them, Chapter~\ref{ch:vectors}):
+\[
+\cos(S_1,S_2)=\frac{\vv a\cdot\vv b}{|\vv a|\,|\vv b|}=\frac{4+1+0+1}{\sqrt7\cdot\sqrt7}=\frac67=0.857,
+\qquad
+\cos(S_1,S_3)=\frac{5}{7}=0.714.
+\]
+The sentences about the robot are more similar, as expected. But the word ``the'' counts as much as ``kicks'', which is not sensible. Also, ``dog bites man'' and ``man bites dog'' give the \emph{same} vector.
+
+\subsection*{TF-IDF}
+\textbf{TF-IDF} weights the counts. The \emph{term frequency} (TF) is the count of the word in the text. The \emph{inverse document frequency} is $\mathrm{IDF}(w)=\ln\frac{N}{n_w}$, where $N$ is the number of texts and $n_w$ the number of texts that contain $w$. A word that appears everywhere gets weight $0$, a rare word gets a large weight. In our example $N=3$: ``the'' and ``ball'' occur in all three texts, $\mathrm{IDF}=\ln1=0$. ``robot'' occurs in two, $\mathrm{IDF}=\ln1.5=0.405$. ``kicks'', ``sees'', ``goalie'' and ``catches'' occur once, $\mathrm{IDF}=\ln3=1.099$. The weighted vector of $S_1$ is $(0,\,0.405,\,1.099,\,0,\,0,\,0,\,0)$, of $S_2$ is $(0,\,0.405,\,0,\,0,\,1.099,\,0,\,0)$, and
+\[
+\cos(S_1,S_2)=\frac{0.405^2}{0.405^2+1.099^2}=0.12,\qquad \cos(S_1,S_3)=0.
+\]
+Now only the informative words count. TF-IDF is still used for search engines and simple classifiers.
+
+\subsection*{N-grams}
+To keep a little word order, count pairs or triples of neighbouring words, \textbf{n-grams}. The bigrams of ``the robot kicks the ball'' are \emph{the robot}, \emph{robot kicks}, \emph{kicks the}, \emph{the ball}. Now ``dog bites man'' (\emph{dog bites}, \emph{bites man}) and ``man bites dog'' (\emph{man bites}, \emph{bites dog}) differ. The disadvantage is that the vocabulary explodes: with $50\,000$ words there are up to $50\,000^2=2.5\cdot10^9$ possible bigrams, and most of them never occur in the data.
+
+\subsection*{Word embeddings}
+Bag-of-words vectors have one slot per word, so the words ``ball'' and ``goal'' look as different as ``ball'' and ``banana''. An \textbf{embedding} gives every token a short vector of, say, $d=300$ numbers that is \emph{learned} so that tokens used in similar contexts get similar vectors. Technically it is a table (matrix) $E$ with one row per token; to embed a token we look up its row. Imagine the toy embeddings in two dimensions: ball $=(0.9,0.1)$, goal $=(0.8,0.3)$, banana $=(-0.2,0.9)$. Then $\cos(\text{ball},\text{goal})=0.97$ but $\cos(\text{ball},\text{banana})=-0.11$. A vocabulary of $50\,000$ tokens with $d=768$ needs $50\,000\cdot768=38\,400\,000$ numbers. Famous early methods are \emph{word2vec} and \emph{GloVe}. In modern networks the embedding table is simply the first layer and is trained together with the rest.
+
+\subsection*{Subword tokens}
+Which pieces should be tokens? \emph{Whole words} give a huge vocabulary and fail on unknown words (``kickoff'', typos, names): they become an \texttt{<unk>} token. \emph{Single characters} never fail but make texts very long and each token carries little meaning. Modern models use the middle way, \textbf{subword tokens}: frequent words are one token, rare words are split into frequent pieces.
+
+\textbf{Byte pair encoding (BPE)} builds the vocabulary automatically:
+\begin{enumerate}[nosep]
+  \item Start with single characters (and an end-of-word mark \texttt{\_}) as the vocabulary.
+  \item Count all pairs of neighbouring tokens in the training text.
+  \item Merge the most frequent pair to a new token, and replace it everywhere.
+  \item Repeat until the vocabulary has the wanted size.
+\end{enumerate}
+
+\begin{example}
+Training words with counts: \emph{low} (5), \emph{lower} (2), \emph{newest} (6), \emph{widest} (3). The first pair counts are \texttt{e s} $=9$, \texttt{s t} $=9$, \texttt{t \_} $=9$ ($6$ from newest, $3$ from widest). Ties are broken arbitrarily. The merges are:
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{c|l|l}
+step & merge & words afterwards\\ \hline
+0 & --- & \texttt{l o w \_}, \texttt{l o w e r \_}, \texttt{n e w e s t \_}, \texttt{w i d e s t \_}\\
+1 & \texttt{e}+\texttt{s} $\to$ \texttt{es} & \texttt{n e w es t \_}, \texttt{w i d es t \_}\\
+2 & \texttt{es}+\texttt{t} $\to$ \texttt{est} & \texttt{n e w est \_}, \texttt{w i d est \_}\\
+3 & \texttt{est}+\texttt{\_} $\to$ \texttt{est\_} & \texttt{n e w est\_}, \texttt{w i d est\_}\\
+4 & \texttt{l}+\texttt{o} $\to$ \texttt{lo} & \texttt{lo w \_}, \texttt{lo w e r \_}\\
+5 & \texttt{lo}+\texttt{w} $\to$ \texttt{low} & \texttt{low \_}, \texttt{low e r \_}\\
+\end{tabular}
+\end{center}
+The word \emph{lowest} never appeared in the training text, but with these five merges it is tokenised as \texttt{low} + \texttt{est\_}: the new word is built from known pieces.
+\end{example}
+
+The most important variants are:
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{p{3.2cm}p{10.5cm}}
+\textbf{Method} & \textbf{Idea}\\ \hline
+BPE & Merge the most \emph{frequent} pair. Used by the GPT family.\\
+WordPiece & Merge the pair that improves the likelihood of the training data most. Pieces inside a word get a prefix, e.g.\ \texttt{kick \#\#off}. Used by BERT.\\
+SentencePiece & Works directly on raw text including spaces (a space is written as \texttt{\_}), so no language-specific rules are needed. Used for many multilingual models.\\
+Byte-level BPE & Starts with the $256$ possible bytes instead of characters. Any text, including emojis, can be encoded; there is never an unknown token.\\
+\end{tabular}
+\end{center}
+
+\subsection*{From text to the network}
+Whatever method is used, the steps afterwards are the same (Figure~\ref{fig:ai2_pipeline}). The text is split into tokens, each token is replaced by its ID, each ID is replaced by its embedding vector, and the sequence of vectors goes into the network. Typical vocabularies have $30\,000$ to $250\,000$ tokens. Because sequences have different lengths, shorter ones are padded and very long ones are cut to a fixed context length.
+
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,rounded corners,thick,fill=blue!8,align=center,font=\small,minimum height=1.2cm,minimum width=2.7cm},node distance=0.9cm]
+  \node[box] (t) {text\\``kickoff now''};
+  \node[box,right=of t] (tok) {tokens\\\texttt{kick}\ \texttt{\#\#off}\ \texttt{now}};
+  \node[box,right=of tok] (id) {IDs\\\texttt{[5102, 871, 233]}};
+  \node[box,right=of id,fill=orange!15] (em) {vectors\\$3\times d$ table};
+  \foreach \a/\b in {t/tok,tok/id,id/em}{ \draw[-{Stealth},thick] (\a) -- (\b); }
+\end{tikzpicture}
+\captionof{figure}{The text pipeline. The IDs here are made up; each model has its own vocabulary.}\label{fig:ai2_pipeline}
+\end{center}
+
+\section*{Other data and general rules}
+\begin{itemize}[nosep]
+  \item \textbf{Sensor data of the robot} (joint angles, IMU, forces) are already numbers. They are arrays of shape (time steps, channels) and must be normalised, since angles in radians and forces in Newton have very different sizes.
+  \item \textbf{Categories} (``left'', ``right'', ``centre'') become \emph{one-hot} vectors $(1,0,0)$, $(0,1,0)$, $(0,0,1)$. A plain number $1,2,3$ would wrongly say that ``centre'' is larger than ``left''.
+  \item \textbf{Normalisation:} subtract the mean and divide by the standard deviation of the training data. Use the \emph{same} numbers later on the robot.
+  \item \textbf{Train and test split:} keep part of the data (e.g.\ $20\,\%$) unseen for testing, and never prepare the data using the test set.
+  \item \textbf{Augmentation:} create more training data by small changes: flip or crop images, change brightness, add noise to audio.
+\end{itemize}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{p{2.0cm}p{4.4cm}p{3.5cm}p{3.7cm}}
+\textbf{Data} & \textbf{Raw form} & \textbf{Network input} & \textbf{Typical shape}\\ \hline
+Image & pixels, $0\ldots255$ & normalised array & \texttt{(N, 3, H, W)}\\
+Audio & samples, e.g.\ $16$ kHz & log-mel spectrogram & \texttt{(N, 1, 98, 40)} per second\\
+Text & characters & token IDs, then embeddings & \texttt{(N, length, d)}\\
+Sensors & numbers & normalised numbers & \texttt{(N, time, channels)}\\
+\end{tabular}
+\end{center}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item How many numbers does (a) a $28\times28$ gray image, (b) a $1920\times1080$ colour image have? How many bytes is (b) with one byte per value?
+  \item Normalise the pixel values $0$, $51$, $128$, $255$ to the range $0\ldots1$ and then to $-1\ldots1$ with $x'=(x/255-0.5)/0.5$.
+  \item An OpenCV image has the pixel $(B,G,R)=(0,128,255)$. Which colour is it? Write the pixel as $(R,G,B)$.
+  \item A batch of $8$ colour images of $224\times224$ has which shape in the CHW convention? How many float32 bytes does it need?
+  \item At a sampling rate of $22\,050$ Hz, (a) how many samples does $4$ s of audio contain? (b) What is the highest frequency that can be represented?
+  \item A $20$ kHz tone is sampled at $16$ kHz. Which problem occurs, and what is the maximum frequency you can safely record?
+  \item With a frame length of $400$ samples and a hop of $160$ samples at $16$ kHz, how many frames does a $2$ s clip give? How big is the log-mel table with $64$ mel bands?
+  \item Build the bag-of-words vectors of ``the ball is in the goal'' and ``the goal is the goal'' (vocabulary: the, ball, is, in, goal) and compute their cosine similarity.
+  \item List the bigrams of ``the robot kicks the ball''. Give two different sentences that have the same bag of words but different bigrams.
+  \item[\textbf{\thechapter.10}$\star$] Apply byte pair encoding to the words \emph{aa} (4 times), \emph{ab} (3 times) and \emph{b} (2 times), without end marks. Which pair is merged first? Write the three words after the first merge.
+\end{enumerate}
