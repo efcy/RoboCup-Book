@@ -1,0 +1,188 @@
+\bookchapter{Devices, udev Rules and Audio}\label{ch:linux6}
+
+\section*{Explanation}
+A robot is full of hardware that you plug in: a camera, an IMU on a USB serial adapter, a motor controller, a microphone, a game pad. This chapter explains how Linux presents such devices, how to give them \emph{stable names and the right permissions} with \textbf{udev rules}, and how to work with sound devices on the command line.
+
+\section*{Devices as files}
+Hardware appears as special files in \texttt{/dev} (Chapter~\ref{ch:linux1}). Programs open them like files:
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{p{5.0cm}p{8.4cm}}
+\texttt{/dev/ttyUSB0}, \texttt{/dev/ttyACM0} & USB serial adapters (IMU, microcontrollers, Dynamixel adapters)\\
+\texttt{/dev/video0} & cameras (every camera creates several \texttt{videoN} entries)\\
+\texttt{/dev/input/event5} & keyboards, mice, game pads\\
+\texttt{/dev/sda}, \texttt{/dev/nvme0n1} & disks (and partitions \texttt{sda1}, \dots)\\
+\texttt{/dev/snd/} & sound cards (ALSA)\\
+\end{tabular}
+\end{center}
+Useful commands to see what is connected:
+\begin{verbatim}
+$ lsusb                  # all USB devices with IDs
+Bus 001 Device 004: ID 0403:6001 Future Technology Devices Intl. FT232
+Bus 001 Device 005: ID 046d:c52b Logitech, Inc. Unifying Receiver
+$ lsusb -t               # as a tree (which hub, which speed)
+$ lsblk                  # disks and partitions
+$ ls -l /dev/ttyUSB0
+crw-rw---- 1 root dialout 188, 0 Nov 25 10:12 /dev/ttyUSB0
+$ sudo dmesg -w          # watch kernel messages while you plug in a device
+\end{verbatim}
+The \texttt{c} at the start of \texttt{crw-rw----} means a \emph{character device}. The owner is \texttt{root}, the group is \texttt{dialout}, and others have no access. So your program can open \texttt{/dev/ttyUSB0} only if you are in the group \texttt{dialout}:
+\begin{verbatim}
+$ groups                          # which groups am I in?
+$ sudo usermod -aG dialout $USER  # add myself (-a = append!)
+\end{verbatim}
+The change takes effect at the next login (log out and in again, or reconnect SSH). The \texttt{-a} is essential: without it you are removed from all other groups. Typical groups: \texttt{dialout} (serial ports), \texttt{video} (cameras), \texttt{audio} (sound), \texttt{input} (game pads), \texttt{plugdev} (removable devices).
+
+\section*{The problem: unstable names}
+Plug in two USB serial adapters, an IMU and a motor controller. The kernel names them \texttt{ttyUSB0} and \texttt{ttyUSB1} \emph{in the order in which it finds them}. After a reboot, or with a different port, the order can swap, and the controller suddenly talks to the IMU. A hard-coded \texttt{/dev/ttyUSB0} in your code is a time bomb.
+
+The solution: \textbf{udev}. The program \texttt{systemd-udevd} reacts to every hardware event and applies \textbf{rules} that can create a stable name (a symbolic link such as \texttt{/dev/imu}), set the owner, group and permissions, and more (Figure~\ref{fig:l6_udev}).
+
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,rounded corners,thick,minimum height=1.1cm,minimum width=2.5cm,align=center,font=\small},>={Stealth[length=2.5mm]}]
+  \node[box,fill=gray!12] (u) at (0,0) {plug in\\USB device};
+  \node[box,fill=blue!10] (k) at (3.6,0) {kernel\\finds device};
+  \node[box,fill=orange!15] (d) at (7.2,0) {\texttt{udevd}\\reads rules};
+  \node[box,fill=green!12] (f) at (10.8,0) {\texttt{/dev/ttyUSB0}\\+ link \texttt{/dev/imu}};
+  \draw[->,thick] (u) -- (k);
+  \draw[->,thick] (k) -- node[above,font=\scriptsize]{event} (d);
+  \draw[->,thick] (d) -- node[above,font=\scriptsize]{name, group, mode} (f);
+  \node[font=\scriptsize,align=center] at (7.2,-1.4) {\texttt{/etc/udev/rules.d/99-robot.rules}};
+  \draw[->,gray] (7.2,-1.15) -- (d.south);
+\end{tikzpicture}
+\captionof{figure}{What happens when a device is plugged in. The rule files decide the stable name and the permissions.}\label{fig:l6_udev}
+\end{center}
+
+\section*{Writing a udev rule}
+\subsection*{Step 1: find out what is special about the device}
+A rule must identify \emph{one device}. USB devices have a \textbf{vendor ID} and a \textbf{product ID} (shown by \texttt{lsusb}, here \texttt{0403:6001}) and sometimes a unique \textbf{serial number}. Cheap adapters of the same type share the IDs, so two identical adapters can only be told apart by the serial number (or by the USB port they are plugged in). Ask udev for all attributes:
+\begin{verbatim}
+$ udevadm info -a -n /dev/ttyUSB0
+...
+  looking at device '/devices/.../1-1.2/1-1.2:1.0/ttyUSB0/tty/ttyUSB0':
+    KERNEL=="ttyUSB0"
+    SUBSYSTEM=="tty"
+  looking at parent device '/devices/.../1-1.2':
+    ATTRS{idVendor}=="0403"
+    ATTRS{idProduct}=="6001"
+    ATTRS{serial}=="A50285BI"
+\end{verbatim}
+(Typical excerpt of a long output.) The command walks from the device up through its \emph{parents}; the attributes of the USB parent (vendor, product, serial) are the ones you want to match. A shorter overview gives \verb|udevadm info /dev/ttyUSB0|.
+
+\subsection*{Step 2: the rule}
+Rules live in \texttt{/etc/udev/rules.d/} in files that end with \texttt{.rules}. They are read in alphabetical order, so a file name such as \texttt{99-robot.rules} runs after the system rules and can override them. One rule is one line:
+\begin{verbatim}
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", \
+  ATTRS{serial}=="A50285BI", SYMLINK+="imu", GROUP="dialout", MODE="0660"
+\end{verbatim}
+A backslash at the end of a line continues the rule on the next line. A rule consists of comma-separated parts:
+\begin{itemize}[nosep]
+  \item \textbf{Match parts} use \verb|==| and select the device: \texttt{SUBSYSTEM}, \texttt{KERNEL} (the kernel name, patterns like \texttt{"ttyUSB*"} allowed), \texttt{ATTRS\{...\}} (attributes of the device or of any parent), \texttt{ATTR\{...\}} (the device itself only), \texttt{ENV\{...\}}.
+  \item \textbf{Action parts} use \verb|=| or \verb|+=| and change something: \texttt{SYMLINK+="imu"} adds the stable name \texttt{/dev/imu}, \texttt{GROUP="dialout"} and \texttt{MODE="0660"} set the permissions, \texttt{TAG+="uaccess"} lets the user who is logged in at the machine use the device.
+\end{itemize}
+\begin{keyidea}[== matches, = assigns]
+The most common mistake is writing one equals sign where two are needed (\verb|ATTRS{idVendor}="0403"| assigns instead of matching) or the other way round. Another one is using \texttt{ATTR} for something that sits in a parent device. Mistakes are \emph{silently ignored}, so always test.
+\end{keyidea}
+
+\subsection*{Step 3: load and test}
+\begin{verbatim}
+$ sudo udevadm control --reload-rules     # read the rule files again
+$ sudo udevadm trigger                    # apply to devices already plugged in
+$ ls -l /dev/imu                          # the new link
+lrwxrwxrwx 1 root root 7 Nov 25 10:20 /dev/imu -> ttyUSB0
+$ udevadm test $(udevadm info -q path -n /dev/ttyUSB0)   # simulate and explain
+$ udevadm monitor --property              # watch events live while plugging
+\end{verbatim}
+\texttt{udevadm test} prints which rule files were read and which of your rules matched, a great help when nothing happens. With \texttt{ls -l} you see that \texttt{/dev/imu} is a symbolic link (\texttt{l}) to the real device: your program opens \texttt{/dev/imu} and does not care about the number.
+
+\begin{example}[Two identical adapters]
+Two FTDI adapters (\texttt{0403:6001}) are used, one for the IMU (serial \texttt{A50285BI}) and one for the motor controller (serial \texttt{A9XYZ123}). Two rules in \texttt{99-robot.rules}:
+\begin{verbatim}
+SUBSYSTEM=="tty", ATTRS{serial}=="A50285BI", SYMLINK+="imu", \
+  MODE="0660", GROUP="dialout"
+SUBSYSTEM=="tty", ATTRS{serial}=="A9XYZ123", SYMLINK+="motors", \
+  MODE="0660", GROUP="dialout"
+\end{verbatim}
+Whatever the plugging order is, \texttt{/dev/imu} and \texttt{/dev/motors} now always point to the right device. The robot code uses these names, and a second robot only needs a new rule file.
+\end{example}
+
+\textbf{More notes.}
+\begin{itemize}[nosep]
+  \item \textbf{Cameras:} \texttt{/dev/video0} and \texttt{video1} belong to one physical camera (image and metadata). Match with \texttt{ATTR\{index\}=="0"} together with the USB ID so that the link points to the capture node.
+  \item \textbf{No serial number} on the device? Match the USB port with \texttt{KERNELS=="1-1.2"} (the parent's path) and always plug the device into this port.
+  \item \verb|RUN+="/path/script"| starts a program, but only a short-lived one with restricted rights (udev kills long jobs). For long-running programs, start a systemd service (Chapter~\ref{ch:linux5}), for instance with \texttt{TAG+="systemd", ENV\{SYSTEMD\_WANTS\}="walker.service"}.
+  \item \verb|udevadm verify FILE| checks the syntax of a rule file in recent systemd versions.
+  \item Rules apply at plug-in time; a program that already has the device open keeps the old one.
+\end{itemize}
+
+\section*{Audio on the command line}
+Sound uses several layers (Figure~\ref{fig:l6_audio}). The kernel drivers and the low-level interface are called \textbf{ALSA}. On top runs a \textbf{sound server} that mixes several programs and routes them to the right device. The classic one is \textbf{PulseAudio}. Recent Ubuntu desktop versions use \textbf{PipeWire}, which also speaks the PulseAudio protocol, so the PulseAudio commands below (\texttt{pactl}, \texttt{pavucontrol}) work unchanged.
+
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,rounded corners,thick,minimum height=1.0cm,minimum width=2.7cm,align=center,font=\small},>={Stealth[length=2.5mm]}]
+  \node[box,fill=blue!10] (a) at (0,1.0) {application 1\\{\scriptsize speech output}};
+  \node[box,fill=blue!10] (b) at (0,-0.5) {application 2\\{\scriptsize microphone input}};
+  \node[box,fill=orange!15] (s) at (4.4,0.25) {sound server\\{\scriptsize PulseAudio / PipeWire}};
+  \node[box,fill=gray!15] (k) at (8.4,0.25) {ALSA\\{\scriptsize kernel drivers}};
+  \node[box,fill=green!12] (h) at (11.9,1.0) {speaker};
+  \node[box,fill=green!12] (m) at (11.9,-0.5) {USB microphone};
+  \draw[->,thick] (a) -- (s); \draw[->,thick] (s) -- (a);
+  \draw[->,thick] (b) -- (s); \draw[->,thick] (s) -- (b);
+  \draw[->,thick] (s) -- (k);
+  \draw[->,thick] (k) -- (h); \draw[->,thick] (m) -- (k);
+\end{tikzpicture}
+\captionof{figure}{The audio stack. Applications talk to the sound server, which talks to the drivers.}\label{fig:l6_audio}
+\end{center}
+
+\textbf{Vocabulary.} A \textbf{sink} is an output (speaker, headphones, HDMI). A \textbf{source} is an input (microphone, or the ``monitor'' of a sink, which records what is played). Each application stream connects to a sink or a source. Every sink and source has a volume, a mute switch, and one is the \textbf{default}. A \textbf{card} is a physical device; its \textbf{profile} chooses the mode (for example stereo output, or headset with microphone).
+
+\begin{verbatim}
+$ pactl info | grep -i "default"          # default sink and source
+Default Sink: alsa_output.usb-Jabra_Speak_410-00.analog-stereo
+Default Source: alsa_input.usb-Jabra_Speak_410-00.mono-fallback
+$ pactl list short sinks                  # all outputs
+$ pactl list short sources                # all inputs (also *.monitor)
+$ pactl set-default-sink NAME             # choose the output
+$ pactl set-default-source NAME           # choose the microphone
+$ pactl set-sink-volume @DEFAULT_SINK@ 70%
+$ pactl set-sink-mute @DEFAULT_SINK@ toggle
+$ pactl set-source-volume @DEFAULT_SOURCE@ 80%
+$ pactl set-source-mute @DEFAULT_SOURCE@ 0     # unmute the microphone
+$ pactl list short sink-inputs            # which programs are playing?
+$ pactl list cards short                  # physical cards (for profiles)
+\end{verbatim}
+(Example output; the names depend on your hardware.) \texttt{pavucontrol} is the graphical equivalent. Many audio problems are simply: wrong default device, volume at $0\,\%$, or muted. Always look at these first.
+
+\textbf{Testing the hardware directly with ALSA.}
+\begin{verbatim}
+$ aplay -l                       # playback cards: card number, device number
+$ arecord -l                     # recording cards
+$ speaker-test -c 2 -t wav       # test sound on two speakers
+$ arecord -f S16_LE -r 16000 -c 1 -d 5 test.wav   # record 5 s, 16 kHz mono
+$ aplay test.wav                 # play it back
+\end{verbatim}
+The parameters of the recording are the ones from Chapter~\ref{ch:ai2}: a sampling rate of $16\,000$\,Hz with $16$ bits ($2$ bytes) and one channel gives $32\,000$ bytes per second. A speech model expects exactly this format; if your microphone delivers $48\,000$\,Hz stereo, you must convert it (for example with \texttt{sox} or \texttt{ffmpeg}).
+
+\begin{keyidea}[The sound server belongs to a user session]
+PulseAudio/PipeWire runs as part of \emph{your} login session. A service that runs as root or as another user does not see your sound server, and a robot without anybody logged in has none at all. To use sound in a service: run the service as the user (\texttt{User=robot}), enable lingering (\verb|loginctl enable-linger robot|) so that the user session exists from boot, and set \texttt{Environment=XDG\_RUNTIME\_DIR=/run/user/1000} (the number is the user ID from \texttt{id}). Check the server with \verb|systemctl --user status pipewire-pulse| or \texttt{pulseaudio}.
+\end{keyidea}
+
+\textbf{Checklist when ``no sound'' or ``no microphone'':} (1) Is the device in \texttt{lsusb} and \texttt{arecord -l}? (2) Is it the default source/sink (\texttt{pactl info})? (3) Is it muted or at $0\,\%$? (4) Is the right profile active? (5) Which program uses it (\verb|pactl list short sink-inputs|)? (6) Do you run in a session that has a sound server?
+
+\begin{aibox}
+Your robot's ``ears'' (speech commands, whistle detection) and ``voice'' use exactly these tools. A stable device name via a udev rule, the right group, a default source and a matching sample rate are all the setup you need for a reproducible audio system. The spectrogram pipeline of Chapter~\ref{ch:ai2} starts after \texttt{arecord} has produced the samples.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Your program gets \texttt{Permission denied} opening \texttt{/dev/ttyUSB0}, and \texttt{ls -l} shows the group \texttt{dialout}. Which command fixes this for your user, and why do you have to log in again?
+  \item Why can the device name \texttt{/dev/ttyUSB0} change between two boots? Which mechanism gives a stable name?
+  \item \texttt{lsusb} shows \texttt{ID 10c4:ea60} and the serial number is \texttt{0001}. Write a udev rule that creates the link \texttt{/dev/lidar} for this tty device and sets group \texttt{dialout} and mode \texttt{0660}. Give the file name and the two commands that activate it without rebooting.
+  \item What is wrong with \verb|SUBSYSTEM="tty", ATTRS{idVendor}=="0403", SYMLINK+="imu"|? (One wrong operator, and one reason why it may match too many devices.)
+  \item Name three ways to find the vendor ID and the product ID of a plugged-in device.
+  \item What is the difference between \texttt{ATTR} and \texttt{ATTRS} in a rule? Why are the USB serial numbers found with \texttt{ATTRS}?
+  \item List the available microphones, set the second one as default, set its volume to $80\,\%$ and make sure it is not muted. Give the commands.
+  \item Record $5$ seconds with $16$ kHz, $16$ bit, mono and play the file back. How many bytes of audio data does the recording have (without the file header)?
+  \item A service that runs as root cannot play sound, although it works in your terminal. Why? Give two things you would change.
+  \item[\textbf{\thechapter.10}$\star$] Why is it a bad idea to start your robot's main program with \texttt{RUN+="..."} in a udev rule? What do you use instead?
+\end{enumerate}

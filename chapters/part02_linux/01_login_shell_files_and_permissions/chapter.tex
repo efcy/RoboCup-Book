@@ -1,8 +1,231 @@
-\bookchapter{Login, shell, files and permissions}\label{ch:linux1}
-\begin{keyidea}[Planned content]
-This chapter is not written yet. It will cover:
+\bookchapter{Login, Terminal, Files and Permissions}\label{ch:linux1}
+
+\section*{Explanation}
+The computer in a robot usually has no screen, no mouse and no desktop. You talk to it by typing commands in a \textbf{terminal}, often from your laptop over the network. This chapter shows how to log in, find your way through the file system, work with files and understand who may do what. Everything in the later chapters builds on it.
+
+\subsection*{Users and login}
+Linux is a multi-user system. Everybody has a \textbf{user name} and a password (or a key, Chapter~\ref{ch:linux3}). After a successful login you get a \textbf{shell}, a program that reads your commands and runs them. The shell shows a \textbf{prompt}:
+\begin{verbatim}
+robot@k1-brain:~$
+\end{verbatim}
+The prompt reads: the user \texttt{robot} on the computer (host) \texttt{k1-brain}, currently in the directory \texttt{\textasciitilde} (the home directory). The \texttt{\$} says that you are a normal user. A \texttt{\#} means that you are \texttt{root}, the all-powerful administrator.
+
+\begin{verbatim}
+$ whoami
+robot
+$ hostname
+k1-brain
+$ id
+uid=1000(robot) gid=1000(robot) groups=1000(robot),27(sudo),29(audio)
+\end{verbatim}
+\texttt{id} shows the numeric user ID and the \textbf{groups} you belong to. Groups control access to devices: members of \texttt{audio} may use the sound card, members of \texttt{dialout} the serial ports, members of \texttt{sudo} may become administrator.
+
+\textbf{Terminal, console, shell.} The \emph{terminal} is the window (or the SSH connection) in which text appears. The \emph{shell} is the program inside, on Ubuntu normally \texttt{bash}. The shell is not part of the system's core: it is just a program that starts other programs.
+
+\subsection*{How a command looks}
+\begin{verbatim}
+ls -l --human-readable /home/robot
+\end{verbatim}
+A command line has the \textbf{command} (\texttt{ls}), \textbf{options} (\texttt{-l} short form, \texttt{--human-readable} long form) and \textbf{arguments} (the thing to work on). Short options can be combined: \texttt{ls -lah} means \texttt{ls -l -a -h}. Upper and lower case matter everywhere in Linux.
+
+How do you find out what a command does?
 \begin{itemize}[nosep]
-  \item Logging in, the terminal, the file system
-  \item Files, folders and permissions
+  \item \verb|man ls| opens the manual page. Scroll with the arrow keys, search with \texttt{/word}, quit with \texttt{q}.
+  \item \verb|ls --help| prints a short summary.
+  \item \verb|apropos copy| searches the manual pages for a word if you do not know the command name.
 \end{itemize}
+
+\textbf{Keyboard tricks that save hours.} \texttt{Tab} completes names (press it twice to see all possibilities). The up arrow brings back the previous commands, \texttt{Ctrl+R} searches the history. \texttt{Ctrl+C} stops a running program, \texttt{Ctrl+D} ends the input (or logs out), \texttt{Ctrl+L} clears the screen, \texttt{Ctrl+A} and \texttt{Ctrl+E} jump to the start and end of the line.
+
+\textbf{sudo.} Some commands change the system (install software, change network settings). They need administrator rights. You put \texttt{sudo} in front of the command and enter your password:
+\begin{verbatim}
+$ sudo apt update
+\end{verbatim}
+Work as a normal user and use \texttt{sudo} only for the single command that needs it. A mistake as root can destroy the system. (Ubuntu 26.04 ships a re-implementation of \texttt{sudo} written in Rust, \texttt{sudo-rs}. You use it in exactly the same way.)
+
+\section*{The file system}
+Linux has \emph{one} tree of directories that starts at the \textbf{root} directory \texttt{/}. There are no drive letters like \texttt{C:}. A second disk or a USB stick is \textbf{mounted} somewhere into the tree, for example at \texttt{/media/robot/USBSTICK}. Figure~\ref{fig:l1_tree} shows the important directories.
+
+\begin{center}
+\begin{tikzpicture}[level distance=1.15cm, sibling distance=1.45cm, every node/.style={font=\small\ttfamily}, edge from parent/.style={draw,thick,gray}, grow=down,
+  level 1/.style={sibling distance=1.55cm}]
+  \node[draw,rounded corners,fill=blue!10] {/}
+    child { node[draw,rounded corners,fill=orange!15] {home} child { node[draw,rounded corners,fill=orange!10] {robot} } }
+    child { node[draw,rounded corners,fill=green!12] {etc} }
+    child { node[draw,rounded corners,fill=green!12] {var} child { node[draw,rounded corners,fill=green!8] {log} } }
+    child { node[draw,rounded corners,fill=green!12] {usr} child { node[draw,rounded corners,fill=green!8] {bin} } }
+    child { node[draw,rounded corners,fill=violet!12] {dev} }
+    child { node[draw,rounded corners,fill=violet!12] {proc} }
+    child { node[draw,rounded corners,fill=violet!12] {sys} }
+    child { node[draw,rounded corners,fill=gray!12] {tmp} }
+    child { node[draw,rounded corners,fill=gray!12] {opt} };
+\end{tikzpicture}
+\captionof{figure}{The top of the Linux directory tree. Orange: user data. Green: system configuration and programs. Violet: virtual directories that show devices and the running kernel.}\label{fig:l1_tree}
+\end{center}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{p{2.4cm}p{11.2cm}}
+\textbf{Directory} & \textbf{Contents}\\ \hline
+\texttt{/home} & the personal files of every user (\texttt{/home/robot})\\
+\texttt{/etc} & configuration files of the system and of the services\\
+\texttt{/var} & data that changes while running: logs in \texttt{/var/log}, caches, databases\\
+\texttt{/usr} & installed programs (\texttt{/usr/bin}), libraries and documentation\\
+\texttt{/opt} & extra software installed by hand, e.g.\ ROS in \texttt{/opt/ros}\\
+\texttt{/tmp} & temporary files, deleted at reboot\\
+\texttt{/dev} & devices as files: \texttt{/dev/ttyUSB0}, \texttt{/dev/video0}, \texttt{/dev/sda}\\
+\texttt{/proc}, \texttt{/sys} & virtual files with information about processes, hardware and the kernel\\
+\texttt{/boot} & the kernel and boot files\\
+\end{tabular}
+\end{center}
+
+\begin{keyidea}[Everything is a file]
+Linux presents almost everything as a file: documents, directories, hardware (\texttt{/dev/video0} is the camera), and even the state of the kernel (\texttt{/proc/cpuinfo} describes your processor). So the same few tools (\texttt{cat}, \texttt{ls}, \texttt{grep}, \dots) can read all of it. You will use this in Chapter~\ref{ch:linux8} to check the load of a machine.
 \end{keyidea}
+
+\subsection*{Paths and moving around}
+A \textbf{path} names a file. An \textbf{absolute path} starts with \texttt{/} and works from everywhere: \texttt{/home/robot/code/notes.txt}. A \textbf{relative path} starts at the current directory: \texttt{code/notes.txt}. Special names:
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{cl}
+\texttt{.} & the current directory\\
+\texttt{..} & the parent directory (one level up)\\
+\texttt{\textasciitilde} & your home directory (\texttt{/home/robot})\\
+\texttt{-} & with \texttt{cd}: the previous directory\\
+\end{tabular}
+\end{center}
+\begin{verbatim}
+$ pwd                      # print working directory
+/home/robot
+$ cd code/ros              # go down two levels (relative path)
+$ pwd
+/home/robot/code/ros
+$ cd ../..                 # two levels up
+$ cd /etc                  # absolute path
+$ cd                       # no argument: back home
+\end{verbatim}
+Everything after \texttt{\#} in an example is a comment.
+
+\textbf{Looking at a directory.}
+\begin{verbatim}
+$ ls -lah
+total 24K
+drwxr-xr-x  4 robot robot 4.0K Nov 25 10:12 .
+drwxr-x--- 12 robot robot 4.0K Nov 25 09:58 ..
+-rw-r--r--  1 robot robot  220 Nov 24 18:03 notes.txt
+drwxr-xr-x  2 robot robot 4.0K Nov 25 10:12 logs
+-rwxr-xr--  1 robot robot  512 Nov 25 10:10 start.sh
+\end{verbatim}
+\texttt{-l} gives the long list, \texttt{-a} also shows hidden files (names starting with a dot, like \texttt{.bashrc}) and \texttt{-h} prints sizes in K, M, G. The columns are: permissions, number of links, owner, group, size, date, name.
+
+\section*{Working with files}
+\begin{verbatim}
+mkdir logs                 # new directory
+mkdir -p data/2026/run1    # create all levels at once
+touch notes.txt            # create an empty file (or update its time)
+cp notes.txt backup.txt    # copy a file
+cp -r logs logs_old        # copy a directory (-r = recursive)
+mv backup.txt old/         # move into a directory ...
+mv old.txt new.txt         # ... or rename
+rm notes.txt               # delete a file
+rm -r logs_old             # delete a directory with everything in it
+\end{verbatim}
+\begin{keyidea}[There is no recycle bin]
+\texttt{rm} deletes immediately and permanently. Always check a path with \texttt{ls} before you delete. A classic disaster is a stray space: \verb|rm -rf ~/build /| instead of \verb|rm -rf ~/build/| deletes your whole home directory (and tries the entire system). Never use \texttt{rm -rf} with a variable that may be empty.
+\end{keyidea}
+
+\textbf{Reading files.}
+\begin{verbatim}
+cat notes.txt              # print the whole file
+less big.log               # page through (space = next page, q = quit)
+head -n 20 big.log         # first 20 lines
+tail -n 20 big.log         # last 20 lines
+tail -f big.log            # follow: print new lines as they appear
+wc -l big.log              # count lines
+file photo.jpg             # what kind of file is it?
+\end{verbatim}
+\texttt{tail -f} is the standard way to watch a log file while a program is running (stop it with \texttt{Ctrl+C}).
+
+\textbf{Finding files and text.}
+\begin{verbatim}
+find ~/code -name "*.py"            # files by name
+find /var/log -size +10M            # files larger than 10 MB
+grep "error" big.log                # lines containing a word
+grep -rn "camera" ~/code            # search all files in a folder
+\end{verbatim}
+\textbf{Disk space.} \verb|df -h| shows how full each disk is, and \verb|du -sh *| shows how big each item in the current directory is. A full disk is one of the most common reasons why a robot suddenly stops working (logs and recordings!).
+
+\textbf{Editing.} \texttt{nano file.txt} is the simplest terminal editor: type, save with \texttt{Ctrl+O}, leave with \texttt{Ctrl+X}. Another one, \texttt{vim}, is on nearly every machine; if you land in it by accident, press \texttt{Esc}, type \verb|:q!| and Enter to leave without saving, or \verb|:wq| to save and leave.
+
+\section*{Permissions}
+Every file has an \textbf{owner}, a \textbf{group} and \textbf{permissions}. Look at one entry of \texttt{ls -l}:
+\begin{verbatim}
+-rwxr-xr--  1 robot robot  512 Nov 25 10:10 start.sh
+\end{verbatim}
+The ten characters at the start are the \emph{type} and nine permission characters in three triples (Figure~\ref{fig:l1_perm}): for the \textbf{u}ser (owner), for the \textbf{g}roup, and for all \textbf{o}thers.
+
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,thick,minimum height=0.9cm,font=\ttfamily\large,inner sep=4pt}]
+  \node[box,fill=gray!15] (t) at (0,0) {-};
+  \node[box,fill=blue!15] (u1) at (1.1,0) {r};
+  \node[box,fill=blue!15] (u2) at (1.9,0) {w};
+  \node[box,fill=blue!15] (u3) at (2.7,0) {x};
+  \node[box,fill=green!15] (g1) at (3.8,0) {r};
+  \node[box,fill=green!15] (g2) at (4.6,0) {-};
+  \node[box,fill=green!15] (g3) at (5.4,0) {x};
+  \node[box,fill=orange!20] (o1) at (6.5,0) {r};
+  \node[box,fill=orange!20] (o2) at (7.3,0) {-};
+  \node[box,fill=orange!20] (o3) at (8.1,0) {-};
+  \node[font=\scriptsize\sffamily,align=center] at (0,-1.1) {type\\file};
+  \node[font=\scriptsize\sffamily,align=center,blue!50!black] at (1.9,-1.1) {user\\(owner)};
+  \node[font=\scriptsize\sffamily,align=center,green!40!black] at (4.6,-1.1) {group};
+  \node[font=\scriptsize\sffamily,align=center,orange!60!black] at (7.3,-1.1) {others};
+  \node[font=\scriptsize,align=center] at (1.9,1.1) {$4+2+1=7$};
+  \node[font=\scriptsize,align=center] at (4.6,1.1) {$4+0+1=5$};
+  \node[font=\scriptsize,align=center] at (7.3,1.1) {$4+0+0=4$};
+\end{tikzpicture}
+\captionof{figure}{The permissions \texttt{rwxr-xr--} are the octal number \texttt{754}. The first character is the file type: \texttt{-} for a file, \texttt{d} for a directory, \texttt{l} for a symbolic link.}\label{fig:l1_perm}
+\end{center}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{c|p{5.4cm}|p{5.4cm}}
+ & \textbf{on a file} & \textbf{on a directory}\\ \hline
+\texttt{r} (read, 4) & read the contents & list the names inside\\
+\texttt{w} (write, 2) & change the contents & create and delete files inside\\
+\texttt{x} (execute, 1) & run it as a program & enter it (\texttt{cd}) and use files inside\\
+\end{tabular}
+\end{center}
+Change permissions with \texttt{chmod}, either with letters or with the octal number:
+\begin{verbatim}
+chmod +x start.sh          # allow everybody to execute
+chmod u+x,g-w start.sh     # user: add x, group: remove w
+chmod 754 start.sh         # rwxr-xr--
+chmod 600 ~/.ssh/id_ed25519   # only the owner may read/write (needed!)
+chown robot:robot file     # change owner and group (needs sudo)
+\end{verbatim}
+A script that is not executable gives \texttt{Permission denied} when you try \verb|./start.sh|; \verb|chmod +x start.sh| fixes it. Permissions are also the reason why you may not read other users' files and why a program may be unable to open \texttt{/dev/ttyUSB0}: you must be in the right group (see Chapter~\ref{ch:linux6}).
+
+\begin{example}
+Which permissions does \texttt{640} give? $6=4+2$ (read and write) for the owner, $4$ (read) for the group, $0$ for others: \texttt{rw-r-----}. A private key file should be \texttt{600}, a normal text file \texttt{644}, a program or directory \texttt{755}.
+\end{example}
+
+\textbf{Default permissions} come from the \texttt{umask}. With the usual umask \texttt{022} new files are \texttt{644} ($666-022$) and new directories \texttt{755} ($777-022$).
+
+\begin{aibox}
+On a robot, almost every strange error in the first week is one of these: wrong path, \texttt{Permission denied}, missing group membership, full disk. A calm look at \texttt{pwd}, \texttt{ls -l}, \texttt{id} and \texttt{df -h} solves most of them.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item You are in \texttt{/home/robot/code/ros}. Where do you land after (a) \verb|cd ..|, (b) \verb|cd ../..|, (c) \verb|cd ~|, (d) \verb|cd /etc|? Which of these four uses an absolute path?
+  \item Decode the permissions: (a) \texttt{-rw-r-----}, (b) \texttt{drwxr-xr-x}, (c) \texttt{-rwx------}. For each say who may read, write and execute.
+  \item Give the octal number and the letter form for: (a) owner read+write+execute, group read+execute, others nothing; (b) everybody read only.
+  \item A file \texttt{start.sh} gives \texttt{bash: ./start.sh: Permission denied}. What is probably wrong? Give the command that fixes it.
+  \item Write one command that creates the nested directories \texttt{robot/logs/2026} in one step.
+  \item Explain what the command \verb|rm -rf ~/build /| does and why you must not type it.
+  \item Which directory would you look in to find (a) the log files of the system, (b) a configuration file of the SSH server, (c) the file that represents the first USB serial adapter, (d) the number of CPU cores?
+  \item Write a command that shows the last $50$ lines of \texttt{/var/log/syslog} and a second one that keeps showing new lines.
+  \item You get \texttt{No space left on device}. Which two commands do you use to find out which disk is full and which folder is big?
+  \item[\textbf{\thechapter.10}$\star$] With \texttt{umask 077}, what are the permissions of a new file and of a new directory? Why does this setting make sense on a shared computer?
+\end{enumerate}

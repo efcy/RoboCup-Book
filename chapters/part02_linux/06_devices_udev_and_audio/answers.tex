@@ -1,0 +1,17 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \verb|sudo usermod -aG dialout $USER|. Group memberships are read when the login session starts; a running session keeps the old list, so you must log out and in again (or reconnect SSH).
+  \item The kernel numbers USB serial devices in the order in which it detects them (depends on plug order, hub, timing). udev rules give a stable name with \texttt{SYMLINK+=}.
+  \item File \texttt{/etc/udev/rules.d/99-lidar.rules}:
+\begin{verbatim}
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", \
+  ATTRS{serial}=="0001", SYMLINK+="lidar", GROUP="dialout", MODE="0660"
+\end{verbatim}
+  Then \verb|sudo udevadm control --reload-rules| and \verb|sudo udevadm trigger|.
+  \item (1) \verb|SUBSYSTEM="tty"| uses a single \texttt{=}: this assigns instead of matching, it must be \verb|==|. (2) Only the vendor ID is matched, so \emph{every} tty device of this vendor matches and would get the same link name \texttt{/dev/imu}; add the product ID and, for identical adapters, the serial number.
+  \item \verb|lsusb| (shows \texttt{ID vendor:product}), \verb|udevadm info -a -n /dev/DEVICE| (shows \texttt{ATTRS\{idVendor\}} and \texttt{ATTRS\{idProduct\}}), and \verb|sudo dmesg| after plugging in (shows \texttt{idVendor=...}, \texttt{idProduct=...}).
+  \item \texttt{ATTR} reads an attribute of the device itself; \texttt{ATTRS} searches the device \emph{and all its parents}. The tty device is a child of the USB device, and the vendor, product and serial attributes belong to the USB parent, so they are found with \texttt{ATTRS}.
+  \item \verb|pactl list short sources|, then \verb|pactl set-default-source NAME2|, \verb|pactl set-source-volume @DEFAULT_SOURCE@ 80%|, \verb|pactl set-source-mute @DEFAULT_SOURCE@ 0|.
+  \item \verb|arecord -f S16_LE -r 16000 -c 1 -d 5 test.wav| and \verb|aplay test.wav|. Data: $16\,000\cdot2\cdot1\cdot5=160\,000$ bytes.
+  \item The sound server runs inside the session of a user; root or a service has none (or a different one). Run the service as the user (\texttt{User=}), set \texttt{XDG\_RUNTIME\_DIR=/run/user/UID}, and enable lingering so the user session exists without a login.
+  \item udev kills long-running programs started with \texttt{RUN}, and they run in a restricted environment, before the system is completely up. Use a systemd service (started at boot or via \texttt{SYSTEMD\_WANTS} when the device appears).
+\end{enumerate}

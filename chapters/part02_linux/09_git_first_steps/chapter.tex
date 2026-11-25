@@ -1,0 +1,212 @@
+\bookchapter{Git: First Steps}\label{ch:git1}
+
+\section*{Explanation}
+Every programmer knows the folder with files called \texttt{walk\_final.py}, \texttt{walk\_final2.py} and \texttt{walk\_REALLY\_final.py}. Which one runs on the robot? What changed between them? Who changed it, and why? \textbf{Git} answers all of these questions. It is a program that records the history of a folder, so that you can go back to any earlier state, compare versions, work on several ideas in parallel and combine the work of many people. It is the most important tool of this part of the book: nearly all software in this book (ROS~2 packages, training code, this book itself) lives in Git repositories.
+
+\begin{keyidea}[Git is not GitHub]
+\textbf{Git} is a program on your own computer. It needs no network and no account. \textbf{GitHub} is a website that stores copies of Git repositories and adds collaboration tools (pull requests, issues, automatic tests). Other sites do the same (GitLab, Codeberg). This chapter is only about Git itself, Chapter~\ref{ch:git3} adds GitHub.
+\end{keyidea}
+
+\section*{Installing and the one-time setup}
+\begin{verbatim}
+$ sudo apt install git
+$ git --version
+git version 2.43.0
+\end{verbatim}
+Git writes your name and e-mail address into every commit. Tell it once (the e-mail should be the one of your GitHub account, see Chapter~\ref{ch:git3}):
+\begin{verbatim}
+$ git config --global user.name  "Ada Student"
+$ git config --global user.email "ada@example.org"
+$ git config --global init.defaultBranch main
+$ git config --global core.editor "nano"
+$ git config --global --list
+\end{verbatim}
+The settings land in the file \verb!~/.gitconfig!. Without \texttt{--global} a setting applies only to the current repository (stored in \verb!.git/config!). Use \texttt{code --wait} instead of \texttt{nano} if you want VS Code to open for commit messages.
+
+\section*{The three areas}
+The most important picture of Git is Figure~\ref{fig:g1_areas}. Your files live in three places at once:
+\begin{description}[nosep]
+  \item[Working directory:] the normal files you edit.
+  \item[Staging area] (also \emph{index}): a list of the changes that will go into the \emph{next} commit. You assemble it with \texttt{git add}.
+  \item[Repository:] the history, stored in the hidden folder \texttt{.git}. \texttt{git commit} takes what is staged and stores it as a new, permanent snapshot.
+\end{description}
+
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,rounded corners,thick,minimum width=2.8cm,minimum height=1.6cm,align=center},>={Stealth[length=2.5mm]},lab/.style={font=\scriptsize\ttfamily,fill=white,inner sep=1.5pt}]
+  \node[box,fill=blue!10] (w) at (0,0) {\textbf{working}\\\textbf{directory}\\{\footnotesize the files you edit}};
+  \node[box,fill=orange!15] (s) at (5.3,0) {\textbf{staging area}\\{\footnotesize next commit,}\\{\footnotesize being prepared}};
+  \node[box,fill=green!12] (r) at (10.6,0) {\textbf{repository}\\{\footnotesize \texttt{.git}: history}\\{\footnotesize of commits}};
+  \draw[->,thick] (w.20) -- node[lab,above]{git add} (s.160);
+  \draw[->,thick] (s.20) -- node[lab,above]{git commit} (r.160);
+  \draw[->,thick,gray!60!black] (r.200) -- node[lab,below]{restore --source} (s.340);
+  \draw[->,thick,gray!60!black] (s.200) -- node[lab,below]{git restore} (w.340);
+\end{tikzpicture}
+\captionof{figure}{The three areas of Git. Blue arrows move your work forward into history, grey arrows bring older content back.}\label{fig:g1_areas}
+\end{center}
+Why the staging area? It lets you decide \emph{what belongs together}. You may have changed five files for two different reasons; you stage and commit the files of the first reason, then the others. Each commit then tells one story.
+
+\section*{Your first repository}
+\begin{verbatim}
+$ mkdir walker && cd walker
+$ git init
+Initialized empty Git repository in /home/ada/walker/.git/
+$ echo 'def step(speed):' > walk.py
+$ echo '    return speed * 0.5' >> walk.py
+$ git status
+On branch main
+No commits yet
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	walk.py
+\end{verbatim}
+\texttt{git status} is the command you will type most often: it shows what changed and what Git suggests next. A new file is \emph{untracked}: Git sees it but does not manage it yet.
+\begin{verbatim}
+$ git add walk.py
+$ git status -s                  # -s: short format
+A  walk.py
+$ git commit -m "Add walking step function"
+[main (root-commit) 4d84182] Add walking step function
+ 1 file changed, 2 insertions(+)
+ create mode 100644 walk.py
+\end{verbatim}
+The commit is stored under a \textbf{hash} such as \texttt{4d84182}: a number computed from the content, the author, the time and the parent commit. Seven characters are usually enough to name a commit; Git accepts any unique start of the hash.
+
+\subsection*{The daily cycle}
+Edit, look, stage, commit:
+\begin{verbatim}
+$ sed -i 's/0.5/0.75/' walk.py   # (or edit in your editor)
+$ git status -s
+ M walk.py
+$ git diff                       # what did I change? (not staged)
+--- a/walk.py
++++ b/walk.py
+@@ -1,2 +1,2 @@
+ def step(speed):
+-    return speed * 0.5
++    return speed * 0.75
+$ git add walk.py
+$ git diff --staged              # what will the commit contain?
+$ git commit -m "Increase step speed factor to 0.75"
+\end{verbatim}
+In the status letters, the \emph{left} column is the staging area and the \emph{right} column the working directory: \texttt{M\ } means ``modified and staged'', \texttt{\ M} ``modified, not staged'', \texttt{??} ``untracked''.
+
+\begin{keyidea}[Always look before you commit]
+Before every commit run \texttt{git status} and \texttt{git diff --staged}. Read what you are about to store. This one habit prevents most accidents: debug prints, a forgotten password in a file, files that belong to something else.
+\end{keyidea}
+
+\subsection*{Commits form a chain}
+Every commit remembers its parent. Together the commits form a chain (Figure~\ref{fig:g1_chain}); the name \texttt{main} is just a movable label on the newest commit, and \texttt{HEAD} says where you are now.
+\begin{center}
+\begin{tikzpicture}[c/.style={draw,circle,thick,minimum size=1.15cm,fill=green!12,font=\footnotesize\ttfamily},>={Stealth[length=2.5mm]}]
+  \node[c] (a) at (0,0) {4d84};
+  \node[c] (b) at (2.4,0) {a36b};
+  \node[c] (d) at (4.8,0) {dc7e};
+  \draw[->,thick] (b) -- (a);
+  \draw[->,thick] (d) -- (b);
+  \node[draw,rounded corners,fill=yellow!30,font=\footnotesize\ttfamily] (m) at (4.8,1.6) {main};
+  \node[draw,rounded corners,fill=blue!10,font=\footnotesize\ttfamily] (h) at (7.2,1.6) {HEAD};
+  \draw[->,thick] (m) -- (d);
+  \draw[->,thick,dashed] (h) -- (m);
+  \node[font=\footnotesize,gray!60!black] at (1.2,-0.95) {older};
+  \node[font=\footnotesize,gray!60!black] at (4.8,-0.95) {newest};
+\end{tikzpicture}
+\captionof{figure}{Three commits. Each points to its parent. \texttt{main} is a label on the newest commit, \texttt{HEAD} points to the label you currently have checked out.}\label{fig:g1_chain}
+\end{center}
+
+\section*{Reading the history}
+\begin{verbatim}
+$ git log
+commit a36b8f4...  (HEAD -> main)
+Author: Ada Student <ada@example.org>
+Date:   Wed Nov 25 16:20:11 2026 +0100
+
+    Increase step speed factor to 0.75
+...
+$ git log --oneline              # one line per commit
+a36b8f4 Increase step speed factor to 0.75
+4d84182 Add walking step function
+$ git log --oneline --graph --all     # with branches (next chapter)
+$ git log -p walk.py             # history of one file, with changes
+$ git log --stat                 # which files changed per commit
+$ git log --since="2 weeks ago" --author=Ada
+$ git log -S"0.75"               # commits that added or removed "0.75"
+$ git show a36b8f4               # one commit in detail
+$ git show HEAD~1                # the commit before the newest
+\end{verbatim}
+\verb!HEAD~1! means ``the parent of HEAD'', \verb!HEAD~2! the grandparent, and so on. Two more helpers:
+\begin{verbatim}
+$ git blame walk.py              # who wrote each line, in which commit
+^4d84182 (Ada Student 2026-11-25 1) def step(speed):
+a36b8f4a (Ada Student 2026-11-25 2)     return speed * 0.75
+$ git diff HEAD~1 HEAD           # difference between two commits
+\end{verbatim}
+\texttt{git blame} is not about blame: it tells you which commit message explains a strange line. Read that message first before you change the line.
+
+\section*{What to put into a repository, and what not}
+A repository holds \textbf{source}: everything that a colleague needs to rebuild your work. It does \emph{not} hold things that can be regenerated, that belong to your machine or that are secret.
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{6.2cm}p{7.2cm}}
+\textbf{Commit} & \textbf{Do not commit}\\ \hline
+source code, scripts, launch files & \texttt{\_\_pycache\_\_/}, \texttt{*.pyc}, \texttt{build/}, \texttt{install/}\\
+configuration files, \texttt{README}, license & virtual environments (\texttt{.venv/}), \texttt{node\_modules/}\\
+small test data and documentation & log files, recordings, large datasets, trained models\\
+\texttt{requirements.txt}, lock files & \textbf{passwords, tokens, private keys} (\texttt{.env})\\
+\texttt{.gitignore} itself & editor settings, \texttt{.DS\_Store}, temporary files\\
+\end{tabular}
+\end{center}
+Large binary files (datasets, \texttt{.onnx} models) bloat the history forever: every version stays in the repository. Keep them outside, or use Git LFS (Chapter~\ref{ch:git4}).
+
+\subsection*{.gitignore}
+The file \texttt{.gitignore} lists patterns of files that Git should ignore:
+\begin{verbatim}
+# Python
+__pycache__/
+*.pyc
+.venv/
+# results and secrets
+*.log
+logs/
+.env
+!important.log        # exception: ! re-includes a file
+\end{verbatim}
+A pattern ending in \texttt{/} matches directories, \texttt{*} is a wildcard, \texttt{\#} starts a comment. Put the file in the top folder and commit it. If Git still shows a file you wanted to ignore, ask it why:
+\begin{verbatim}
+$ git check-ignore -v logs/run1.log
+.gitignore:6:logs/	logs/run1.log
+\end{verbatim}
+A file that was \emph{already committed} is not ignored later; remove it from Git (but keep it on disk) with \verb!git rm --cached file!.
+
+\begin{example}
+You ran the walking test and \texttt{git status} lists \texttt{robot.log}, \texttt{\_\_pycache\_\_/} and \texttt{walk.py}. You add the lines \texttt{*.log} and \texttt{\_\_pycache\_\_/} to \texttt{.gitignore}. Now \texttt{git status -s} shows only \texttt{\ M walk.py} and \texttt{?? .gitignore}. You stage the two, check with \texttt{git diff --staged}, and commit with ``Ignore logs and Python cache''.
+\end{example}
+
+\section*{Looking inside}
+There is no magic: \texttt{.git} is a normal folder with a small database. Never edit it by hand, but you can look:
+\begin{verbatim}
+$ ls .git
+HEAD  config  objects  refs  index ...
+$ git cat-file -p HEAD           # the newest commit object
+tree 9c2e...
+parent 4d84182...
+author Ada Student <ada@example.org> 1764084011 +0100
+\end{verbatim}
+A commit stores a \emph{complete snapshot} (not only the difference) by pointing to a tree of files, and it points to its parent. Identical files are stored only once. Deleting the folder \texttt{.git} deletes the history but leaves your files, so a repository copy elsewhere is a full backup of the history. This is why it is so safe to experiment.
+
+\begin{aibox}
+You can use an AI assistant to write a \texttt{.gitignore} for your project type or to explain a \texttt{git diff} in words. But write the commit message yourself, or at least check it: it must describe \emph{why} the change was made, and only you know that.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Which two commands set your name and e-mail address for all your repositories?
+  \item Name the three areas of Git and the command that moves a change from the first to the second and from the second to the third.
+  \item After editing \texttt{walk.py} and creating the new file \texttt{notes.py}, \texttt{git status -s} shows two lines. What do they look like?
+  \item What is the difference between \texttt{git diff} and \texttt{git diff --staged}?
+  \item You want a list of all commits that touched the file \texttt{config.py}, with the changes. Which command?
+  \item Write a \texttt{.gitignore} that ignores Python caches, the folder \texttt{.venv}, all files ending in \texttt{.log} and the file \texttt{.env}, but not \texttt{keep.log}.
+  \item You committed \texttt{debug.log} by mistake and it is now in \texttt{.gitignore}, but Git still tracks it. How do you stop tracking it without deleting the file?
+  \item What does \texttt{HEAD\textasciitilde2} mean, and how do you see what that commit changed?
+  \item A line in \texttt{controller.py} looks strange. How do you find out who wrote it and why?
+  \item[\textbf{\thechapter.10}$\star$] Explain why committing a password and then deleting it in the next commit does \emph{not} remove it from the repository.
+\end{enumerate}

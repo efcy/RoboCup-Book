@@ -1,0 +1,24 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \texttt{SIGTERM} (15), a request to finish. \texttt{kill -9} sends \texttt{SIGKILL}, which the program cannot catch: no cleanup, files may be damaged, motors not stopped, devices not released. So you try \texttt{SIGTERM} first and use \texttt{-9} only when it does not react.
+  \item (a) \verb|pgrep -af python| (or \verb!ps aux | grep python!). (b) \verb|kill 2210|. (c) \verb|kill -9 2210|.
+  \item It is \emph{not} running: \texttt{activating (auto-restart)} means it crashed with exit status $1$ at $10{:}14{:}02$ and systemd tries again. The log says \texttt{cannot open /dev/video0}: the camera device does not exist (not plugged in, wrong device, or missing permissions/group).
+  \item \begin{verbatim}
+[Unit]
+Description=Vision
+
+[Service]
+User=robot
+ExecStart=/opt/robot/bin/vision --fps 30
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+\end{verbatim}
+  \item \verb|sudo systemctl daemon-reload| and \verb|sudo systemctl enable --now vision|.
+  \item The service has no shell setup: \texttt{.bashrc} and the ROS setup file were not sourced, so \texttt{PATH} does not contain ROS. Fix: use the absolute path of \texttt{ros2} and set variables with \texttt{Environment=}/\texttt{EnvironmentFile=}, or start a wrapper script that sources the setup file and then runs \texttt{exec ros2 ...}.
+  \item (a) \verb|journalctl -u vision -n 100|. (b) \verb|journalctl -p err -b|. (c) \verb|journalctl -b -1|. (d) \verb|journalctl -u vision -f|.
+  \item \texttt{on-failure} restarts only after a crash or a non-zero exit status; if the program exits cleanly or you stop it, it stays stopped. \texttt{always} restarts it whenever it ends (except after \texttt{systemctl stop}). \texttt{on-failure} fits a program that may end on purpose.
+  \item \verb|OnCalendar=*-*-* 03:00:00| (or \verb|OnCalendar=daily| with \texttt{Persistent=true} to catch up after being off). \verb|systemctl list-timers| shows the next run.
+  \item Now: \verb|sudo journalctl --vacuum-size=200M|. Permanently: set \texttt{SystemMaxUse=200M} in \texttt{/etc/systemd/journald.conf} and restart \texttt{systemd-journald}.
+\end{enumerate}

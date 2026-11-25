@@ -1,0 +1,21 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \verb!git config --global user.name "Ada Student"! and \verb!git config --global user.email "ada@example.org"!.
+  \item Working directory, staging area, repository. \texttt{git add} moves a change from the working directory to the staging area, \texttt{git commit} from the staging area into the repository.
+  \item \texttt{\ M walk.py} (modified, not staged) and \texttt{?? notes.py} (untracked).
+  \item \texttt{git diff} compares the working directory with the staging area (changes not yet staged). \texttt{git diff --staged} compares the staging area with the last commit: exactly what the next commit will contain.
+  \item \verb!git log -p config.py! (add \texttt{--oneline} or \texttt{--stat} for a shorter view).
+  \item
+\begin{verbatim}
+__pycache__/
+*.pyc
+.venv/
+*.log
+!keep.log
+.env
+\end{verbatim}
+  The exception must come \emph{after} the pattern it overrides.
+  \item \verb!git rm --cached debug.log!, then commit. The file stays on disk and is ignored from now on.
+  \item The grandparent of the newest commit (two steps back). Show it with \verb!git show HEAD~2!.
+  \item \verb!git blame controller.py! shows the commit for every line; then \verb!git show COMMIT! (or \texttt{git log -p}) for the message and the context.
+  \item[\textbf{\ansnum.10}] A commit is a permanent snapshot. The later commit only records the deletion; the earlier commit with the password is still part of the history and everyone who clones the repository can read it with \texttt{git log -p}. The password must be treated as published: \emph{change the password} first, and only then (optionally) rewrite the history with special tools.
+\end{enumerate}

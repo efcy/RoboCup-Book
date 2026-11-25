@@ -1,0 +1,186 @@
+\bookchapter{Remote Work with SSH}\label{ch:linux3}
+
+\section*{Explanation}
+A robot is rarely connected to a monitor. You work on it from your laptop over the network. \textbf{SSH} (Secure Shell) gives you a terminal on another computer, encrypted so that nobody on the network can read or change what you type. The same connection can also copy files, forward network ports and reach machines that are hidden behind other machines. These are the skills of this chapter.
+
+\subsection*{The first connection}
+SSH has a \textbf{server} (the program \texttt{sshd}, which listens on port $22$ of the robot) and a \textbf{client} (the \texttt{ssh} command on your laptop).
+\begin{verbatim}
+$ ssh robot@192.168.10.5
+The authenticity of host '192.168.10.5 (192.168.10.5)' can't be established.
+ED25519 key fingerprint is SHA256:Xk3...(shortened)
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+robot@192.168.10.5's password:
+robot@k1-brain:~$
+\end{verbatim}
+The general form is \verb|ssh USER@HOST|, where \texttt{HOST} is a name or an IP address. The first time, the client shows the \textbf{host key fingerprint} of the server and asks whether you trust it. After you answer \texttt{yes} it is saved in \texttt{\textasciitilde/.ssh/known\_hosts}. If it \emph{changes} later, SSH loudly refuses to connect, because this may be a man-in-the-middle attack (or just a reinstalled robot, see the table of errors below).
+
+\section*{Keys instead of passwords}
+Typing passwords is annoying and weak. SSH can use a \textbf{key pair}: a \emph{private key} that stays secret on your laptop and a \emph{public key} that you copy to every computer you want to access. The server checks that you own the private key without the key ever leaving your laptop (Figure~\ref{fig:l3_keys}).
+
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,rounded corners,thick,minimum height=1.2cm,minimum width=3.2cm,align=center,font=\small},>={Stealth[length=2.5mm]}]
+  \node[box,fill=blue!10] (L) at (0,0) {laptop\\[-2pt]{\scriptsize private key \texttt{id\_ed25519}}};
+  \node[box,fill=green!12] (R) at (8,0) {robot\\[-2pt]{\scriptsize \texttt{authorized\_keys}}};
+  \draw[->,thick] (L.20) -- node[above,font=\scriptsize]{1. ``I am \texttt{robot}, here is my public key''} (R.160);
+  \draw[->,thick] (R.200) -- node[below,font=\scriptsize,pos=0.5]{2. random challenge} (L.340);
+  \draw[->,thick,dashed] ([yshift=-0.5cm]L.south) -- node[below,font=\scriptsize]{3. signed with the private key $\Rightarrow$ the robot checks with the public key} ([yshift=-0.5cm]R.south);
+\end{tikzpicture}
+\captionof{figure}{Key-based login in three steps. Only the signed answer travels over the network, never the private key.}\label{fig:l3_keys}
+\end{center}
+
+\textbf{Creating and installing a key.}
+\begin{verbatim}
+$ ssh-keygen -t ed25519 -C "stella@laptop"
+Enter passphrase (empty for no passphrase): ********
+$ ls ~/.ssh
+id_ed25519  id_ed25519.pub  known_hosts
+$ ssh-copy-id robot@192.168.10.5        # puts the public key on the robot
+$ ssh robot@192.168.10.5                # now without a password
+\end{verbatim}
+\begin{itemize}[nosep]
+  \item \texttt{id\_ed25519} is the \textbf{private} key. Never send it by e-mail, chat or commit it to git. It must have the permissions \texttt{600} (and \texttt{\textasciitilde/.ssh} \texttt{700}), otherwise SSH refuses to use it.
+  \item \texttt{id\_ed25519.pub} is the \textbf{public} key: one line that you may share freely. \texttt{ssh-copy-id} appends it to \texttt{\textasciitilde/.ssh/authorized\_keys} on the target.
+  \item Protect the private key with a \textbf{passphrase}. The \textbf{ssh-agent} remembers the unlocked key for your session (\verb|ssh-add|), so you type the passphrase once.
+\end{itemize}
+The same public key is what you upload to GitHub in Chapter~\ref{ch:git3}.
+
+\section*{The configuration file}
+Long commands are no fun. Put the details of every machine into \texttt{\textasciitilde/.ssh/config}:
+\begin{verbatim}
+Host k1
+    HostName 192.168.10.5
+    User robot
+    IdentityFile ~/.ssh/id_ed25519
+    ServerAliveInterval 30
+
+Host *.lab
+    User stella
+\end{verbatim}
+Now \verb|ssh k1| is enough, and \texttt{scp}, \texttt{rsync}, git and VS Code all understand the name \texttt{k1} too. \texttt{ServerAliveInterval} sends a small message every $30$\,s so that a quiet connection is not dropped by routers. Entries are read from top to bottom, and the first value of an option wins; \texttt{*} matches any text.
+
+\section*{Running commands remotely}
+You can run a single command without opening a shell:
+\begin{verbatim}
+$ ssh k1 uptime
+$ ssh k1 'ls /var/log | tail -n 3'      # quotes: the pipe runs on the robot
+$ ssh k1 'journalctl -u walker -n 20' > walker_log.txt   # output comes back
+$ ssh -t k1 sudo systemctl restart walker   # -t: terminal for the password
+\end{verbatim}
+Without the quotes the shell on your laptop would interpret the pipe, not the robot.
+
+\section*{Jump hosts: reaching machines behind other machines}
+Often the robot cannot be reached directly. It sits in a robot network or a lab network behind a gateway (a \textbf{bastion} or \textbf{jump host}) that is reachable from the internet. You first connect to the jump host, and from there to the robot (Figure~\ref{fig:l3_jump}).
+
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,rounded corners,thick,minimum height=1.1cm,minimum width=2.6cm,align=center,font=\small},>={Stealth[length=2.5mm]}]
+  \node[box,fill=blue!10] (L) at (0,0) {laptop};
+  \node[box,fill=orange!18] (J) at (5.2,0) {jump host\\[-2pt]{\scriptsize \texttt{gw.example.org}}};
+  \node[box,fill=green!12] (R) at (10.4,0) {robot\\[-2pt]{\scriptsize \texttt{10.0.0.42}}};
+  \draw[->,thick] (L) -- node[above,font=\scriptsize]{internet} (J);
+  \draw[->,thick] (J) -- node[above,font=\scriptsize]{private network} (R);
+  \draw[red!70!black,thick,dashed,->] (L.north) .. controls (3,1.6) and (7.4,1.6) .. (R.north) node[midway,above,font=\scriptsize]{direct connection: impossible};
+  \draw[thick,rounded corners=3pt,gray] (3.6,-0.95) rectangle (12.0,0.95);
+  \node[font=\scriptsize,gray] at (7.8,-1.25) {not reachable from the internet};
+\end{tikzpicture}
+\captionof{figure}{A robot behind a jump host. The laptop can only connect to the jump host, which can talk to the robot.}\label{fig:l3_jump}
+\end{center}
+
+The modern way is the option \textbf{ProxyJump} (\texttt{-J}). SSH opens the connection to the jump host and tunnels the second connection through it. Your laptop speaks \emph{directly} to the robot inside the tunnel, so the jump host never sees the content or your private key.
+\begin{verbatim}
+$ ssh -J stella@gw.example.org robot@10.0.0.42
+\end{verbatim}
+Or, much better, in \texttt{\textasciitilde/.ssh/config}:
+\begin{verbatim}
+Host gw
+    HostName gw.example.org
+    User stella
+
+Host k1
+    HostName 10.0.0.42
+    User robot
+    ProxyJump gw
+\end{verbatim}
+After this \verb|ssh k1|, \verb|scp file k1:|, \verb|rsync ... k1:...| and git all work transparently through the gateway. Several jumps are separated by commas: \verb|ProxyJump gw1,gw2|.
+
+\begin{keyidea}[ProxyJump instead of agent forwarding]
+Older guides suggest \texttt{ssh -A} (agent forwarding) to hop through a gateway. This lets the jump host \emph{use} your keys while you are connected, so a compromised gateway can impersonate you. \texttt{ProxyJump} does not need that. Prefer it.
+\end{keyidea}
+
+Older SSH versions use \verb|ProxyCommand ssh -W %h:%p gw|, which does the same job; you will meet it in old tutorials.
+
+\section*{Port forwarding}
+Many tools on the robot offer a web page or a network service (a Jupyter notebook, a visualisation server, a ROS web bridge) that is only reachable \emph{on the robot}. An SSH \textbf{local forward} makes it available on your laptop:
+\begin{verbatim}
+$ ssh -L 9000:localhost:8080 k1
+\end{verbatim}
+Now \texttt{http://localhost:9000} on your laptop is connected, through the encrypted tunnel, to port $8080$ on the robot (Figure~\ref{fig:l3_fwd}). The format is \verb|-L LOCALPORT:TARGETHOST:TARGETPORT|, where the target host is seen from the robot. \verb|-N| means ``only forward, no shell''. With \verb|-R| you do the opposite and publish a port of your laptop on the robot, and \verb|-D 1080| creates a SOCKS proxy.
+
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,rounded corners,thick,minimum height=1.1cm,align=center,font=\small},>={Stealth[length=2.5mm]}]
+  \node[box,fill=blue!10,minimum width=3.4cm] (B) at (0,0) {browser\\[-2pt]{\scriptsize \texttt{localhost:9000}}};
+  \node[box,fill=green!12,minimum width=3.4cm] (S) at (9,0) {web server\\[-2pt]{\scriptsize \texttt{localhost:8080}}};
+  \draw[->,very thick,blue!60!black] (B) -- node[above,font=\scriptsize]{encrypted SSH tunnel} node[below,font=\scriptsize]{\texttt{ssh -L 9000:localhost:8080 k1}} (S);
+\end{tikzpicture}
+\captionof{figure}{A local port forward: a port on the laptop leads to a port on the robot.}\label{fig:l3_fwd}
+\end{center}
+
+\section*{Copying files}
+\textbf{scp} (secure copy) works like \texttt{cp}, but one of the two paths may be on another computer, written \verb|HOST:PATH|:
+\begin{verbatim}
+$ scp policy.onnx k1:~/models/             # laptop -> robot
+$ scp k1:~/logs/run1.log .                 # robot -> here
+$ scp -r k1:~/logs ./robot_logs            # a whole directory (-r)
+$ scp -P 2222 file k1:                     # other port: capital -P !
+\end{verbatim}
+For many files or repeated copies \textbf{rsync} is better: it only transfers the differences and can resume.
+\begin{verbatim}
+$ rsync -avz --progress ~/code/ k1:~/code/    # sync a folder
+$ rsync -avzn ~/code/ k1:~/code/              # -n: dry run, only show
+$ rsync -a --delete ~/code/ k1:~/code/        # also delete extra files there
+\end{verbatim}
+\texttt{-a} keeps permissions and times, \texttt{-v} is verbose, \texttt{-z} compresses. \textbf{A trailing slash matters:} \verb|~/code/| means ``the contents of the folder'', \verb|~/code| means ``the folder itself'' (it would create \texttt{k1:\textasciitilde/code/code}). Test dangerous commands, especially \texttt{--delete}, first with \texttt{-n}. \texttt{scp} and \texttt{rsync} both use the SSH connection and honour your \texttt{config} file and jump hosts. (\texttt{sftp k1} gives an interactive file transfer session.)
+
+\section*{Sessions that survive: tmux}
+If the connection drops, programs started in that terminal die. \textbf{tmux} runs the shell on the \emph{robot} so that it keeps going and you can reconnect later:
+\begin{verbatim}
+$ ssh k1
+$ tmux new -s train        # start a named session, run your program
+(press Ctrl+B, then D)     # detach: the program keeps running
+$ tmux ls                  # list sessions
+$ tmux attach -t train     # come back, even from another laptop
+\end{verbatim}
+Inside tmux, \texttt{Ctrl+B} is the prefix for commands: \texttt{\%} splits the window vertically, \texttt{"} horizontally, arrow keys switch between panes. (Install with \verb|sudo apt install tmux|.)
+
+\section*{Troubleshooting}
+Add \texttt{-v} (or \texttt{-vvv}) to see what SSH does: \verb|ssh -v k1|.
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{5.2cm}p{8.4cm}}
+\textbf{Message} & \textbf{Likely cause and fix}\\ \hline
+\texttt{Connection timed out} & Host off, wrong IP, other network, or a firewall. Check with \texttt{ping} (Chapter~\ref{ch:linux7}).\\
+\texttt{Connection refused} & The host is reachable but no SSH server listens: \texttt{sshd} is not running or another port is used.\\
+\texttt{Permission denied (publickey)} & The server does not accept your key: wrong user name, key not in \texttt{authorized\_keys}, or wrong permissions on \texttt{\textasciitilde/.ssh} (700) and the key files.\\
+\texttt{WARNING: UNPROTECTED PRIVATE KEY FILE!} & The key file is readable by others: \verb|chmod 600 ~/.ssh/id_ed25519|.\\
+\texttt{REMOTE HOST IDENTIFICATION HAS CHANGED!} & The server presents a new host key. If you reinstalled the robot, remove the old entry with \verb|ssh-keygen -R HOST|. If you did not, be suspicious.\\
+\texttt{Could not resolve hostname} & Name unknown: typo, or DNS problem. Try the IP address.\\
+\end{tabular}
+\end{center}
+
+\begin{aibox}
+A typical day with a robot: \texttt{ssh k1}, start a \texttt{tmux} session, run the program, detach, \texttt{rsync} the new code, \texttt{scp} the recorded logs back, and \texttt{ssh -L} to see the camera stream in your browser. Put all robots and gateways in your \texttt{config} once, and the rest becomes short.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Which command generates an ed25519 key pair? Which of the two resulting files must stay secret, and which permissions should it have?
+  \item Write a \texttt{config} entry so that \verb|ssh k1| connects to the host \texttt{192.168.10.5} as user \texttt{robot} with the key \texttt{\textasciitilde/.ssh/id\_ed25519}.
+  \item The robot \texttt{10.0.0.42} (user \texttt{robot}) is only reachable through the jump host \texttt{gw.example.org} (user \texttt{stella}). Write (a) a one-line \texttt{ssh} command and (b) the \texttt{config} entries that make \verb|ssh k1| work.
+  \item Write commands to (a) copy \texttt{policy.onnx} from your laptop to \texttt{\textasciitilde/models/} on \texttt{k1}, (b) copy the whole directory \texttt{\textasciitilde/logs} from \texttt{k1} to the current directory.
+  \item What is the difference between \verb|rsync -a src dst| and \verb|rsync -a src/ dst|? How do you check what a command with \texttt{--delete} would do before running it?
+  \item On the robot a web server listens on port $3000$. Write the command that makes it available in your laptop browser at \texttt{http://localhost:8000}.
+  \item You see \texttt{Permission denied (publickey)}. Name three things to check.
+  \item In \verb!ssh k1 ls /var/log | wc -l! and in \verb!ssh k1 'ls /var/log | wc -l'! the result is the same number. On which computer does \texttt{wc} run in each case, and why does this matter for large outputs?
+  \item Your training run on the robot died when the Wi-Fi dropped. How do you avoid this next time? Give the commands.
+  \item[\textbf{\thechapter.10}$\star$] Explain why \texttt{ProxyJump} is safer than agent forwarding (\texttt{ssh -A}) when going through a gateway that many people use.
+\end{enumerate}

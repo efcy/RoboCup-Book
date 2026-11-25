@@ -1,0 +1,19 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item The 1-minute load is $8.0$, equal to the number of cores: fully busy, but no queue yet. The 5- and 15-minute values are small, so the load \emph{started recently} (about a minute ago) and is rising. Wait a few minutes: if it stays $\ge8$, tasks will start to queue.
+  \item The load counts tasks that wait for input/output (state \texttt{D}). The CPU is idle, the machine waits for the disk or the network. Next: \verb|iostat -xz 1| (high \texttt{await}, \texttt{\%util}), \verb|sudo iotop| or \verb|pidstat -d 1| (which process), \verb|ps aux| (processes in state \texttt{D}), \verb|df -h|, and \verb|/proc/pressure/io|.
+  \item No. The ``free'' column is small because Linux uses the memory as a file cache; \textbf{available} ($7.0$\,Gi) shows what programs can still get. Real trouble shows as: small \texttt{available}, swap use with \texttt{si}/\texttt{so} not $0$ in \texttt{vmstat}, high memory pressure (PSI), or OOM-killer messages in \texttt{dmesg}.
+  \item Six runnable tasks on four cores: the CPU is $98\,\%$ busy and two tasks are always waiting: the CPU is saturated (a queue). Find the heavy processes with \texttt{top} or \texttt{pidstat}.
+  \item For $40\,\%$ of the last ten seconds at least one task was stalled waiting for memory (for example because of swapping or reclaiming memory). The system is under memory pressure; this is serious.
+  \item $\mathrm{IPC}=\frac{1.5\cdot10^9}{3.0\cdot10^9}=0.5$. The core completed only half an instruction per cycle on average: it spends most of its time waiting, probably for memory (cache misses). Look at \texttt{cache-misses} and the memory access pattern.
+  \item $4096\cdot4=16\,384$ bytes. $64/4=16$ floats per cache line. Walking down a column touches a new cache line at every step and uses only one of the $16$ floats; walking along a row uses all $16$. So the column walk must load about $16$ times more cache lines from memory (partly hidden by prefetching).
+  \item $1$ min: $4(1-e^{-1})=2.53$. $5$ min: $4(1-e^{-1/5})=0.73$. $15$ min: $4(1-e^{-1/15})=0.26$.
+  \item A controller must meet a deadline in \emph{every} cycle; one late cycle can make the robot stumble. The average hides rare spikes (a $5$\,ms delay once per second is invisible in the mean). Measure the distribution of the loop time and of the scheduling latency: the maximum, the $99$th and $99.9$th percentile, for example with \texttt{cyclictest}, and log the cycle time inside the controller.
+  \item[\textbf{\ansnum.10}] 
+\begin{verbatim}
+while sleep 1; do
+    t=$(( $(cat /sys/class/thermal/thermal_zone0/temp) / 1000 ))
+    echo "$(date +%T),$(cut -d' ' -f1 /proc/loadavg),$t" >> perf.csv
+done
+\end{verbatim}
+  Stop it with \texttt{Ctrl+C}. Run it in \texttt{tmux} (Chapter~\ref{ch:linux3}) or as a systemd service during long tests.
+\end{enumerate}

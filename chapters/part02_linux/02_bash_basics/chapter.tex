@@ -1,0 +1,223 @@
+\bookchapter{Bash Basics}\label{ch:linux2}
+
+\section*{Explanation}
+The shell is more than a command launcher: it is a small programming language. With a few ideas (pipes, variables, loops) you can chain simple tools into powerful commands and automate boring work, such as checking the logs of ten robots or copying files after every test. This chapter covers the part of \texttt{bash} you need every day.
+
+\subsection*{Commands that succeed and fail}
+Every command ends with an \textbf{exit status}, a number between $0$ and $255$. $0$ means success, everything else means an error. The shell stores the status of the last command in \texttt{\$?}.
+\begin{verbatim}
+$ ls robot.log nothing.txt 2>/dev/null
+robot.log
+$ echo $?
+2
+\end{verbatim}
+Commands can be combined with the exit status:
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{ll}
+\verb|a ; b| & run \texttt{a}, then \texttt{b} (always)\\
+\verb|a && b| & run \texttt{b} only if \texttt{a} succeeded\\
+\verb/a || b/ & run \texttt{b} only if \texttt{a} failed\\
+\end{tabular}
+\end{center}
+\begin{verbatim}
+$ mkdir build && cd build        # only enter if it was created
+$ false && echo yes || echo no
+no
+\end{verbatim}
+
+\subsection*{Variables and quoting}
+\begin{verbatim}
+$ name="K 1"                 # no spaces around the =
+$ echo "hello $name"         # double quotes: variables are replaced
+hello K 1
+$ echo 'hello $name'         # single quotes: everything stays literal
+hello $name
+$ x=5
+$ echo $((x*3))              # arithmetic with $(( ))
+15
+\end{verbatim}
+\textbf{Environment variables} are variables that are handed to every program you start. \verb|export ROS_DOMAIN_ID=7| sets one, \verb|env| lists them all. Important ones: \texttt{HOME} (your home directory), \texttt{USER}, and \texttt{PATH}.
+
+\textbf{PATH.} When you type \texttt{ls}, the shell searches the directories in \texttt{PATH} (separated by colons) for a program of that name. \verb|echo $PATH| shows them, \verb|which ls| shows which file is used. To run a program in the current directory you must write \verb|./start.sh| because \verb|.| is deliberately not in the \texttt{PATH}.
+
+\begin{keyidea}[Always quote variables]
+Quote variables that contain file names: \verb|rm "$file"|, not \verb|rm $file|. If \texttt{file="my notes.txt"}, the unquoted version is the two arguments \texttt{my} and \texttt{notes.txt} and would delete the wrong files.
+\end{keyidea}
+
+\subsection*{Command substitution and expansion}
+\verb|$(command)| is replaced by the \emph{output} of the command:
+\begin{verbatim}
+$ echo "today is $(date +%F)"
+today is 2026-11-25
+$ cp robot.log "robot_$(date +%F).log"
+\end{verbatim}
+The shell also expands patterns \emph{before} the command sees them (\textbf{globbing}):
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{ll}
+\verb|*.log| & all files ending in \texttt{.log}\\
+\verb|run_?.csv| & \texttt{?} is exactly one character\\
+\verb|img_[0-9].png| & one character from the set\\
+\verb|file_{a,b,c}.txt| & brace expansion: \texttt{file\_a.txt file\_b.txt file\_c.txt}\\
+\end{tabular}
+\end{center}
+\begin{verbatim}
+$ mkdir -p t/{a,b}/{1,2}
+$ ls -d t/*/*
+t/a/1  t/a/2  t/b/1  t/b/2
+\end{verbatim}
+
+\section*{Input, output and pipes}
+Every program has three standard streams (Figure~\ref{fig:l2_streams}): \textbf{stdin} (input, file descriptor $0$), \textbf{stdout} (normal output, $1$) and \textbf{stderr} (error messages, $2$). By default stdin is the keyboard and stdout and stderr are the screen. The shell can redirect them.
+
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,rounded corners,thick,minimum height=1.0cm,minimum width=2.4cm,align=center,font=\small},>={Stealth[length=2.5mm]}]
+  \node[box,fill=blue!10] (a) at (0,0) {\texttt{grep ERROR}};
+  \node[box,fill=blue!10] (b) at (6.5,0) {\texttt{wc -l}};
+  \draw[->,thick] (-2.7,0) -- node[above,font=\scriptsize]{stdin (0)} (a.west);
+  \draw[->,thick] (a.east) -- node[above,font=\scriptsize]{stdout (1)} node[below,font=\scriptsize]{pipe \texttt{|}} (b.west);
+  \draw[->,thick,red!70!black] (a.south) -- ++(0,-0.9) node[below,font=\scriptsize]{stderr (2) to the screen};
+  \draw[->,thick] (b.east) -- node[above,font=\scriptsize]{stdout} ++(2.4,0);
+\end{tikzpicture}
+\captionof{figure}{The streams of a program. The pipe connects the stdout of the first program to the stdin of the second. Error messages travel separately.}\label{fig:l2_streams}
+\end{center}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lp{9cm}}
+\verb|cmd > file| & write stdout to the file (replaces the old content)\\
+\verb|cmd >> file| & append stdout to the file\\
+\verb|cmd < file| & read stdin from the file\\
+\verb|cmd 2> err.txt| & write stderr to a file\\
+\verb|cmd > all.txt 2>&1| & stdout \emph{and} stderr into one file\\
+\verb|cmd > /dev/null| & throw the output away (\texttt{/dev/null} is the black hole)\\
+\verb/cmd1 | cmd2/ & feed the stdout of \texttt{cmd1} into the stdin of \texttt{cmd2}\\
+\verb/cmd | tee file/ & show the output \emph{and} save it\\
+\end{tabular}
+\end{center}
+
+\subsection*{A toolbox for text}
+Most data in Linux is text, so a few small tools combine into very powerful pipelines. Here is a log file \texttt{robot.log}:
+\begin{verbatim}
+2026-11-25 10:00:01 INFO camera started
+2026-11-25 10:00:02 INFO walk controller started
+2026-11-25 10:00:05 WARN battery low 18%
+2026-11-25 10:00:09 ERROR camera timeout
+2026-11-25 10:00:11 INFO camera started
+2026-11-25 10:00:14 ERROR motor 3 overheated
+2026-11-25 10:00:19 ERROR camera timeout
+2026-11-25 10:00:21 WARN battery low 17%
+2026-11-25 10:00:23 INFO walk controller stopped
+\end{verbatim}
+\begin{verbatim}
+$ grep ERROR robot.log | wc -l                 # how many errors?
+3
+$ awk '{print $3}' robot.log | sort | uniq -c | sort -rn
+      4 INFO
+      3 ERROR
+      2 WARN
+$ grep ERROR robot.log | cut -d' ' -f4- | sort | uniq -c | sort -rn
+      2 camera timeout
+      1 motor 3 overheated
+\end{verbatim}
+The second pipeline picks the third column (\texttt{awk}), sorts the lines, counts identical neighbours (\texttt{uniq -c} needs sorted input) and sorts the counts in reverse numeric order. The tools:
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lp{10.5cm}}
+\texttt{grep} & select lines matching a pattern (\texttt{-i} ignore case, \texttt{-v} invert, \texttt{-c} count, \texttt{-n} line numbers)\\
+\texttt{sort}, \texttt{uniq} & sort lines (\texttt{-n} numeric, \texttt{-r} reverse); count/remove duplicates\\
+\texttt{cut} & cut columns: \verb|cut -d',' -f2| takes field 2 of a CSV file\\
+\texttt{awk} & process columns: \verb|awk '{print $1, $3}'|, sums, conditions\\
+\texttt{sed} & edit a stream: \verb|sed 's/old/new/g'| replaces text\\
+\texttt{tr} & replace or delete single characters\\
+\texttt{head}, \texttt{tail}, \texttt{wc} & first/last lines, count lines (\texttt{-l}), words, bytes\\
+\texttt{xargs} & turn input lines into arguments of another command\\
+\end{tabular}
+\end{center}
+
+\section*{Shell scripts}
+A \textbf{script} is a text file with commands. The first line is the \textbf{shebang}, which says which program runs the file:
+\begin{verbatim}
+#!/usr/bin/env bash
+set -euo pipefail
+
+name="${1:-world}"          # first argument, default "world"
+for i in 1 2 3; do
+    echo "Hello $name ($i)"
+done
+\end{verbatim}
+Save it as \texttt{hello.sh}, make it executable and run it:
+\begin{verbatim}
+$ chmod +x hello.sh
+$ ./hello.sh Stella
+Hello Stella (1)
+Hello Stella (2)
+Hello Stella (3)
+\end{verbatim}
+\texttt{set -euo pipefail} makes the script safer: stop at the first failing command (\texttt{-e}), treat unset variables as errors (\texttt{-u}), and let a pipeline fail if any part fails (\texttt{pipefail}). Without it, a script happily continues after an error and may do damage.
+
+\textbf{Script ingredients.}
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{p{4.6cm}p{8.6cm}}
+\verb|$1 $2 ...| & arguments of the script; \verb|$#| is their number, \verb|"$@"| all of them\\
+\verb|$?| & exit status of the last command\\
+\verb|exit 1| & end the script with an error status\\
+\verb|if [[ -f "$f" ]]; then ... fi| & conditions: \texttt{-f} file exists, \texttt{-d} directory exists, \texttt{-z} string is empty\\
+\verb|[[ $a -lt $b ]]| & numbers: \texttt{-lt -le -gt -ge -eq -ne}\\
+\verb|[[ "$a" == "$b" ]]| & strings\\
+\verb|for x in list; do ... done| & loop over words or files\\
+\verb|while read -r line; do ... done| & loop over the lines of the input\\
+\verb|f() { ... }| & define a function\\
+\end{tabular}
+\end{center}
+
+\begin{example}[Check a log directory]
+\begin{verbatim}
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+    echo "usage: $0 LOGDIR" >&2
+    exit 1
+fi
+
+for f in "$1"/*.log; do
+    n=$(grep -c ERROR "$f" || true)    # grep -c fails if the count is 0
+    echo "$f: $n errors"
+done
+\end{verbatim}
+The error message goes to stderr (\verb|>&2|), so it does not pollute the normal output. \verb/|| true/ stops \texttt{set -e} from ending the script when \texttt{grep} finds nothing and returns $1$.
+\end{example}
+
+\textbf{ShellCheck.} The tool \texttt{shellcheck} (\verb|sudo apt install shellcheck|) finds typical mistakes like missing quotes in a script. Run it on every script you share.
+
+\section*{Your shell environment}
+\begin{itemize}[nosep]
+  \item \textbf{\texttt{\textasciitilde/.bashrc}} is read whenever you open a terminal. Put aliases, \texttt{PATH} changes and exports there. After editing, apply it with \verb|source ~/.bashrc|.
+  \item \textbf{Alias:} a short name for a long command, e.g.\ \verb|alias ll='ls -lah'|.
+  \item \textbf{Own programs:} create \texttt{\textasciitilde/bin}, put scripts there and add \verb|export PATH="$HOME/bin:$PATH"| to \texttt{.bashrc}.
+  \item \textbf{History:} \verb|history| lists old commands, \verb|!!| repeats the last one (\verb|sudo !!| repeats it as root), \texttt{Ctrl+R} searches.
+\end{itemize}
+
+\subsection*{Jobs and long-running programs}
+A program in the foreground blocks the terminal. Add \verb|&| to start it in the \textbf{background}: \verb|./train.sh &|. \texttt{Ctrl+Z} pauses the foreground program, \verb|bg| continues it in the background, \verb|fg| brings it back, and \verb|jobs| lists them. But if you close the terminal (or the SSH connection drops), these programs get a hangup signal and die. For long jobs on a robot use \texttt{tmux} (Chapter~\ref{ch:linux3}) or a service (Chapter~\ref{ch:linux5}).
+
+\begin{aibox}
+Shell skills compound. A one-line pipeline such as \verb/grep ERROR *.log | cut -d' ' -f4- | sort | uniq -c | sort -rn/ answers ``what goes wrong most often on my robot?'' in a second. The same pipeline works on your laptop, on the robot, and in the \texttt{ssh} commands of the next chapter.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item After \verb|ls /nonexistent|, what does \verb|echo $?| print: $0$ or something else? And after a successful command?
+  \item Write one command line that saves the output of \texttt{ls} into \texttt{list.txt} and then \emph{appends} the current date to the same file.
+  \item The file \texttt{words.txt} contains one word per line: \texttt{apple, banana, apple, cherry, banana, apple}. What does \verb/sort words.txt | uniq -c | sort -rn/ print?
+  \item After \verb|x=5| what do \verb|echo "$x"|, \verb|echo '$x'| and \verb|echo $((x+2))| print?
+  \item Write a \texttt{for} loop that prints \texttt{robot 1}, \texttt{robot 2} and \texttt{robot 3}.
+  \item Write a script that takes a file name as argument and prints the number of lines. If no argument is given, it prints a usage message to stderr and exits with status $1$.
+  \item What does \verb!make && ./run || echo failed! do? In which case is \texttt{failed} printed?
+  \item The variable \texttt{file} holds \texttt{my notes.txt}. Why is \verb|rm $file| dangerous, and what is the right command?
+  \item Your script \texttt{\textasciitilde/bin/check.sh} is not found when you type \texttt{check.sh}. What do you add to which file, and how do you apply it without opening a new terminal?
+  \item[\textbf{\thechapter.10}$\star$] Write a pipeline that prints the three largest items in \texttt{/var/log}, largest first. (Hint: \verb|du -ah|, \verb|sort -h|.)
+\end{enumerate}

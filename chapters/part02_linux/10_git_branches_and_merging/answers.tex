@@ -1,0 +1,12 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \verb!git switch -c fix/camera!; \verb!git branch! (with \texttt{-a} also the remote branches).
+  \item A branch is a movable label (a name) that points to a commit. A new commit gets the current commit as parent, and the label of the branch you are on moves to the new commit. Other labels stay where they are.
+  \item Fast-forward: the target branch has no new commits, so its label just moves to the tip of the other branch; the history stays linear. Merge commit: a new commit with two parents. A fast-forward is impossible when both branches received new commits after they diverged (\texttt{--no-ff} forces a merge commit even then).
+  \item Decide the correct content; edit the file and remove the markers \verb!<<<<<<<!, \verb!=======!, \verb!>>>>>>>!; \verb!git add FILE!; \verb!git commit!. Cancel with \verb!git merge --abort!.
+  \item Between \verb!<<<<<<< HEAD! and \verb!=======! is your current branch, between \verb!=======! and \verb!>>>>>>> name! is the incoming branch.
+  \item The hash is computed from the content \emph{and the parent}. A rebased commit has a new parent, hence it is a new commit, even if the changes are the same.
+  \item Rebase only unpublished, local commits. Rebase creates new commits; colleagues who built on the old ones would have two diverging versions of the same work and get confusing duplicates and conflicts.
+  \item \verb!git stash! (or \verb!git stash -u!) and later \verb!git stash pop!.
+  \item \verb!git log main..feature/gait --oneline!.
+  \item[\textbf{\ansnum.10}] \verb!git switch release/1.0! then \verb!git cherry-pick 9f3c2aa!. This copies only that commit. If a conflict appears, resolve it and use \verb!git cherry-pick --continue!.
+\end{enumerate}

@@ -1,0 +1,27 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \verb|ssh-keygen -t ed25519 -C "comment"|. The private key \texttt{\textasciitilde/.ssh/id\_ed25519} must stay secret, permissions \texttt{600}. The file ending in \texttt{.pub} is public.
+  \item \begin{verbatim}
+Host k1
+    HostName 192.168.10.5
+    User robot
+    IdentityFile ~/.ssh/id_ed25519
+\end{verbatim}
+  \item (a) \verb|ssh -J stella@gw.example.org robot@10.0.0.42|. (b)
+\begin{verbatim}
+Host gw
+    HostName gw.example.org
+    User stella
+
+Host k1
+    HostName 10.0.0.42
+    User robot
+    ProxyJump gw
+\end{verbatim}
+  \item (a) \verb|scp policy.onnx k1:~/models/| (b) \verb|scp -r k1:~/logs .|
+  \item With a trailing slash on \texttt{src/} the \emph{contents} of \texttt{src} are copied into \texttt{dst}. Without it the folder \texttt{src} itself is created inside \texttt{dst} (\texttt{dst/src}). Use the dry run: \verb|rsync -avn --delete ...| prints what would be transferred and deleted without doing it.
+  \item \verb|ssh -L 8000:localhost:3000 k1| (add \texttt{-N} if you do not want a shell).
+  \item (1) The user name is correct. (2) The public key is in \verb|~/.ssh/authorized_keys| on the robot. (3) The permissions: \texttt{\textasciitilde/.ssh} is $700$, the private key $600$, \texttt{authorized\_keys} not writable by others. (Also: the right key is offered, check with \verb|ssh -v|.)
+  \item Unquoted, the shell on your \emph{laptop} interprets the pipe: \texttt{ls} runs on the robot, but \texttt{wc} runs on the laptop, so the whole listing travels over the network first. Quoted, the entire pipeline runs on the robot and only the result (one number) comes back. For big outputs, such as log files, this saves a lot of traffic and time.
+  \item Start the job in tmux: \verb|tmux new -s train|, run the program, detach with \texttt{Ctrl+B} then \texttt{D}, later \verb|tmux attach -t train|.
+  \item With agent forwarding the gateway gets access to your agent socket as long as you are connected, so an attacker (or an administrator) on the gateway can sign in as you to any other machine. ProxyJump only forwards the encrypted bytes; your keys and the contents of the second connection stay on your laptop and the target.
+\end{enumerate}

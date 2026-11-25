@@ -1,0 +1,23 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item A number different from $0$ (\texttt{2} for GNU \texttt{ls}). After a successful command it prints $0$.
+  \item \verb|ls > list.txt ; date >> list.txt|
+  \item \begin{verbatim}
+      3 apple
+      2 banana
+      1 cherry
+\end{verbatim}
+  \item \texttt{5}, \texttt{\$x}, \texttt{7}.
+  \item \verb|for i in 1 2 3; do echo "robot $i"; done|
+  \item \begin{verbatim}
+#!/usr/bin/env bash
+if [[ $# -ne 1 ]]; then
+    echo "usage: $0 FILE" >&2
+    exit 1
+fi
+wc -l < "$1"
+\end{verbatim}
+  \item \texttt{make} runs; if it succeeds, \texttt{./run} runs; \texttt{failed} is printed if \texttt{make} \emph{or} \texttt{./run} fails (a failing \texttt{make} skips \texttt{./run} and goes to the \texttt{||} part).
+  \item Unquoted, the shell splits it into two arguments, \texttt{my} and \texttt{notes.txt}. \texttt{my} may be a different, real file. Correct: \verb|rm "$file"|.
+  \item Add \verb|export PATH="$HOME/bin:$PATH"| to \texttt{\textasciitilde/.bashrc} and run \verb|source ~/.bashrc|. The script must also be executable (\verb|chmod +x|).
+  \item[\textbf{\ansnum.10}] \verb!du -ah /var/log 2>/dev/null | sort -rh | head -n 4!. The first line is \texttt{/var/log} itself (the total), so ask for $4$ lines or use \texttt{tail}. The \texttt{2>/dev/null} hides ``permission denied'' messages; use \texttt{sudo} to see everything.
+\end{enumerate}

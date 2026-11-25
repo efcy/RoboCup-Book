@@ -1,0 +1,12 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item (a) \texttt{/home/robot/code}. (b) \texttt{/home/robot}. (c) \texttt{/home/robot}. (d) \texttt{/etc}. Only (d) uses an absolute path (it starts with \texttt{/}); \verb|~| is a shortcut for the absolute home directory but is expanded by the shell.
+  \item (a) Owner: read, write; group: read; others: nothing. A normal file. (b) A directory; the owner may list, create/delete and enter; group and others may list and enter but not change. (c) A file that only the owner may read, write and execute.
+  \item (a) $7\,5\,0$: \texttt{rwxr-x---}. (b) $4\,4\,4$: \texttt{r--r--r--}.
+  \item The file is not executable. Fix: \verb|chmod +x start.sh|.
+  \item \verb|mkdir -p robot/logs/2026|
+  \item It deletes the directory \texttt{\textasciitilde/build} \emph{and} (because of the space) the entire root directory \texttt{/}, i.e.\ the system. The space separates two arguments. Always write the path without a stray space and check before using \texttt{rm -rf}.
+  \item (a) \texttt{/var/log}. (b) \texttt{/etc/ssh}. (c) \texttt{/dev/ttyUSB0}. (d) \texttt{/proc/cpuinfo} (one block per core).
+  \item \verb|tail -n 50 /var/log/syslog| and \verb|tail -f /var/log/syslog|.
+  \item \verb|df -h| (which disk is full), then \verb|du -sh *| inside the suspicious directory (which item is big), repeating deeper.
+  \item Files $600$ (\texttt{rw-------}), directories $700$ (\texttt{rwx------}). Only the owner has access, so other users on the same computer cannot read your files by default.
+\end{enumerate}

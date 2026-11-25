@@ -1,0 +1,16 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \texttt{fetch} downloads new commits and updates the remote-tracking branches (\texttt{origin/main}); \texttt{pull} is \texttt{fetch} plus a merge (or rebase) into the current branch. \texttt{fetch} never changes your working files.
+  \item
+\begin{verbatim}
+git remote add origin git@github.com:ada/walker.git
+git push -u origin main
+\end{verbatim}
+  \item Your local \texttt{main} has two commits that \texttt{origin/main} does not have. Nothing is wrong; \verb!git push! publishes them.
+  \item Someone else pushed to the same branch first, so your history does not contain their commits and the push would lose them. Run \verb!git pull --rebase! (or \texttt{git pull}), resolve conflicts if any, run the tests, then \verb!git push!.
+  \item (1) Create a branch from an up-to-date \texttt{main}. (2) Commit and push it. (3) Open a pull request. (4) Review and automatic tests; fix by pushing more commits. (5) Merge into \texttt{main}, delete the branch, update locally.
+  \item \verb!ssh-keygen -t ed25519!; show the public key with \verb!cat ~/.ssh/id_ed25519.pub!; add it in GitHub (\emph{Settings, SSH and GPG keys, New SSH key}); test with \verb!ssh -T git@github.com!; use the SSH form of the repository URL.
+  \item A deploy key belongs to one repository, can be read-only, can be revoked on its own, and does not give access to your other repositories or your identity. If the robot is lost or shared, you remove one key and nothing else is exposed.
+  \item Squash combines all commits of the branch into one commit on \texttt{main}; the merge commit keeps all of them and adds a merge commit. Squash is good when the branch has many small ``work in progress'' commits and the PR is one logical change.
+  \item For example: title ``Increase camera timeout to 5 s''. Body: ``The camera needs up to $4$\,s to reconnect after Wi-Fi loss, the old $2$\,s timeout made the controller stop. Raised the timeout to $5$\,s. Tested by unplugging the camera for $3$\,s, the robot keeps walking. Closes \#12.''
+  \item[\textbf{\ansnum.10}] (1) \textbf{Revoke or rotate the token} at once at the provider. (2) Create a new token and store it safely (environment variable or Actions secret). (3) Remove the file from the repository, add it to \texttt{.gitignore} and commit. (4) Check the provider's log for misuse. (5) Optionally remove it from the history with a history-rewriting tool; this is only cleanup, since the token must be considered public already.
+\end{enumerate}

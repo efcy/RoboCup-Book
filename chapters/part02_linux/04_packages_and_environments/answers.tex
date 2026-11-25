@@ -1,0 +1,17 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \texttt{apt update} refreshes the list of available packages and versions (installs nothing). \texttt{apt upgrade} installs the newer versions of the installed packages. First \texttt{update}, then \texttt{upgrade} (or \texttt{install}).
+  \item (a) \verb|dpkg -L tmux|. (b) \verb|dpkg -S /usr/bin/tmux|.
+  \item \verb|sudo apt install ./driver.deb| (with \verb|./|).
+  \item \verb|sudo apt-mark hold foo|; list with \verb|apt-mark showhold|; release with \verb|sudo apt-mark unhold foo|.
+  \item \begin{verbatim}
+cd ~/proj
+python3 -m venv .venv
+source .venv/bin/activate
+pip install requests
+\end{verbatim}
+  \item \verb|pip freeze > requirements.txt| and on the other machine (in a new venv) \verb|pip install -r requirements.txt|.
+  \item The script is downloaded and run as root without anybody checking it; the server could be hacked, or the script changed. Safer: download it first, read it (\verb|less install.sh|), then run it, or use a package from the official repository with a verified key.
+  \item \texttt{remove} deletes the program but keeps the configuration files. \texttt{purge} also deletes the configuration. \texttt{autoremove} deletes packages that were installed only as dependencies and are no longer needed.
+  \item Every repository signs its packages with a private key. The key in \texttt{/etc/apt/keyrings} is the matching public key, and \texttt{Signed-By} tells apt to accept packages from \emph{this} repository only if the signature matches that key. It protects against manipulated packages.
+  \item The system tools use the system Python and its libraries. Installing a different version of a library into the system overwrote or shadowed the version the tools need, bypassing the package manager (which also does not know about the change). Avoid it by using a virtual environment (or \texttt{pipx}) and never \texttt{sudo pip}. Repair by removing the pip-installed package, or reinstalling the apt package (\verb|sudo apt install --reinstall ...|).
+\end{enumerate}

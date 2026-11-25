@@ -1,0 +1,12 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Netmask \texttt{255.255.255.0}, network \texttt{192.168.10.0}, broadcast \texttt{192.168.10.255}, $256-2=254$ usable hosts.
+  \item (a) No: the first three numbers differ (\texttt{10} vs.\ \texttt{11}). (b) Yes: with \texttt{/16} only the first two numbers (\texttt{192.168}) name the network.
+  \item A \texttt{/26} has blocks of $64$: $0$--$63$, $64$--$127$, \dots. The address \texttt{.70} lies in $64$--$127$: network \texttt{192.168.10.64}, broadcast \texttt{192.168.10.127}.
+  \item $2^2-2=2$ usable hosts: used for point-to-point links between two devices.
+  \item (a) \verb|ip -br addr|. (b) \verb|ip route| (the line starting with \texttt{default}). (c) \verb!sudo ss -tulpn | grep 8080!.
+  \item The name resolution (step 5): DNS. The internet works, only the translation of names fails. Check \verb|resolvectl status| for DNS servers, the contents of the DHCP settings, or try another DNS server.
+  \item The computer is reachable, but nothing accepts connections on port $22$: the SSH server is not running, is listening on another port, or a firewall rejects. On the robot: \verb|systemctl status ssh|, \verb!sudo ss -tulpn | grep ssh!.
+  \item No: it listens on the loopback interface only. Reach it with an SSH tunnel: \verb|ssh -L 8080:localhost:8080 robot@192.168.10.5| and open \texttt{http://localhost:8080}, or configure the service to listen on \texttt{0.0.0.0} (only if that is safe).
+  \item $1280\cdot720\cdot3\cdot15=41\,472\,000$ bytes/s $=41.5$\,MB/s $=331.8$\,Mbit/s. It does \emph{not} fit through $100$\,Mbit/s. The stream must be compressed.
+  \item You enabled the firewall without allowing SSH first (\verb|sudo ufw allow 22/tcp|), so it blocked your own connection. Always allow SSH \emph{before} \verb|ufw enable|, or have another way (console) to get in.
+\end{enumerate}

@@ -1,0 +1,204 @@
+\bookchapter{Git: Best Practices and Recovery}\label{ch:git4}
+
+\section*{Explanation}
+Knowing the commands is half of it. The other half is the habits that keep a repository readable and a team fast, and the calm to fix mistakes. Everybody makes mistakes with Git: committing to the wrong branch, a typo in a message, a deleted file. Almost all of them are recoverable, if you know which tool fits. This chapter first collects the habits of good teams, then the repair kit.
+
+\section*{Commits}
+\subsection*{Atomic commits}
+A commit should contain \emph{one logical change} that builds and works. ``Fix the camera timeout'' is one commit. ``Fix the camera, rename variables, update README and try a new gait'' is four. Small commits are easy to review, to understand months later, to undo (\texttt{git revert}) and to find bugs in (\texttt{git bisect}, below).
+
+If you have mixed several changes in one file, stage them piece by piece:
+\begin{verbatim}
+$ git add -p walk.py
+@@ -10,3 +10,4 @@ def step(speed):
+ ...
+Stage this hunk [y,n,q,a,d,s,e,?]? y
+\end{verbatim}
+\texttt{y} stages this piece, \texttt{n} skips it, \texttt{s} splits it into smaller pieces.
+
+\subsection*{Good commit messages}
+The log is the diary of the project. A message has a short subject, an empty line and, when needed, a body:
+\begin{verbatim}
+Fix camera timeout after Wi-Fi reconnect
+
+The camera node needs up to 4 s to resume after a reconnect, but
+the controller stopped after 2 s. Raise the timeout to 5 s and log
+a warning when more than 2 s are used.
+
+Closes #12
+\end{verbatim}
+Rules that most teams follow:
+\begin{itemize}[nosep]
+  \item Subject: at most about $50$ characters, no full stop, \textbf{imperative mood} (``Fix'', ``Add'', ``Remove'', as if giving an order to the code). It should complete the sentence ``If applied, this commit will\dots''
+  \item Empty second line. Body lines at most $72$ characters.
+  \item The body explains \textbf{why}, not what: the diff already shows what changed.
+  \item Refer to issues (\texttt{Closes \#12}).
+\end{itemize}
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{6.0cm}p{7.2cm}}
+\textbf{Poor} & \textbf{Good}\\ \hline
+\texttt{fix} & \texttt{Fix crash when camera returns None}\\
+\texttt{changes} & \texttt{Move gait parameters to config.yaml}\\
+\texttt{wip, again, final2} & \texttt{Add logging of loop time per cycle}\\
+\texttt{Updated stuff in walk.py} & \texttt{Reduce step height to avoid tripping}\\
+\end{tabular}
+\end{center}
+Without \texttt{-m}, \texttt{git commit} opens your editor for a long message. Do not commit generated files, secrets or debug leftovers (see Chapter~\ref{ch:git1}); run the tests first.
+
+\section*{Branching strategies}
+\begin{description}
+  \item[Trunk-based / GitHub flow (recommended).] One long-lived branch \texttt{main} that always works. Everything else is a short branch ($\leq$ few days), merged by PR (Chapter~\ref{ch:git3}). Releases are tags on \texttt{main}. Simple, and enough for almost every student or robotics team.
+  \item[Git flow.] Additional long-lived branches \texttt{develop} and \texttt{release/*}. More ceremony; it makes sense for software with several supported versions installed at customers.
+\end{description}
+Whatever the choice, write it down in the \texttt{README} or \texttt{CONTRIBUTING.md}, so that everybody does the same: branch names, how to merge (squash or rebase), who reviews.
+
+\subsection*{Your daily routine}
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{2.6cm}p{10.4cm}}
+\textbf{When} & \textbf{What}\\ \hline
+Morning & \verb!git switch main && git pull! (start from the newest state)\\
+New task & \verb!git switch -c feature/name!\\
+While working & small commits; \verb!git status!, \verb!git diff --staged! before each; run the tests\\
+Often & \verb!git fetch! and \verb!git rebase origin/main! (or merge) to stay close to \texttt{main}\\
+Before the PR & \verb!git log --oneline main..! (is the story clean?), \verb!git rebase -i! if needed, push\\
+Evening & push your branch (a backup!), even if unfinished\\
+After merge & switch to \texttt{main}, pull, delete the branch\\
+\end{tabular}
+\end{center}
+Settings that make the routine smoother:
+\begin{verbatim}
+$ git config --global pull.rebase true       # no needless merge commits
+$ git config --global fetch.prune true       # drop deleted remote branches
+$ git config --global rerere.enabled true    # remember conflict solutions
+$ git config --global alias.lg "log --oneline --graph --decorate --all"
+$ git lg
+\end{verbatim}
+
+\section*{Undoing things}
+The right tool depends on \emph{how far the mistake has gone}. Figure~\ref{fig:g4_undo} is the decision, Table~\ref{tab:g4_undo} lists the commands.
+\begin{center}
+\begin{tikzpicture}[q/.style={draw,rounded corners,thick,fill=yellow!20,minimum width=4cm,minimum height=0.9cm,align=center,font=\footnotesize},a/.style={draw,rounded corners,thick,fill=green!12,minimum width=4.6cm,minimum height=0.9cm,align=center,font=\footnotesize\ttfamily},>={Stealth[length=2.5mm]}]
+  \node[q] (q1) at (0,0) {Where is the mistake?};
+  \node[q] (q2) at (0,-1.7) {Not yet committed};
+  \node[q] (q3) at (0,-3.4) {Committed, not pushed};
+  \node[q] (q4) at (0,-5.1) {Pushed / shared};
+  \draw[->,thick] (q1)--(q2); \draw[->,thick] (q2)--(q3); \draw[->,thick] (q3)--(q4);
+  \node[a] (a2) at (6.6,-1.7) {git restore FILE};
+  \node[a] (a3) at (6.6,-3.4) {git commit --amend\\git reset};
+  \node[a] (a4) at (6.6,-5.1) {git revert COMMIT};
+  \draw[->,thick] (q2)--(a2); \draw[->,thick] (q3)--(a3); \draw[->,thick] (q4)--(a4);
+  \node[font=\scriptsize,align=left,gray!60!black,anchor=west] at (9.0,-1.7) {discard edits};
+  \node[font=\scriptsize,align=left,gray!60!black,anchor=west] at (9.0,-3.4) {rewrite my local history};
+  \node[font=\scriptsize,align=left,gray!60!black,anchor=west] at (9.0,-5.1) {new commit that cancels};
+\end{tikzpicture}
+\captionof{figure}{Which undo tool? The more people have seen the commit, the less history you may rewrite.}\label{fig:g4_undo}
+\end{center}
+\begin{center}
+\captionof{table}{The undo commands.}\label{tab:g4_undo}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{5.6cm}p{7.6cm}}
+\textbf{Command} & \textbf{Effect}\\ \hline
+\verb!git restore FILE! & throw away changes in the working directory (\textbf{cannot be undone})\\
+\verb!git restore --staged FILE! & unstage, keep the edits\\
+\verb!git restore --source=HEAD~2 FILE! & bring an old version of one file back\\
+\verb!git commit --amend! & change the last commit (message or content)\\
+\verb!git reset --soft HEAD~1! & undo the commit, keep changes staged\\
+\verb!git reset HEAD~1! (mixed) & undo the commit, keep changes unstaged\\
+\verb!git reset --hard HEAD~1! & undo the commit \emph{and} delete the changes\\
+\verb!git revert COMMIT! & new commit that undoes an old one; safe for shared history\\
+\verb!git reflog! & the diary of where HEAD has been: the safety net\\
+\end{tabular}
+\end{center}
+
+\begin{verbatim}
+$ git commit -m "Update REAMDE"        # typo in the message
+$ git commit --amend -m "Update README"
+$ echo broken > walk.py                # disaster in the working dir
+$ git restore walk.py                  # gone: back to the last commit
+\end{verbatim}
+\textbf{Amend and reset only for commits that you have not pushed}, as they replace commits by new ones (the golden rule of Chapter~\ref{ch:git2}). For a pushed commit use \texttt{revert}:
+\begin{verbatim}
+$ git revert 4dc63e4
+[main 4809596] Revert "Add a"
+ 1 file changed, 1 deletion(-)
+\end{verbatim}
+
+\subsection*{The safety net: reflog}
+You ran \verb!git reset --hard HEAD~2! and the two newest commits are gone from the log! But Git remembers every place HEAD has been for about $90$ days:
+\begin{verbatim}
+$ git reflog
+a36b8f4 HEAD@{0}: reset: moving to HEAD~2
+7698a27 HEAD@{1}: commit: Add b
+4dc63e4 HEAD@{2}: commit: Add a
+a36b8f4 HEAD@{3}: commit (amend): Update README
+$ git reset --hard 7698a27         # or HEAD@{1}: back to before
+HEAD is now at 7698a27 Add b
+\end{verbatim}
+Commits are not erased immediately; only the labels moved. This is why \emph{committed work is almost never lost}, while \emph{uncommitted work is}: \texttt{git restore} and \texttt{reset --hard} cannot bring back edits that were never committed. Commit often, also unfinished work on your own branch.
+
+\subsection*{Force-push}
+After a rebase or amend of a branch that you already pushed, a normal push is rejected, since the histories differ. On \emph{your own feature branch} that nobody else uses you may overwrite it:
+\begin{verbatim}
+$ git push --force-with-lease
+\end{verbatim}
+\texttt{--force-with-lease} refuses if somebody pushed in the meantime, so it cannot silently destroy their work, unlike plain \texttt{--force}. On \texttt{main} protect against force-pushes in the branch rules (Chapter~\ref{ch:git3}).
+
+\section*{Finding the commit that broke it: bisect}
+The robot walked fine two weeks ago and now falls over, with $64$ commits in between. \texttt{git bisect} does a binary search through the history:
+\begin{verbatim}
+$ git bisect start
+$ git bisect bad                   # the current version is broken
+$ git bisect good v0.1             # this tag was fine
+Bisecting: 31 revisions left to test (roughly 5 steps)
+$ # test now (run the program), then tell git:
+$ git bisect good                  # or: git bisect bad
+...
+8cc1a09 is the first bad commit
+$ git bisect reset                 # back to where you started
+\end{verbatim}
+Since $2^6=64$, about six tests find the culprit among $64$ commits. With a test script (\verb!git bisect run ./test.sh!) it runs by itself. This only works well with atomic commits that each build.
+
+\section*{Large files and Git LFS}
+Git stores every version of every file forever. A $200$\,MB model committed ten times makes the repository $2$\,GB for every clone. Keep datasets and weights out of Git (a storage server, release assets, or a tool such as DVC). If binaries must live next to the code, \textbf{Git LFS} (Large File Storage) keeps them on a separate server, and the repository holds only small pointers:
+\begin{verbatim}
+$ sudo apt install git-lfs && git lfs install
+$ git lfs track "*.onnx"           # writes .gitattributes
+$ git add .gitattributes policy.onnx
+\end{verbatim}
+GitHub rejects single files above $100$\,MB without LFS.
+
+\section*{Hooks and automatic checks}
+A \textbf{hook} is a script that runs at a Git event. A \texttt{pre-commit} hook can run a formatter and a quick test before each commit, so errors never enter the history. The \texttt{pre-commit} tool manages them from a file \texttt{.pre-commit-config.yaml}:
+\begin{verbatim}
+$ pip install pre-commit        # in your virtual environment
+$ pre-commit install            # activate for this repository
+\end{verbatim}
+The same checks should also run in GitHub Actions (Chapter~\ref{ch:git3}), since a hook can be skipped on a single laptop but the pull request check cannot.
+
+\section*{Working across Windows, macOS and Linux}
+Windows ends text lines with two characters (CRLF), Linux with one (LF). A shell script saved with CRLF fails on the robot with the confusing message \verb!bad interpreter: /bin/bash^M!. Let Git handle it: a file \texttt{.gitattributes} in the repository with the line \verb!* text=auto eol=lf! stores LF in the repository, and Windows users set \verb!git config --global core.autocrlf true!. Also avoid file names that differ only in upper and lower case, since Windows treats them as the same.
+
+\section*{Checklist}
+\begin{keyidea}[Ten habits]
+(1)~\texttt{git status} and \texttt{git diff --staged} before every commit. (2)~One logical change per commit. (3)~Messages that explain why. (4)~A branch for every task, merged by PR. (5)~Short-lived branches. (6)~\texttt{main} always works; tests run automatically. (7)~Pull before you start, push before you leave. (8)~Never rewrite shared history. (9)~No secrets, no large binaries, a good \texttt{.gitignore}. (10)~When in doubt: \texttt{git status}, then \texttt{git reflog}, and do not panic.
+\end{keyidea}
+
+\begin{example}
+Ada wanted to throw away her last (unpushed) commit but typed \verb!git reset --hard HEAD~3! instead of \verb!HEAD~1!. Three commits seem to be gone. She runs \texttt{git reflog}, finds the line \texttt{HEAD@\{1\}: commit: Add logging} that was her newest commit, and runs \verb!git reset --hard HEAD@{1}!. Everything is back. Had she also had uncommitted edits, the \texttt{--hard} would have destroyed them, and the reflog could not help: this is why she commits before experimenting.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Rewrite the commit message ``fixed stuff'' for a change that stops the controller from crashing when the IMU sends \texttt{NaN}. Obey the usual rules.
+  \item Why should commits be small and atomic? Give two benefits.
+  \item You edited \texttt{config.py} for two unrelated reasons. How do you create two separate commits?
+  \item You made a typo in the message of your last, unpushed commit. Which command fixes it? Why would you not do this for a pushed commit?
+  \item Which command discards all uncommitted changes in \texttt{walk.py}? Can you get them back?
+  \item Explain the difference between \verb!git reset --soft HEAD~1!, \verb!git reset HEAD~1! and \verb!git reset --hard HEAD~1!.
+  \item A faulty commit is already on \texttt{main} and your colleagues have pulled it. How do you undo its effect?
+  \item You ran \verb!git reset --hard! and lost commits. How do you find them again?
+  \item Why is \texttt{--force-with-lease} better than \texttt{--force}? When is force-pushing acceptable?
+  \item[\textbf{\thechapter.10}$\star$] Between the tag \texttt{v1.0} (works) and \texttt{main} (broken) there are $100$ commits. About how many tests does \texttt{git bisect} need at most? Write the commands to start it.
+\end{enumerate}

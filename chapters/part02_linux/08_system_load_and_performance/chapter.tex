@@ -1,0 +1,214 @@
+\bookchapter{System Load and Performance}\label{ch:linux8}
+
+\section*{Explanation}
+The robot stutters, the video lags, the walking controller misses its time slot. Opening \texttt{htop} and looking at a few coloured bars is a start, but not an answer. \emph{Which} resource is the bottleneck: processor, memory, disk, network, or heat? Is the machine merely busy or is work \emph{waiting}? And inside a program, \emph{where} is the time going? This chapter gives you a method and the tools from the first look up to hardware performance counters.
+
+\subsection*{A method: Utilization, Saturation, Errors}
+For every resource of the computer ask three questions (the \textbf{USE method}):
+\begin{itemize}[nosep]
+  \item \textbf{Utilization:} how busy is it, on average? (CPU $80\,\%$ busy)
+  \item \textbf{Saturation:} is there \emph{extra work waiting} because the resource is full? (processes in the run queue, a disk queue, swapping)
+  \item \textbf{Errors:} does it report problems? (disk errors, dropped packets, throttling, out-of-memory kills)
+\end{itemize}
+Utilization alone can mislead: a resource at $100\,\%$ with no queue is fine, a resource at $60\,\%$ with a long queue is not. Saturation is what you feel as lag. Go through CPU, memory, disk, network (and GPU, temperature on a robot) one after the other. Figure~\ref{fig:l8_map} shows where the tools of this chapter look.
+
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,rounded corners,thick,minimum height=1.0cm,align=center,font=\footnotesize},>={Stealth[length=2.5mm]}]
+  \node[box,fill=blue!10,minimum width=12.4cm] (app) at (0,2.9) {\textbf{applications}\quad \texttt{py-spy}, \texttt{perf record}, \texttt{strace}, profilers};
+  \node[box,fill=orange!15,minimum width=12.4cm] (os) at (0,1.5) {\textbf{operating system}\quad \texttt{top}/\texttt{htop}, \texttt{pidstat}, \texttt{vmstat}, \texttt{systemd-cgtop}, \texttt{/proc/pressure}};
+  \node[box,fill=green!12,minimum width=2.9cm] (c) at (-4.7,0) {CPU\\{\scriptsize \texttt{mpstat}, \texttt{perf stat}}};
+  \node[box,fill=green!12,minimum width=2.9cm] (m) at (-1.55,0) {memory\\{\scriptsize \texttt{free}, \texttt{vmstat}}};
+  \node[box,fill=green!12,minimum width=2.9cm] (d) at (1.55,0) {disk\\{\scriptsize \texttt{iostat}, \texttt{iotop}}};
+  \node[box,fill=green!12,minimum width=2.9cm] (n) at (4.7,0) {network\\{\scriptsize \texttt{ss}, \texttt{iperf3}}};
+  \node[box,fill=red!10,minimum width=12.4cm] (t) at (0,-1.4) {\textbf{temperature, frequency, power}\quad \texttt{sensors}, \texttt{/sys/class/thermal}, \texttt{tegrastats}, \texttt{nvidia-smi}};
+\end{tikzpicture}
+\captionof{figure}{Where the performance tools look. Start in the middle of the stack (the operating system level) to find the resource, then go up to the program or down to the hardware.}\label{fig:l8_map}
+\end{center}
+
+\section*{A first look}
+\subsection*{Load average}
+\begin{verbatim}
+$ uptime
+ 16:23:39 up 19 min,  0 user,  load average: 1.19, 0.28, 0.09
+$ nproc                       # number of CPU cores
+2
+\end{verbatim}
+The three \textbf{load averages} are averages over the last $1$, $5$ and $15$ minutes of the number of tasks that are \emph{running or waiting to run} (and, on Linux, also those waiting for disk). Compare them with the number of cores:
+\begin{itemize}[nosep]
+  \item Load $<$ number of cores: the processor has spare capacity.
+  \item Load $\approx$ number of cores: fully used, but nothing waits.
+  \item Load $>$ number of cores: tasks queue up. On $2$ cores a load of $4$ means that on average two tasks are waiting.
+\end{itemize}
+Compare the three numbers to see the trend: $8.0,\ 1.2,\ 0.5$ means ``the load just started'', $0.5,\ 3.0,\ 6.0$ means ``it is calming down''. The averages react slowly, like a mixing tank: after a constant load of $4$ begins, the 1-minute value reaches $4\,(1-e^{-t/1\,\mathrm{min}})$, the 5-minute value $4\,(1-e^{-t/5\,\mathrm{min}})$ (Figure~\ref{fig:l8_load}).
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[gr, width=11cm,height=5.2cm, xmin=0,xmax=15, ymin=0,ymax=4.4, xlabel={minutes since the load started}, ylabel={load average}, axis lines=left, xlabel near ticks, ylabel near ticks, legend pos=south east, samples=80]
+  \addplot[very thick,red!70!black,domain=0:15]{4*(1-exp(-x/1))};
+  \addlegendentry{1 min}
+  \addplot[very thick,orange!80!black,domain=0:15]{4*(1-exp(-x/5))};
+  \addlegendentry{5 min}
+  \addplot[very thick,blue!60!black,domain=0:15]{4*(1-exp(-x/15))};
+  \addlegendentry{15 min}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{The three load averages after four busy tasks start at time $0$ (constant load of $4$). The 1-minute value is nearly there after three minutes, the 15-minute value needs more than half an hour.}\label{fig:l8_load}
+\end{center}
+
+\begin{example}
+On a test machine with $2$ cores, four endless loops were started. After $20$ seconds \texttt{uptime} showed $1.19$ for the 1-minute average: the formula gives $4\,(1-e^{-20/60})=1.13$, close to it. In steady state the load would be $4$: two tasks running, two waiting. \texttt{top} showed every process at about $50\,\%$ of a core: they share two cores four ways.
+\end{example}
+
+\begin{keyidea}[High load does not always mean a busy CPU]
+On Linux, tasks that wait for disk or network storage (state \texttt{D}, Chapter~\ref{ch:linux5}) also count in the load. A load of $16$ with an idle processor means that something is stuck in input/output.
+\end{keyidea}
+
+\subsection*{CPU: who uses it, and how}
+\texttt{top} and \texttt{htop} show per-process load; press \texttt{1} in \texttt{top} for each core separately, and \texttt{H} to show threads. The header line splits the time into:
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{cp{11.6cm}}
+\texttt{us} & user time: your programs\\
+\texttt{sy} & system time: the kernel working for programs (system calls, networking, drivers); high values need a closer look\\
+\texttt{id} & idle\\
+\texttt{wa} & waiting for input/output (disk): the CPU would have work, but the data has not arrived\\
+\texttt{st} & stolen: another virtual machine took the CPU (cloud only)\\
+\end{tabular}
+\end{center}
+For a continuous view over time, \texttt{vmstat} prints one line per second (stop with \texttt{Ctrl+C}). This is the real output of the test machine while four busy loops ran on two cores:
+{\scriptsize
+\begin{verbatim}
+$ vmstat 1 3
+procs -----------memory---------- ---swap-- -----io---- -system-- -------cpu-------
+ r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st gu
+ 4  0      0 7754068   3784 214376    0    0   235     3   90    0  2  0 97  0  0  0
+ 4  0      0 7754456   3784 214376    0    0     0     0  522  574 100  0  0  0  0  0
+ 4  0      0 7754464   3784 214376    0    0     0     4  512  550 100  0  0  0  0  0
+\end{verbatim}
+}
+The columns \texttt{r} (runnable tasks, the \emph{queue} for the CPU: here $4$ on $2$ cores, so saturated) and \texttt{b} (tasks blocked in I/O), \texttt{si}/\texttt{so} (swap in/out), \texttt{bi}/\texttt{bo} (disk blocks in/out), \texttt{cs} (context switches per second) and the CPU split are the quickest overview of a system. (The first line is an average since boot.)
+
+The package \texttt{sysstat} (\verb|sudo apt install sysstat|) adds more detailed tools:
+\begin{verbatim}
+$ mpstat -P ALL 1          # per-core utilisation, every second
+$ pidstat 1                # per-process CPU use, every second
+$ pidstat -d 1             # per-process disk I/O
+$ iostat -xz 1             # per-disk utilisation, queue length, latency
+\end{verbatim}
+\texttt{pidstat} is the right tool when \texttt{top} flickers too fast, because it prints a log you can scroll through. One core at $100\,\%$ while the others are idle means a single-threaded program that cannot use the other cores.
+
+\subsection*{Temperature and frequency: the robot-specific part}
+A processor that gets too hot reduces its clock frequency (\textbf{thermal throttling}), and everything slows down although the CPU ``load'' looks normal. Robots, with their small closed bodies, are very prone to it.
+\begin{verbatim}
+$ sensors                                   # package lm-sensors
+$ cat /sys/class/thermal/thermal_zone0/temp # in millidegrees: 61000 = 61 C
+$ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq   # in kHz
+$ lscpu | grep -i mhz
+$ nvidia-smi                                # GPU load, memory, temperature
+$ tegrastats                                # NVIDIA Jetson boards
+\end{verbatim}
+If the frequency drops as the temperature rises while a program runs, the cooling is the problem, not your code. Log temperature and frequency during every long test.
+
+\subsection*{Memory}
+\begin{verbatim}
+$ free -h
+               total        used        free      shared  buff/cache   available
+Mem:           7.8Gi       460Mi       7.4Gi        12Mi       185Mi       7.4Gi
+Swap:             0B          0B          0B
+\end{verbatim}
+Do not be shocked by a small \texttt{free} column: Linux uses spare memory as a \textbf{cache} for files (\texttt{buff/cache}), and gives it up when programs need it. The number that matters is \textbf{available}. If it is small, or if the system starts to \textbf{swap} (columns \texttt{si}/\texttt{so} in \texttt{vmstat} are not $0$), everything becomes slow, because disk is thousands of times slower than memory. If memory runs out completely, the kernel's \textbf{OOM killer} ends a process, often the largest one. Look for it with \verb!sudo dmesg -T | grep -i "out of memory"! or \verb|journalctl -k -b|. A program whose memory use grows steadily (\texttt{RSS} in \texttt{ps} or \texttt{top}) has a leak.
+
+\subsection*{Disk and network}
+\texttt{df -h} for free space (a full disk is a classic), \texttt{iostat -xz 1} for the disk load: \texttt{\%util} near $100$ and a growing \texttt{aqu-sz} (queue) and \texttt{await} (milliseconds per request) mean saturation. Recording sensor data (for example ROS bags with camera images) can easily saturate a small SD card or SSD. \verb|sudo iotop| shows which process writes. For the network use \texttt{ip -s link} (errors and drops), \texttt{ss -s} and \texttt{iperf3} (Chapter~\ref{ch:linux7}).
+
+\section*{Pressure stall information: how much is waiting?}
+Modern kernels measure \emph{directly} how much time tasks lose waiting for a resource. These \textbf{PSI} numbers are in files:
+\begin{verbatim}
+$ cat /proc/pressure/cpu
+some avg10=87.56 avg60=30.15 avg300=7.15 total=22640096
+$ cat /proc/pressure/memory
+some avg10=0.00 avg60=0.00 avg300=0.00 total=0
+full avg10=0.00 avg60=0.00 avg300=0.00 total=0
+$ cat /proc/pressure/io
+some avg10=0.18 avg60=0.03 avg300=0.01 total=928645
+full avg10=0.18 avg60=0.03 avg300=0.00 total=898501
+\end{verbatim}
+(The first value was measured during the four-loops-on-two-cores experiment.) \texttt{some} is the percentage of time during which \emph{at least one} task was stalled because of this resource, and \texttt{full} the time in which \emph{all} tasks were stalled. The three averages cover $10$\,s, $60$\,s and $300$\,s. A \texttt{cpu some avg10} of $87.56$ means: for almost $88\,\%$ of the last ten seconds some task was ready to run but had no core. This is the \emph{saturation} of the USE method as a single number, and it is more reliable than the load average. systemd keeps the same numbers per service (\verb|systemd-cgtop| shows CPU, memory and I/O of every service, Chapter~\ref{ch:linux5}).
+
+\section*{Performance counters}
+Everything so far tells you \emph{that} something is slow. To learn \emph{why} inside the processor, use the \textbf{performance monitoring unit} (PMU): the CPU itself counts events in hardware, without slowing the program down. Typical counters:
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{p{4.6cm}p{8.6cm}}
+\texttt{cycles} & clock cycles in which the program ran\\
+\texttt{instructions} & machine instructions that were completed\\
+\texttt{cache-references}, \texttt{cache-misses} & accesses to the last-level cache, and how many had to go to the (slow) main memory\\
+\texttt{branch-instructions}, \texttt{branch-misses} & jumps, and how often the processor guessed wrongly\\
+\texttt{stalled-cycles-...} & cycles in which the processor waited without doing work\\
+\end{tabular}
+\end{center}
+The tool is \texttt{perf} (package \texttt{linux-tools-generic}, or \texttt{linux-tools-\$(uname -r)}). Because access to the counters is restricted, you may need \texttt{sudo} or \verb|sudo sysctl kernel.perf_event_paranoid=1|; and inside many virtual machines no hardware counters are available at all.
+\begin{verbatim}
+$ perf stat ./traverse col
+$ perf stat -e cycles,instructions,cache-misses,branch-misses ./traverse
+$ perf stat -p 1423 sleep 10        # an already running process, 10 seconds
+\end{verbatim}
+A useful number is the \textbf{IPC} (instructions per cycle) $=\text{instructions}/\text{cycles}$. A modern core can complete several instructions per cycle; an IPC well below $1$ means that the processor spends most cycles \emph{waiting}, usually for memory.
+
+\begin{example}[Why does the order of loops matter?]
+Two versions of the same program add up the elements of a $8192\times8192$ array of floats, three times. Version~A walks through the memory row by row (\texttt{a[i][j]} with \texttt{j} in the inner loop), version~B column by column (\texttt{i} in the inner loop). Both do exactly the same additions. On the test machine (compiled with \texttt{gcc -O1}) A took $0.66$\,s and B took $2.08$\,s: about three times longer.
+
+The reason is the cache. Memory is read in \textbf{cache lines} of $64$ bytes, which is $16$ floats. Arrays are stored row by row. In version~A the next element is in the same cache line, so one load serves $16$ accesses. In version~B the next element is a whole row ($8192\cdot4=32\,768$ bytes) away, always in a new cache line, and the other $15$ floats loaded with it are used much later, when they have long been thrown out of the cache. \texttt{perf stat} shows this clearly: version~B has far more \texttt{cache-misses} and a much lower IPC, since the processor mostly waits for memory.
+\end{example}
+(The speed difference of $3\times$ rather than $16\times$ comes from the hardware prefetcher that partly hides the problem. On other computers the factor differs; measure yours.)
+
+\textbf{Where in the program?} \texttt{perf record} samples the program many times per second and records where it was; \texttt{perf report} sorts the functions by time:
+\begin{verbatim}
+$ perf record -g ./myprogram          # -g also records the call chains
+$ perf report                         # interactive list of hot functions
+$ sudo perf top                       # live view for the whole system
+\end{verbatim}
+Programs compiled with debug information (\texttt{-g}) show source lines. The call chains can be turned into a \textbf{flame graph}, a picture in which the width of a box is the time spent in a function and the boxes above show who it called: wide boxes are the places to optimise. For Python programs use \texttt{py-spy} (\verb|py-spy top --pid PID|, \verb|py-spy record -o profile.svg --pid PID|), which needs no change of the program. \texttt{python -m cProfile} is the built-in alternative.
+
+\textbf{Other deep tools.}
+\begin{itemize}[nosep]
+  \item \texttt{strace -c -p PID} counts the system calls of a running program and the time spent in each; \texttt{strace -f -tt command} traces with time stamps. Excellent for ``why is it waiting?'' (a file, a socket, a lock).
+  \item \texttt{ltrace}, \texttt{gdb} and \texttt{valgrind} look inside the program; \texttt{bpftrace} and the BCC tools (eBPF) can measure almost any event of the kernel with little overhead.
+\end{itemize}
+
+\subsection*{Latency and jitter matter on a robot}
+A controller that must run every $2$\,ms is not helped by an average: it is the \emph{worst} cycles that make the robot fall. Measure the \textbf{distribution} (the $99$th percentile and the maximum, Chapter~\ref{ch:stats}), not the mean. Tools and settings that help:
+\begin{itemize}[nosep]
+  \item \texttt{cyclictest} (package \texttt{rt-tests}) measures how late a timer wakes a thread, i.e.\ the scheduling latency of the machine.
+  \item \texttt{taskset -c 2,3 command} pins a program to chosen cores; \texttt{chrt -f 50 command} gives it a real-time priority; \texttt{nice} lowers the priority of background jobs.
+  \item A real-time (\texttt{PREEMPT\_RT}) kernel bounds the worst-case latency. Recent Ubuntu releases offer one as a package.
+  \item Keep heavy work (video recording, compression) away from the cores of the controller.
+\end{itemize}
+
+\section*{A routine for ``it is slow''}
+\begin{enumerate}[nosep]
+  \item \verb|uptime|, \verb|nproc|, \verb|vmstat 1|: queue (\texttt{r}), waiting (\texttt{b}, \texttt{wa}), swapping?
+  \item \verb|cat /proc/pressure/{cpu,memory,io}|: which resource has stalls?
+  \item \texttt{top}/\texttt{htop}, \texttt{pidstat 1}: which process?
+  \item Temperature and frequency: is the machine throttling?
+  \item \verb|journalctl -k -b|: kernel errors, OOM, disk errors?
+  \item Only then dig into the program: \texttt{perf stat}, \texttt{perf record}, \texttt{py-spy}, \texttt{strace}.
+\end{enumerate}
+
+\begin{aibox}
+Training a neural network on a robot's computer or running a vision model in real time is exactly where these tools pay off: Is the GPU waiting for data (the CPU is the bottleneck) or the other way round? Is the camera stream saturating the disk or the network? Did the board throttle after ten minutes? Measure first, then change one thing at a time.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A machine with $8$ cores shows the load averages $8.0,\ 1.2,\ 0.5$. Interpret the three numbers: is it saturated, and how is it developing?
+  \item The load average is $16$ on $4$ cores, but \texttt{top} shows the CPU $90\,\%$ idle and $\texttt{wa}$ is high. What is likely going on? Which commands do you try next?
+  \item Read \texttt{free -h}: total $7.8$\,Gi, free $0.2$\,Gi, buff/cache $6.9$\,Gi, available $7.0$\,Gi. Is the machine short of memory? How would you notice real memory trouble?
+  \item \texttt{vmstat 1} shows \texttt{r}\,$=6$, \texttt{b}\,$=0$, \texttt{us}\,$=98$, \texttt{id}\,$=0$ on a $4$-core machine. What is the situation?
+  \item \texttt{/proc/pressure/memory} shows \texttt{some avg10=40.00}. What does it mean in plain words?
+  \item A program ran for a while with $3.0\cdot10^{9}$ cycles and $1.5\cdot10^{9}$ instructions. Compute the IPC. What does it suggest?
+  \item An array of $4096\times4096$ floats is stored row by row. How far apart in bytes are two vertically neighbouring elements? How many floats fit into a $64$-byte cache line, and why is column-wise walking slower?
+  \item Four tasks need a constant load of $4$ on a machine that was idle. What are the three load averages after $1$ minute? Use $L(t)=4\,(1-e^{-t/\tau})$ with $\tau=1,5,15$ minutes.
+  \item A controller runs at $500$\,Hz and the average CPU use is only $20\,\%$, but the robot occasionally stumbles. Why is the average misleading, and what do you measure instead?
+  \item[\textbf{\thechapter.10}$\star$] Write a shell loop that every second appends the time, the 1-minute load average and the CPU temperature in $^\circ$C to \texttt{perf.csv}. (Hint: \texttt{/proc/loadavg}, \texttt{/sys/class/thermal/thermal\_zone0/temp} in millidegrees.)
+\end{enumerate}

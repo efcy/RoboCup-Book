@@ -1,0 +1,147 @@
+\bookchapter{Packages and Environments}\label{ch:linux4}
+
+\section*{Explanation}
+Almost nobody installs software on Linux by downloading and double-clicking a file. Instead a \textbf{package manager} installs programs from trusted online collections called \textbf{repositories}. It also installs everything the program depends on, keeps track of which file belongs to which package, and updates all software with a single command. On a robot, getting this right is the difference between a reproducible machine and a mystery.
+
+\subsection*{What is a package?}
+A \textbf{package} is an archive with the files of a program, plus a description: name, version, a list of \textbf{dependencies} (other packages it needs) and install scripts. On Ubuntu packages are \texttt{.deb} files. Two tools work together:
+\begin{itemize}[nosep]
+  \item \textbf{\texttt{dpkg}} installs and removes single \texttt{.deb} files. It knows nothing about the internet and does not solve dependencies.
+  \item \textbf{\texttt{apt}} is the front end: it talks to the repositories, downloads the packages, resolves the dependencies and calls \texttt{dpkg}.
+\end{itemize}
+
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,rounded corners,thick,minimum height=1.1cm,align=center,font=\small},>={Stealth[length=2.5mm]}]
+  \node[box,fill=gray!12,minimum width=3.0cm] (R) at (0,0) {repository\\[-2pt]{\scriptsize \texttt{archive.ubuntu.com}}};
+  \node[box,fill=blue!10,minimum width=3.0cm] (I) at (5.2,0) {package index\\[-2pt]{\scriptsize list of names and versions}};
+  \node[box,fill=orange!15,minimum width=3.0cm] (D) at (10.4,0) {\texttt{.deb} file\\[-2pt]{\scriptsize + dependencies}};
+  \node[box,fill=green!12,minimum width=3.0cm] (S) at (10.4,-2.2) {installed system\\[-2pt]{\scriptsize \texttt{/usr}, \texttt{/etc}, \dots}};
+  \draw[->,thick] (R) -- node[above,font=\scriptsize]{\texttt{apt update}} (I);
+  \draw[->,thick] (I) -- node[above,font=\scriptsize]{\texttt{apt install}} (D);
+  \draw[->,thick] (D) -- node[right,font=\scriptsize]{\texttt{dpkg}} (S);
+\end{tikzpicture}
+\captionof{figure}{How a program gets onto your computer. \texttt{apt update} only refreshes the list of what is available; \texttt{apt install} downloads and installs.}\label{fig:l4_apt}
+\end{center}
+
+\section*{apt: the daily commands}
+\begin{verbatim}
+$ sudo apt update               # refresh the package index
+$ sudo apt upgrade              # install newer versions of installed packages
+$ sudo apt install htop tmux    # install packages (and their dependencies)
+$ sudo apt remove htop          # remove the program, keep its config files
+$ sudo apt purge htop           # remove the program and its config files
+$ sudo apt autoremove           # remove dependencies nobody needs any more
+$ apt search "serial terminal"  # search names and descriptions
+$ apt show tmux                 # description, version, dependencies
+$ apt list --installed          # everything that is installed
+\end{verbatim}
+\begin{keyidea}[update vs.\ upgrade]
+\texttt{apt update} does not install anything. It downloads the \emph{list} of the newest versions. \texttt{apt upgrade} then installs newer versions of what you already have. Run \texttt{update} first, before installing, otherwise apt may look for old versions that no longer exist.
+\end{keyidea}
+\texttt{sudo apt full-upgrade} additionally allows removing packages when it is necessary to complete an upgrade (for example for a new kernel). Programs that are running keep their old version in memory until you restart them. After a kernel upgrade you need a reboot.
+
+\textbf{Looking behind the curtain.}
+\begin{verbatim}
+$ apt policy tmux             # installed version, candidate, repositories
+$ dpkg -L tmux                # which files does the package contain?
+$ dpkg -S /usr/bin/tmux       # which package does this file belong to?
+$ dpkg -l | grep ros          # installed packages matching ``ros''
+$ sudo apt install ./driver.deb   # install a downloaded .deb file with apt
+\end{verbatim}
+Installing a local file with \verb|apt install ./file.deb| (with the \verb|./|) is better than \verb|dpkg -i| because apt also fetches missing dependencies. Recent apt versions also keep a history of your changes (\verb|apt history-list|), useful to find out ``what did I install last Tuesday?''.
+
+\textbf{Common problems.}
+\begin{itemize}[nosep]
+  \item \texttt{Could not get lock /var/lib/dpkg/lock}: another process (an automatic update, another terminal) is using apt. Wait; do not delete the lock file.
+  \item \texttt{Unable to locate package}: wrong name, or you forgot \texttt{apt update}, or the repository is not enabled.
+  \item \texttt{Unmet dependencies}: try \verb|sudo apt --fix-broken install|.
+  \item \texttt{Hash sum mismatch}, \texttt{404 Not Found}: the index is old or the mirror is changing; \verb|sudo apt update| again.
+\end{itemize}
+
+\subsection*{Repositories and trust}
+The list of repositories is in \texttt{/etc/apt/sources.list.d/} (on current Ubuntu in files ending with \texttt{.sources}). Ubuntu itself has components: \texttt{main} (supported by Canonical), \texttt{universe} (community), \texttt{restricted} and \texttt{multiverse} (non-free). An entry looks like this:
+\begin{verbatim}
+Types: deb
+URIs: http://packages.example.org/ubuntu
+Suites: resolute
+Components: main
+Signed-By: /etc/apt/keyrings/example.gpg
+\end{verbatim}
+Every repository signs its packages. \texttt{Signed-By} points to the key that apt uses to check the signature for \emph{this} repository only. Third-party repositories (for ROS, NVIDIA, Docker, \dots) are added by installing their key into \texttt{/etc/apt/keyrings/} and adding a \texttt{.sources} file. The old \texttt{apt-key} tool is obsolete.
+
+\begin{keyidea}[Trust is the point]
+A package runs as root during installation. Add a third-party repository only if you trust its owner, and take the key and the repository address from the official website of the project. Be very careful with commands like \verb!curl https://... | sudo bash!: they run unknown code with full rights, and you cannot check it afterwards.
+\end{keyidea}
+
+\textbf{Holding versions.} On a robot you often want a package to stay on the working version:
+\begin{verbatim}
+$ sudo apt-mark hold ros-DISTRO-desktop     # do not upgrade this
+$ apt-mark showhold                        # list held packages
+$ sudo apt-mark unhold ros-DISTRO-desktop
+\end{verbatim}
+\textbf{Snap.} Ubuntu also has \textbf{snap}, a second package format in which programs bring their own libraries and update themselves automatically (\verb|snap list|, \verb|sudo snap install name|). Some Ubuntu programs are only available as snaps. For robot software the \texttt{apt} packages are normally the better choice because they fit the system libraries.
+
+\section*{Python: never install into the system}
+Ubuntu itself uses Python for system tools. If you install your own libraries into the system Python, you can break them. Recent Ubuntu versions therefore refuse:
+\begin{verbatim}
+$ pip install numpy
+error: externally-managed-environment
+\end{verbatim}
+This is not a bug, it protects you. The solution is a \textbf{virtual environment} (venv): a separate folder with its own Python packages for exactly one project.
+\begin{verbatim}
+$ sudo apt install python3-venv          # once
+$ cd ~/project
+$ python3 -m venv .venv                  # create (a folder .venv)
+$ source .venv/bin/activate              # activate: the prompt shows (.venv)
+(.venv) $ pip install numpy opencv-python
+(.venv) $ pip freeze > requirements.txt  # exact versions of everything
+(.venv) $ deactivate                     # leave the environment
+\end{verbatim}
+On another machine you recreate the same environment with \verb|pip install -r requirements.txt|. The \texttt{.venv} folder itself is not copied or put into git (Chapter~\ref{ch:git1}); the \texttt{requirements.txt} file is.
+
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,rounded corners,thick,align=center,font=\small},>={Stealth[length=2.5mm]}]
+  \node[box,fill=gray!15,minimum width=12cm,minimum height=1.0cm] (sys) at (0,0) {system Python and \texttt{apt} packages (\texttt{/usr}): do not touch};
+  \node[box,fill=blue!10,minimum width=3.7cm,minimum height=1.3cm] (a) at (-4.2,1.9) {\texttt{.venv} of project A\\[-2pt]{\scriptsize numpy 1.26}};
+  \node[box,fill=orange!15,minimum width=3.7cm,minimum height=1.3cm] (b) at (0,1.9) {\texttt{.venv} of project B\\[-2pt]{\scriptsize numpy 2.1}};
+  \node[box,fill=green!12,minimum width=3.7cm,minimum height=1.3cm] (c) at (4.2,1.9) {\texttt{.venv} of project C\\[-2pt]{\scriptsize PyTorch}};
+  \foreach \n in {a,b,c}{\draw[->,thick] (\n) -- (\n |- sys.north);}
+\end{tikzpicture}
+\captionof{figure}{Every project has its own virtual environment with its own versions. The projects cannot disturb each other or the system.}\label{fig:l4_venv}
+\end{center}
+
+\textbf{Other tools in this area.}
+\begin{itemize}[nosep]
+  \item \texttt{pipx install tool}: installs a Python \emph{program} (not a library) in its own hidden environment.
+  \item \texttt{uv}: a very fast modern replacement for \texttt{pip} and \texttt{venv} (\verb|uv venv|, \verb|uv pip install ...|), widely used in new projects.
+  \item \texttt{conda}/\texttt{mamba}: environments that can also contain non-Python software; common in data science.
+  \item \texttt{cargo} for Rust (Part~VIII), \texttt{npm} for JavaScript, and \texttt{rosdep} for ROS dependencies (Part~V) follow the same idea: one manager per ecosystem, always per project.
+\end{itemize}
+
+\textbf{Building from source.} Sometimes there is no package. Then you download the source code (with git, Chapter~\ref{ch:git3}) and build it, often with \texttt{cmake} and \texttt{make}. Install such software into your home directory (a prefix such as \verb|~/.local|) and not into \texttt{/usr}, where it can collide with packages. Write down every step: the next person (you in half a year) must be able to repeat it.
+
+\section*{Keeping a robot reproducible}
+\begin{itemize}[nosep]
+  \item Write a setup script or document that installs everything with \texttt{apt} and \texttt{pip}; do not rely on a hand-installed state.
+  \item Save the state: \verb|apt list --installed > packages.txt|, \verb|pip freeze > requirements.txt|.
+  \item Update deliberately, not before a competition. Test updates on a spare machine first and hold the packages that are known to work.
+  \item Keep a record of the Ubuntu release: \verb|lsb_release -a| or \verb|cat /etc/os-release|.
+\end{itemize}
+
+\begin{aibox}
+Many hours of robotics are lost to ``works on my laptop''. Package versions, Python environments and system libraries must be the same on the laptop and on the robot, or you must know exactly how they differ. Virtual environments and a documented install script are the cheapest insurance.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item What is the difference between \texttt{apt update} and \texttt{apt upgrade}? In which order do you run them?
+  \item Which command shows (a) the files of the installed package \texttt{tmux}, (b) the package that provides \texttt{/usr/bin/tmux}?
+  \item You downloaded \texttt{driver.deb}. Which command installs it together with its dependencies?
+  \item A working package \texttt{foo} must not be updated by the next \texttt{apt upgrade}. Which command do you use, and how do you list all held packages?
+  \item \texttt{pip install requests} prints \texttt{externally-managed-environment}. Write the commands that create a virtual environment in \texttt{\textasciitilde/proj}, activate it and install the library there.
+  \item How do you record the installed Python packages of a project and recreate them on another machine?
+  \item Why is \verb!curl https://example.org/install.sh | sudo bash! risky? Name one safer way to proceed.
+  \item What is the difference between \texttt{apt remove}, \texttt{apt purge} and \texttt{apt autoremove}?
+  \item What do the \texttt{Signed-By} line and the files in \texttt{/etc/apt/keyrings} do?
+  \item[\textbf{\thechapter.10}$\star$] A colleague ran \verb|sudo pip install --break-system-packages some-lib| and now some Ubuntu tools fail with import errors. Explain what probably happened and how to avoid it.
+\end{enumerate}

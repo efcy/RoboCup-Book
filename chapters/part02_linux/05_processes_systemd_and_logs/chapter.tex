@@ -1,0 +1,230 @@
+\bookchapter{Processes, systemd and Logs}\label{ch:linux5}
+
+\section*{Explanation}
+A running program is a \textbf{process}. The robot runs dozens of them: the camera driver, the controller, the network services. You must be able to see them, stop them and, above all, make sure that the right ones \emph{start by themselves} after power-on and are restarted if they crash. On Linux this is the job of \textbf{systemd}. When something goes wrong, the \textbf{logs} tell you why.
+
+\section*{Processes}
+Every process has a number, the \textbf{PID} (process ID), and a \textbf{parent} that started it. The very first process (PID~1) is systemd, and all others descend from it (Figure~\ref{fig:l5_tree}).
+
+\begin{center}
+\begin{tikzpicture}[level distance=1.15cm, every node/.style={draw,rounded corners,fill=blue!8,font=\small\ttfamily,inner sep=3pt}, edge from parent/.style={draw,->,thick,gray}, level 1/.style={sibling distance=4.6cm}, level 2/.style={sibling distance=3.2cm}, >={Stealth[length=2mm]}]
+  \node[fill=orange!15] {systemd (PID 1)}
+    child { node {sshd}
+      child { node {sshd: robot} child { node {bash} child { node[fill=green!12] {python run.py} } } }
+    }
+    child { node[fill=orange!8] {walker.service}
+      child { node[fill=green!12] {python run.py} }
+    }
+    child { node {cron} };
+\end{tikzpicture}
+\captionof{figure}{Process tree. Everything starts below systemd. Your SSH login creates a chain \texttt{sshd}\,$\to$\,\texttt{bash}\,$\to$\,your program. A program that is started by a service runs below systemd, independent of any login.}\label{fig:l5_tree}
+\end{center}
+
+\begin{verbatim}
+$ ps aux | head -n 4              # all processes
+USER   PID %CPU %MEM    VSZ   RSS TTY  STAT START  TIME COMMAND
+root     1  0.0  0.1 168936 13164 ?    Ss   09:58  0:02 /sbin/init
+root     2  0.0  0.0      0     0 ?    S    09:58  0:00 [kthreadd]
+robot 1423 45.2  2.6 912480 212400 ?   Rl   10:02  1:03 python run.py
+$ ps -ef --forest                 # with the parent/child tree
+$ pstree -p                       # compact tree with PIDs
+$ pgrep -af python                # PIDs and command lines matching ``python''
+\end{verbatim}
+The column \texttt{STAT} shows the state of the process:
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{cp{11cm}}
+\texttt{R} & running or ready to run\\
+\texttt{S} & sleeping, waits for something (the normal state)\\
+\texttt{D} & uninterruptible sleep, usually waiting for disk or network; cannot even be killed (many of these = I/O problem, Chapter~\ref{ch:linux8})\\
+\texttt{T} & stopped (for example with \texttt{Ctrl+Z})\\
+\texttt{Z} & zombie: finished, but the parent has not collected its exit status yet\\
+\end{tabular}
+\end{center}
+
+\subsection*{Signals: how to stop a process}
+Programs are controlled with \textbf{signals}. \texttt{kill} does not necessarily kill, it \emph{sends} a signal:
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{rlp{9.0cm}}
+\texttt{15} & \texttt{SIGTERM} & ``please finish'' (the default of \texttt{kill}); the program may clean up\\
+\texttt{2} & \texttt{SIGINT} & what \texttt{Ctrl+C} sends\\
+\texttt{1} & \texttt{SIGHUP} & terminal closed; many services reload their configuration\\
+\texttt{9} & \texttt{SIGKILL} & immediate death, cannot be caught, no cleanup\\
+\texttt{19/18} & \texttt{SIGSTOP/SIGCONT} & pause / continue\\
+\end{tabular}
+\end{center}
+\begin{verbatim}
+$ kill 1423             # polite: SIGTERM
+$ kill -9 1423          # last resort: SIGKILL
+$ pkill -f run.py       # by command line pattern
+$ kill -STOP 1423; kill -CONT 1423
+\end{verbatim}
+First try the polite way and give the program a few seconds. \texttt{kill -9} gives it no chance to close files, stop motors or release a camera. A robot controller should handle \texttt{SIGTERM} and put the robot in a safe state.
+
+\textbf{Priority.} \texttt{nice -n 10 command} starts a program with a lower priority (nice values go from $-20$ = most important to $19$ = least), and \texttt{renice} changes it later. A background job such as video encoding should be \emph{nice} so that it does not disturb the controller.
+
+\section*{systemd and services}
+A \textbf{service} is a program that runs in the background, starts at boot and is supervised. systemd calls everything it manages a \textbf{unit}: services (\texttt{.service}), timers (\texttt{.timer}), mounts and more. You control them with \texttt{systemctl}:
+\begin{verbatim}
+$ systemctl status ssh              # state and the last log lines
+$ sudo systemctl start walker       # start now
+$ sudo systemctl stop walker        # stop now
+$ sudo systemctl restart walker     # stop, then start
+$ sudo systemctl reload ssh         # re-read the config without stopping
+$ sudo systemctl enable walker      # start automatically at boot
+$ sudo systemctl disable walker     # do not start at boot
+$ sudo systemctl enable --now walker  # enable and start in one step
+$ systemctl is-active walker        # prints ``active'' or ``inactive''
+$ systemctl list-units --type=service --state=failed   # what is broken?
+\end{verbatim}
+\texttt{start}/\texttt{stop} only act on the current session of the computer, \texttt{enable}/\texttt{disable} decide what happens at the next boot. These are two independent things!
+
+\subsection*{Reading \texttt{systemctl status}}
+\begin{verbatim}
+$ systemctl status walker
+* walker.service - Walking controller of the K1
+     Loaded: loaded (/etc/systemd/system/walker.service; enabled)
+     Active: active (running) since Tue 2026-11-25 10:02:11 CET; 5min ago
+   Main PID: 1423 (python)
+      Tasks: 4 (limit: 18921)
+     Memory: 212.4M
+        CPU: 1min 3.211s
+     CGroup: /system.slice/walker.service
+             `-1423 /home/robot/walker/.venv/bin/python run.py
+
+Nov 25 10:02:11 k1-brain systemd[1]: Started walker.service.
+Nov 25 10:07:15 k1-brain python[1423]: step 3000 ok
+\end{verbatim}
+(Typical output; the exact layout varies slightly between versions.) The important lines:
+\begin{itemize}[nosep]
+  \item \textbf{Loaded:} where the unit file is, and whether it is \texttt{enabled} for boot.
+  \item \textbf{Active:} \texttt{active (running)} is good. \texttt{inactive (dead)} was stopped or finished. \texttt{failed} crashed, together with the exit code (\texttt{Result: exit-code} or \texttt{signal}). \texttt{activating (auto-restart)} means that it keeps crashing and being restarted.
+  \item \textbf{Main PID} and \textbf{CGroup:} the processes that belong to the service. systemd keeps them together in a \emph{cgroup} and can measure and limit their CPU and memory.
+  \item The last lines are the newest messages of the program.
+\end{itemize}
+
+\subsection*{Writing your own service}
+A unit file is a short text file in \texttt{/etc/systemd/system/}. Here is a service for the walking controller:
+\begin{verbatim}
+# /etc/systemd/system/walker.service
+[Unit]
+Description=Walking controller of the K1
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=robot
+WorkingDirectory=/home/robot/walker
+ExecStart=/home/robot/walker/.venv/bin/python run.py --config robot.yaml
+Environment=ROS_DOMAIN_ID=7
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+\end{verbatim}
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lp{10.3cm}}
+\texttt{After=}, \texttt{Wants=} & start order and soft dependencies (\texttt{Requires=} is a hard dependency)\\
+\texttt{User=} & run as this user, not as root\\
+\texttt{ExecStart=} & the command; use the \emph{absolute} path of the program\\
+\texttt{Environment=} & set variables; \texttt{EnvironmentFile=} reads them from a file\\
+\texttt{Restart=} & \texttt{no}, \texttt{on-failure} (non-zero exit or crash) or \texttt{always}\\
+\texttt{RestartSec=} & wait before the restart (prevents a tight crash loop)\\
+\texttt{WantedBy=} & \texttt{multi-user.target} means: start in the normal boot\\
+\end{tabular}
+\end{center}
+Then tell systemd about it and start it:
+\begin{verbatim}
+$ sudo systemctl daemon-reload        # re-read units (after edits)
+$ sudo systemctl enable --now walker
+$ systemctl status walker
+\end{verbatim}
+To change a unit without touching the original (for example a package's), use \verb|sudo systemctl edit walker|; it saves an override in \texttt{walker.service.d/}. \verb|systemctl cat walker| shows the final configuration.
+
+\begin{keyidea}[A service is not your shell]
+A service does \emph{not} read \texttt{\textasciitilde/.bashrc}, has no terminal and a minimal \texttt{PATH}. Environment variables you set in your terminal (and the \texttt{source} of a ROS setup file) are missing. This is the number one reason why ``it works when I start it by hand, but not as a service''. Use absolute paths, set variables with \texttt{Environment=}, or start a small wrapper script that sets up the environment and then runs the program with \texttt{exec}.
+\end{keyidea}
+
+\textbf{More useful things.}
+\begin{itemize}[nosep]
+  \item \textbf{Resource limits:} \texttt{MemoryMax=2G}, \texttt{CPUQuota=200\%}, \texttt{Nice=5} in the \texttt{[Service]} section (they use cgroups).
+  \item \textbf{User services:} \verb|systemctl --user ...| manages services of one user without root. \verb|loginctl enable-linger robot| lets them run without being logged in.
+  \item \textbf{Boot time:} \verb|systemd-analyze blame| lists the slowest units, \verb|systemd-analyze critical-chain| shows the chain that delays the boot.
+  \item \textbf{Timers} replace cron jobs. A timer unit \texttt{backup.timer} with \texttt{OnCalendar=*-*-* 03:00:00} starts \texttt{backup.service} every day at 03:00; \verb|systemctl list-timers| shows them.
+\end{itemize}
+
+\begin{center}
+\begin{tikzpicture}[st/.style={draw,rounded corners,thick,minimum width=2.4cm,minimum height=0.9cm,font=\small,align=center},>={Stealth[length=2.5mm]}]
+  \node[st,fill=gray!12] (i) at (0,0) {inactive};
+  \node[st,fill=blue!10] (s) at (3.4,0) {activating};
+  \node[st,fill=green!15] (a) at (6.8,0) {active\\(running)};
+  \node[st,fill=red!15] (f) at (6.8,-2.2) {failed};
+  \draw[->,thick] (i) -- node[above,font=\scriptsize]{\texttt{start}} (s);
+  \draw[->,thick] (s) -- (a);
+  \draw[->,thick] (a) -- node[right,font=\scriptsize]{crash} (f);
+  \draw[->,thick] (a.north) .. controls +(0,1.1) and +(0,1.1) .. node[above,font=\scriptsize]{\texttt{stop} / program ends} (i.north);
+  \draw[->,thick,dashed] (f.west) -- node[above,font=\scriptsize,sloped]{\texttt{Restart=} after \texttt{RestartSec}} (s.south);
+\end{tikzpicture}
+\captionof{figure}{Life of a service. With \texttt{Restart=on-failure} systemd starts the program again after a crash.}\label{fig:l5_life}
+\end{center}
+
+\section*{Logs}
+Programs write messages, and systemd collects everything the services print in the \textbf{journal}. \texttt{journalctl} reads it:
+\begin{verbatim}
+$ journalctl -u walker              # all messages of the service
+$ journalctl -u walker -n 50        # only the last 50
+$ journalctl -u walker -f           # follow, like tail -f
+$ journalctl -u walker --since "10 min ago"
+$ journalctl -b                     # everything since this boot
+$ journalctl -b -1                  # the previous boot (after a crash!)
+$ journalctl -p err -b              # only errors and worse, this boot
+$ journalctl -k                     # kernel messages (like dmesg)
+$ journalctl -u walker -o short-iso # exact timestamps
+$ journalctl --disk-usage           # how big is the journal?
+\end{verbatim}
+\begin{itemize}[nosep]
+  \item Anything a service \emph{prints} to stdout or stderr ends up in the journal automatically; use a log library with levels (\texttt{INFO}, \texttt{WARN}, \texttt{ERROR}) in your own code. From a shell script, \texttt{logger "message"} writes to the journal.
+  \item \verb|journalctl -b -1| works only if the journal is stored persistently, i.e.\ in \texttt{/var/log/journal} (\texttt{Storage=persistent} in \texttt{/etc/systemd/journald.conf}). Otherwise it is lost at reboot, exactly when you need it.
+  \item To limit its size use \texttt{SystemMaxUse=500M} in \texttt{journald.conf} or \verb|sudo journalctl --vacuum-size=200M|.
+  \item The kernel ring buffer (USB devices plugged in, disk errors, out-of-memory kills) is read with \verb|sudo dmesg -T|.
+  \item Classic text logs live in \texttt{/var/log}, e.g.\ \texttt{/var/log/syslog} and \texttt{/var/log/auth.log}. \texttt{logrotate} keeps them from growing without limit.
+\end{itemize}
+
+\textbf{A debugging routine for a service that does not work:}
+\begin{enumerate}[nosep]
+  \item \verb|systemctl status NAME|: is it running, failed, or restarting?
+  \item \verb|journalctl -u NAME -n 100|: what did the program say before it died?
+  \item Run the \texttt{ExecStart} command by hand (as the same user, in the same directory) and compare.
+  \item Check paths, permissions and environment variables (the key idea above).
+  \item After every change: \texttt{daemon-reload} and \texttt{restart}.
+\end{enumerate}
+
+\begin{aibox}
+On a competition robot nobody wants to log in and start five programs by hand. Every program that must run is a service: it starts at boot, restarts after a crash, and leaves its log in the journal. After a failed match, \verb|journalctl -b -1 -u walker| shows what happened in the last run.
+\end{aibox}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Which signal does \verb|kill 1423| send? What is the difference to \verb|kill -9 1423|, and why do you try the first one first?
+  \item Which commands (a) show all processes whose command line contains \texttt{python}, (b) stop the process with PID $2210$ politely and (c) stop it if it ignores that?
+  \item Read this output and answer: is the service running? Since when? What went wrong?
+\begin{verbatim}
+* camera.service - Camera driver
+     Loaded: loaded (/etc/systemd/system/camera.service; enabled)
+     Active: activating (auto-restart) (Result: exit-code) since 10:14:02
+    Process: 3321 ExecStart=/usr/local/bin/cam_node (code=exited, status=1)
+   Main PID: 3321 (code=exited, status=1)
+Nov 25 10:14:02 k1-brain cam_node[3321]: cannot open /dev/video0
+\end{verbatim}
+  \item Write a unit file for a program \texttt{/opt/robot/bin/vision --fps 30}, run as user \texttt{robot}, restarted after failures every $5$ seconds and started at boot.
+  \item After saving the unit file from the previous problem as \texttt{vision.service}, which commands make it run now and at every boot?
+  \item A program starts correctly in your terminal but fails as a service with ``command not found: ros2''. Why? Name two ways to fix it.
+  \item Write \texttt{journalctl} commands for (a) the last $100$ lines of \texttt{vision}, (b) all errors since the last boot, (c) the log of the \emph{previous} boot, (d) a live view of \texttt{vision}.
+  \item What is the difference between \texttt{Restart=on-failure} and \texttt{Restart=always}? Which one fits a program that the user can stop on purpose?
+  \item A timer should start \texttt{backup.service} every day at $03:00$. Which line is needed in the \texttt{[Timer]} section, and which command shows when it runs next?
+  \item[\textbf{\thechapter.10}$\star$] \verb|journalctl --disk-usage| reports $4.2$\,GB on a robot with a small SSD. Give a command to shrink it now and a setting to keep it small in the future.
+\end{enumerate}

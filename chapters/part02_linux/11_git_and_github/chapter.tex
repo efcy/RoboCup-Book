@@ -1,0 +1,197 @@
+\bookchapter{Git and GitHub}\label{ch:git3}
+
+\section*{Explanation}
+So far all history lived on your computer. To work in a team, to have a backup and to get the code onto the robot, you need a second copy on a server: a \textbf{remote}. GitHub is the best known place to host remotes. This chapter shows the commands that move commits between your repository and a remote, and the working style around GitHub: branches, pull requests, reviews and automatic tests.
+
+\section*{Remotes}
+A \textbf{remote} is a named link to another copy of the repository. By convention the main one is called \texttt{origin}.
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,rounded corners,thick,minimum width=2.9cm,minimum height=1.5cm,align=center},>={Stealth[length=2.5mm]},lab/.style={font=\scriptsize\ttfamily,fill=white,inner sep=1.5pt}]
+  \node[box,fill=blue!10] (w) at (0,0) {your\\working directory};
+  \node[box,fill=green!12] (l) at (5.2,0) {your local\\repository\\{\footnotesize branches: \texttt{main}}\\{\footnotesize \texttt{origin/main}}};
+  \node[box,fill=orange!15] (g) at (10.4,0) {\textbf{GitHub}\\\texttt{origin}\\{\footnotesize branch \texttt{main}}};
+  \draw[->,thick] (w.20) -- node[lab,above]{commit} (l.160);
+  \draw[->,thick] (l.20) -- node[lab,above]{push} (g.160);
+  \draw[->,thick] (g.200) -- node[lab,below]{fetch} (l.340);
+  \draw[->,thick,dashed] (l.200) -- node[lab,below]{merge/rebase} (w.340);
+  \node[font=\footnotesize,gray!60!black,align=center] at (7.8,1.7) {\texttt{git pull} = fetch + merge (or rebase)};
+\end{tikzpicture}
+\captionof{figure}{Where the commands act. \texttt{origin/main} in your local repository is your \emph{memory} of the remote branch as it was at the last fetch or push.}\label{fig:g3_remote}
+\end{center}
+
+\subsection*{Getting a repository}
+\begin{verbatim}
+$ git clone git@github.com:ada/walker.git      # SSH URL
+$ git clone https://github.com/ada/walker.git  # HTTPS URL
+$ cd walker
+$ git remote -v
+origin	git@github.com:ada/walker.git (fetch)
+origin	git@github.com:ada/walker.git (push)
+\end{verbatim}
+\texttt{git clone} copies the whole history and sets up \texttt{origin}. For a repository that you started yourself with \texttt{git init}, create an empty repository on GitHub (button \emph{New}), and connect it:
+\begin{verbatim}
+$ git remote add origin git@github.com:ada/walker.git
+$ git push -u origin main
+\end{verbatim}
+The \texttt{-u} remembers that your \texttt{main} follows \texttt{origin/main}, so later a plain \texttt{git push} and \texttt{git pull} are enough.
+
+\subsection*{The four commands}
+\begin{description}[nosep]
+  \item[\texttt{git fetch}] downloads new commits and updates \texttt{origin/main}. It never touches your files; it is always safe.
+  \item[\texttt{git pull}] is \texttt{fetch} followed by merging the remote branch into your current branch.
+  \item[\texttt{git push}] uploads your new commits.
+  \item[\texttt{git status -sb}] tells you how far you are ahead or behind.
+\end{description}
+\begin{verbatim}
+$ git fetch
+From github.com:ada/walker
+   088b1b2..1f879d0  main       -> origin/main
+$ git status -sb
+## main...origin/main [ahead 1, behind 1]
+\end{verbatim}
+``Ahead 1, behind 1'' means: you have one commit that GitHub does not have, and GitHub has one that you do not have; the histories have diverged.
+
+\subsection*{The rejected push}
+\begin{verbatim}
+$ git push
+ ! [rejected]        main -> main (fetch first)
+error: failed to push some refs to 'github.com:ada/walker.git'
+hint: Updates were rejected because the remote contains work that you do
+hint: have locally. ...
+\end{verbatim}
+This is the most common Git message in a team. A colleague pushed first. Nothing is broken: integrate their work, then push again.
+\begin{verbatim}
+$ git pull --rebase        # replay my commits on top of theirs
+Successfully rebased and updated refs/heads/main.
+$ git push
+\end{verbatim}
+A plain \texttt{git pull} would work too, but creates a merge commit ``Merge branch main of github.com...'' every time, which clutters the log. Make rebase the default: \verb!git config --global pull.rebase true!. Never use \texttt{git push --force} to get around the rejection: it destroys the work of the colleague (Chapter~\ref{ch:git4}).
+
+\section*{Authentication}
+GitHub must know who pushes. Two ways work well.
+\begin{description}
+  \item[SSH keys (recommended).] You already know them from Chapter~\ref{ch:linux3}. Create a key with \verb!ssh-keygen -t ed25519!, copy the \emph{public} key (\verb!cat ~/.ssh/id_ed25519.pub!), and add it in GitHub under \emph{Settings $\rightarrow$ SSH and GPG keys $\rightarrow$ New SSH key}. Test it:
+\begin{verbatim}
+$ ssh -T git@github.com
+Hi ada! You've successfully authenticated, but GitHub does not
+provide shell access.
+\end{verbatim}
+  Use the SSH form of the URL. Change an existing clone with \verb!git remote set-url origin git@github.com:ada/walker.git!.
+  \item[HTTPS with a token.] A password is not accepted for Git any more; you need a \emph{personal access token} or the GitHub command line tool \texttt{gh} (\verb!sudo apt install gh!, then \verb!gh auth login!) which stores the login for you.
+\end{description}
+\textbf{On the robot} use a \emph{deploy key}: create a key pair on the robot (without personal rights), and add the public key to the repository under \emph{Settings $\rightarrow$ Deploy keys} (read-only). Then the robot can \texttt{git pull} the code, but cannot change it, and it does not carry your personal identity. Never copy your personal private key to a robot that many people use.
+
+\section*{The GitHub flow}
+A simple, widely used working style for teams (Figure~\ref{fig:g3_flow}):
+\begin{center}
+\begin{tikzpicture}[box/.style={draw,rounded corners,thick,minimum width=2.5cm,minimum height=1.1cm,align=center,font=\footnotesize},>={Stealth[length=2.5mm]}]
+  \node[box,fill=blue!10] (a) at (0,0) {1. branch\\from \texttt{main}};
+  \node[box,fill=blue!10] (b) at (3.1,0) {2. commit\\and push};
+  \node[box,fill=orange!15] (c) at (6.2,0) {3. open a\\pull request};
+  \node[box,fill=orange!15] (d) at (9.3,0) {4. review\\and tests};
+  \node[box,fill=green!12] (e) at (12.4,0) {5. merge\\into \texttt{main}};
+  \draw[->,thick] (a)--(b); \draw[->,thick] (b)--(c); \draw[->,thick] (c)--(d); \draw[->,thick] (d)--(e);
+  \draw[->,thick,red!70!black] (d.south) -- ++(0,-0.7) -| node[pos=0.25,below,font=\scriptsize]{changes requested: commit and push again} (b.south);
+  \draw[->,thick,gray!60!black] (e.north) -- ++(0,0.8) -| node[pos=0.25,above,font=\scriptsize]{pull \texttt{main}, delete the branch, start again} (a.north);
+\end{tikzpicture}
+\captionof{figure}{The GitHub flow. \texttt{main} always contains working code; all changes arrive through short-lived branches and pull requests.}\label{fig:g3_flow}
+\end{center}
+\begin{verbatim}
+$ git switch main && git pull               # 1. start up to date
+$ git switch -c fix/camera-timeout
+$ # edit, test, commit (small commits)      # 2.
+$ git push -u origin fix/camera-timeout
+remote: Create a pull request for 'fix/camera-timeout' on GitHub by
+remote: visiting: https://github.com/ada/walker/pull/new/fix/camera-timeout
+\end{verbatim}
+GitHub prints a link; open it to create the \textbf{pull request} (PR). A PR is a proposal: ``please merge my branch into \texttt{main}''. It is the place where the team discusses the change.
+
+\subsection*{A good pull request}
+\begin{itemize}[nosep]
+  \item A \textbf{title} that says what changes (``Fix camera timeout after reconnect'').
+  \item A \textbf{description}: what and \emph{why}, how you tested, a link to the issue (\texttt{Closes \#12} closes the issue automatically on merge), a screenshot or log if useful.
+  \item \textbf{Small}: a PR that one person can review in $15$ minutes. Large PRs get skimmed and bugs slip through. Split big work.
+  \item Open it as \emph{draft} when you want early feedback on unfinished work.
+\end{itemize}
+\textbf{Reviewers} read the \emph{Files changed} tab, comment on single lines, and finally choose \emph{Approve} or \emph{Request changes}. Review the code, not the person: ask questions (``what happens if the camera returns \texttt{None}?''). As author, answer every comment, push fixes as new commits; the PR updates itself.
+
+\subsection*{Merging a pull request}
+GitHub offers three buttons:
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{3.4cm}p{9.8cm}}
+\textbf{Option} & \textbf{Result}\\ \hline
+Create a merge commit & all branch commits stay, plus a merge commit. Full history, but noisy.\\
+Squash and merge & all commits of the branch become \emph{one} commit on \texttt{main}. Clean history; the messy ``fix typo'' commits vanish. A good default for small PRs.\\
+Rebase and merge & commits are replayed onto \texttt{main}, linear, no merge commit.\\
+\end{tabular}
+\end{center}
+After the merge, delete the branch (GitHub offers a button) and update your own copy:
+\begin{verbatim}
+$ git switch main
+$ git pull
+$ git branch -d fix/camera-timeout
+$ git fetch --prune          # forget remote branches deleted on GitHub
+\end{verbatim}
+
+\section*{Protecting main}
+In the repository settings (\emph{Settings $\rightarrow$ Branches}, a \emph{branch protection rule} or \emph{ruleset}) you can enforce the flow: nobody pushes directly to \texttt{main}, a PR needs at least one approval, and the automatic tests must pass. This is cheap insurance for the code that runs on a robot.
+
+\section*{Automatic tests: GitHub Actions}
+\textbf{GitHub Actions} runs a program on GitHub's servers for every push or pull request, for example your tests. You describe it in a YAML file in the folder \texttt{.github/workflows/}:
+\begin{verbatim}
+# .github/workflows/ci.yml
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python -m pytest
+\end{verbatim}
+The result appears on the PR as a green check or a red cross, and the merge button can be blocked while it is red. Typical jobs: run tests, check the code style (\texttt{ruff}), build a package. Indentation is part of YAML: use spaces, never tabs. (Use a pinned action version like \texttt{@v4} and check the current one in the action's documentation.)
+
+\section*{Issues, forks and the files around}
+\begin{description}
+  \item[Issues] are the to-do list and bug tracker of a repository. One issue per problem, with steps to reproduce and the expected behaviour. Labels (\texttt{bug}, \texttt{enhancement}) and assignees organise them.
+  \item[Fork.] If you may not push to a repository (open-source project), \emph{fork} it: GitHub copies it into your account. You push to your fork and open a PR from it. Keep it current with a second remote:
+\begin{verbatim}
+$ git remote add upstream git@github.com:team/walker.git
+$ git fetch upstream
+$ git merge upstream/main
+\end{verbatim}
+  \item[Files that every repository should have:] \texttt{README.md} (what it is, how to install and run, in five minutes), \texttt{LICENSE} (what others may do with your code), \texttt{.gitignore}, and optionally \texttt{CONTRIBUTING.md} (how to propose changes) and \texttt{.github/CODEOWNERS} (who must review which folder).
+  \item[Releases.] Tag a version (\verb!git tag -a v1.0 -m "..."!, \verb!git push origin v1.0!) and publish it under \emph{Releases}. On the robot you then check out a \emph{known} version instead of whatever was on \texttt{main} yesterday.
+\end{description}
+
+\section*{Secrets and safety}
+\begin{keyidea}[A pushed secret is a leaked secret]
+Never commit passwords, API tokens or private keys. Bots scan GitHub within minutes. If it happens, \textbf{revoke the secret immediately} (change the password, delete the token); removing the file from history is only the second step. Keep secrets in environment variables, in an \texttt{.env} file listed in \texttt{.gitignore}, or in the \emph{Secrets} feature of GitHub Actions (\emph{Settings $\rightarrow$ Secrets and variables}).
+\end{keyidea}
+Also remember that a public repository is public for the whole world, and a ``private'' repository is private only as long as the access list is right.
+
+\begin{example}
+Ada fixes a bug: \texttt{git switch -c fix/camera-timeout}, two commits, \texttt{git push -u origin fix/camera-timeout}, PR with ``Closes \#12''. The CI check is green, Bob asks for a log message, Ada pushes one more commit. Bob approves, Ada uses \emph{Squash and merge}, deletes the branch on GitHub, and runs \texttt{git switch main \&\& git pull \&\& git branch -d fix/camera-timeout}. On the robot, a one-line \texttt{ssh k1 'cd walker \&\& git pull --ff-only'} brings in the fix.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item What is the difference between \texttt{git fetch} and \texttt{git pull}? Which one can never change your working files?
+  \item You created a local repository and want to publish it to the empty GitHub repository \texttt{ada/walker}. Write the commands (SSH URL).
+  \item \texttt{git status -sb} shows \verb!## main...origin/main [ahead 2]!. What does it mean and what do you do?
+  \item Your push is rejected with \texttt{fetch first}. Why, and what is the clean way to fix it?
+  \item Describe the five steps of the GitHub flow.
+  \item List the steps to let your laptop authenticate to GitHub with SSH.
+  \item Why is a deploy key a better choice for the robot than your personal key?
+  \item What is the difference between \emph{Squash and merge} and \emph{Create a merge commit}? When is squash a good choice?
+  \item Write a PR description for a change that increases a timeout from $2$ to $5$ seconds to fix issue 12.
+  \item[\textbf{\thechapter.10}$\star$] You accidentally pushed a file with an API token to a public repository. List what you do, in the right order.
+\end{enumerate}

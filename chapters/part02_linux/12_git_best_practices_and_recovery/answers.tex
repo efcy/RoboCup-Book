@@ -1,0 +1,18 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item For example ``Ignore NaN values from the IMU'' with the body ``The controller divided by the norm of the IMU vector and crashed when it received NaN. Skip such samples and log a warning.'' Subject in the imperative, about $50$ characters, empty line, body explains why.
+  \item Easy to review (one idea), easy to understand later in \texttt{git log}/\texttt{blame}, easy to undo with \texttt{revert} without losing other work, and \texttt{git bisect} finds the exact faulty change.
+  \item \verb!git add -p config.py!, stage only the hunks of the first reason (\texttt{y}/\texttt{n}/\texttt{s}), commit; then add the rest and commit again.
+  \item \verb!git commit --amend -m "Correct message"!. A pushed commit that is amended becomes a different commit; colleagues who have the old one would diverge. Use it only before pushing.
+  \item \verb!git restore walk.py!. No, uncommitted edits are not in the history, they cannot be recovered by Git.
+  \item \texttt{--soft}: the commit is undone, its changes remain staged. Mixed (default): the commit is undone, changes remain in the working directory, unstaged. \texttt{--hard}: the commit is undone and the changes are deleted from the working directory.
+  \item \verb!git revert COMMIT! creates a new commit that cancels the change; push it. Do not reset or force-push, as others already have the commit.
+  \item \verb!git reflog! lists where HEAD was; find the hash from before the reset and run \verb!git reset --hard HASH! (or create a branch there with \verb!git branch rescue HASH!).
+  \item \texttt{--force-with-lease} refuses to overwrite if the remote branch has commits that you have not seen, so it cannot silently delete a colleague's work. Force-pushing is acceptable on your own feature branch that nobody else uses, after a rebase or amend; never on \texttt{main}.
+  \item[\textbf{\ansnum.10}] $\lceil\log_2 100\rceil=7$ tests at most.
+\begin{verbatim}
+git bisect start
+git bisect bad
+git bisect good v1.0
+\end{verbatim}
+  Then test each suggested commit and answer \texttt{git bisect good} or \texttt{git bisect bad}; finish with \texttt{git bisect reset}.
+\end{enumerate}

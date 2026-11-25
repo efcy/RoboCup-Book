@@ -1,0 +1,181 @@
+\bookchapter{Git: Branches, Merging and Conflicts}\label{ch:git2}
+
+\section*{Explanation}
+You want to try a faster walking gait, but the robot must keep walking with the working code until the new idea works. The solution is a \textbf{branch}: a parallel line of development. You experiment on the branch, and if it works you \textbf{merge} it back. If not, you delete it and nothing is lost. Branches in Git are cheap (a branch is only a label, see Figure~\ref{fig:g2_branch}), so professionals use one for every idea, bug fix and feature.
+
+\section*{Branches are labels}
+Recall from Chapter~\ref{ch:git1}: \texttt{main} is a label on a commit. A new branch is a second label. \texttt{HEAD} points to the branch that you are on, and a new commit moves \emph{that} label forward.
+\begin{center}
+\begin{tikzpicture}[c/.style={draw,circle,thick,minimum size=1cm,fill=green!12,font=\scriptsize\ttfamily},lb/.style={draw,rounded corners,font=\footnotesize\ttfamily},>={Stealth[length=2.5mm]}]
+  \node[c] (a) at (0,0) {A};
+  \node[c] (b) at (1.8,0) {B};
+  \node[c] (cc) at (3.6,0) {C};
+  \node[c,fill=orange!25] (d) at (5.4,0.9) {D};
+  \node[c,fill=orange!25] (e) at (7.2,0.9) {E};
+  \node[c] (f) at (5.4,-0.9) {F};
+  \draw[->,thick] (b)--(a); \draw[->,thick] (cc)--(b); \draw[->,thick] (d)--(cc); \draw[->,thick] (e)--(d); \draw[->,thick] (f)--(cc);
+  \node[lb,fill=yellow!30] (m) at (5.4,-2.0) {main};
+  \node[lb,fill=yellow!30] (ft) at (8.9,0.9) {feature/speed};
+  \draw[->,thick] (m)--(f); \draw[->,thick] (ft)--(e);
+  \node[lb,fill=blue!10] (h) at (3.4,-2.0) {HEAD};
+  \draw[->,thick,dashed] (h)--(m);
+\end{tikzpicture}
+\captionof{figure}{Two branches that have diverged after commit C. \texttt{feature/speed} has the commits D and E, \texttt{main} got commit F in the meantime. HEAD is on \texttt{main}.}\label{fig:g2_branch}
+\end{center}
+
+\section*{Working with branches}
+\begin{verbatim}
+$ git branch                       # list branches, * = current
+* main
+$ git switch -c feature/speed      # create and switch to a new branch
+Switched to a new branch 'feature/speed'
+$ git switch main                  # go back
+$ git branch -vv                   # with last commit and upstream
+$ git branch -d feature/speed      # delete (only if merged)
+$ git branch -D feature/speed      # delete even if NOT merged
+\end{verbatim}
+(Older tutorials use \texttt{git checkout}; \texttt{git switch} for branches and \texttt{git restore} for files are the clearer modern replacements.) When you switch, Git rewrites the files in your working directory to match that branch. Therefore switch only when \texttt{git status} is clean or the changes are stashed (below).
+
+Use clear names: \texttt{feature/gait-speed}, \texttt{fix/camera-timeout}, \texttt{docs/readme}. The slash only groups the names.
+
+\section*{Merging}
+\begin{verbatim}
+$ git switch -c feature/speed
+$ # ... edit, add, commit ...
+$ git switch main
+$ git merge feature/speed
+\end{verbatim}
+\texttt{git merge X} brings the commits of branch \texttt{X} into the branch you are on. There are two cases (Figure~\ref{fig:g2_merge}).
+\begin{description}
+  \item[Fast-forward.] If \texttt{main} has not moved since you branched, Git just moves the label \texttt{main} forward; the history stays a straight line.
+  \item[Merge commit.] If both branches have new commits, Git combines the changes and creates a commit with \emph{two} parents.
+\end{description}
+\begin{verbatim}
+$ git merge feature/speed
+Merge made by the 'ort' strategy.
+ walk.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+$ git log --oneline --graph
+*   4d84182 Merge feature/speed, use 0.75
+|\
+| * 8cc1a09 Increase speed factor
+* | 3fa9bd2 Add logging to walk.py
+|/
+* 1e0a5c6 Add walking step function
+\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[c/.style={draw,circle,thick,minimum size=0.9cm,fill=green!12,font=\scriptsize\ttfamily},lb/.style={draw,rounded corners,font=\footnotesize\ttfamily,fill=yellow!30},>={Stealth[length=2.2mm]}]
+  \begin{scope}
+    \node[font=\footnotesize\bfseries] at (2.2,2.0) {fast-forward};
+    \node[c] (a) at (0,0.6) {C}; \node[c,fill=orange!25] (b) at (1.5,0.6) {D}; \node[c,fill=orange!25] (cc) at (3,0.6) {E};
+    \draw[->,thick] (b)--(a); \draw[->,thick] (cc)--(b);
+    \node[lb] (m) at (3,-0.6) {main (now)}; \draw[->,thick] (m)--(cc);
+    \node[lb,fill=gray!15] at (0,-0.6) {main (before)};
+  \end{scope}
+  \begin{scope}[xshift=7.2cm]
+    \node[font=\footnotesize\bfseries] at (2.4,2.0) {merge commit};
+    \node[c] (a) at (0,0.6) {C}; \node[c,fill=orange!25] (d) at (1.5,1.2) {D}; \node[c] (f) at (1.5,0) {F};
+    \node[c,fill=blue!15] (mm) at (3.3,0.6) {M};
+    \draw[->,thick] (d)--(a); \draw[->,thick] (f)--(a); \draw[->,thick] (mm)--(d); \draw[->,thick] (mm)--(f);
+    \node[lb] (m) at (3.3,-0.6) {main}; \draw[->,thick] (m)--(mm);
+  \end{scope}
+\end{tikzpicture}
+\captionof{figure}{Left: fast-forward, the label simply moves. Right: a merge commit \texttt{M} with two parents joins two lines of work.}\label{fig:g2_merge}
+\end{center}
+
+\section*{Conflicts}
+If both branches changed the \emph{same lines}, Git cannot decide which version is right. This is a \textbf{merge conflict}. It is a normal event, not an error. Git stops and marks the problem:
+\begin{verbatim}
+$ git merge feature/speed
+Auto-merging walk.py
+CONFLICT (content): Merge conflict in walk.py
+Automatic merge failed; fix conflicts and then commit the result.
+$ git status -s
+UU walk.py
+\end{verbatim}
+Open the file. Git wrote both versions into it:
+\begin{verbatim}
+def step(speed):
+<<<<<<< HEAD
+    return speed * 0.5   # main
+=======
+    return speed * 0.75  # feature/speed
+>>>>>>> feature/speed
+\end{verbatim}
+Everything between \verb!<<<<<<< HEAD! and \verb!=======! is the version of your current branch, the rest down to \verb!>>>>>>>! comes from the other branch. Resolve it in four steps:
+\begin{enumerate}[nosep]
+  \item Decide what the correct code is (one version, the other, or a mixture; talk to the author if unsure).
+  \item Edit the file so that it contains exactly that, and delete the three marker lines.
+  \item \verb!git add walk.py! (this tells Git ``resolved'').
+  \item \verb!git commit! (the default message is fine).
+\end{enumerate}
+If you are lost, \verb!git merge --abort! returns everything to the state before the merge. VS Code shows the two sides with buttons ``Accept Current / Incoming / Both''. Run your tests after resolving: the file may look right and still not work.
+
+\begin{keyidea}[How to have fewer conflicts]
+Conflicts grow with the time that two branches live apart and with the amount of code that both touch. So keep branches short (days, not months), merge \texttt{main} into your branch often, make small commits, and do not reformat files you do not work on.
+\end{keyidea}
+
+\section*{Rebase: a straight history}
+There is a second way to combine work. \texttt{git rebase main} (on your feature branch) takes your commits, and \emph{replays} them on top of the newest \texttt{main} (Figure~\ref{fig:g2_rebase}). The result is a straight line, as if you had started your work today.
+\begin{verbatim}
+$ git switch feature/log
+$ git rebase main
+Successfully rebased and updated refs/heads/feature/log.
+$ git switch main
+$ git merge feature/log            # now a fast-forward
+\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[c/.style={draw,circle,thick,minimum size=0.9cm,fill=green!12,font=\scriptsize\ttfamily},>={Stealth[length=2.2mm]}]
+  \node[c] (a) at (0,0.6) {C}; \node[c,fill=orange!25] (d) at (1.5,1.2) {D}; \node[c] (f) at (1.5,0) {F};
+  \draw[->,thick] (d)--(a); \draw[->,thick] (f)--(a);
+  \draw[->,very thick,gray!60!black] (3.0,0.6) -- node[above,font=\footnotesize\ttfamily]{rebase} (4.6,0.6);
+  \node[c] (a2) at (5.5,0.6) {C}; \node[c] (f2) at (7,0.6) {F}; \node[c,fill=orange!25,dashed] (d2) at (8.5,0.6) {D$'$};
+  \draw[->,thick] (f2)--(a2); \draw[->,thick] (d2)--(f2);
+\end{tikzpicture}
+\captionof{figure}{Rebase: commit D is copied on top of F. The copy D$'$ has a \emph{new hash}, because its parent is different.}\label{fig:g2_rebase}
+\end{center}
+\begin{keyidea}[The golden rule of rebase]
+Rebase only commits that nobody else has yet: your own local, unpublished work. A rebase creates \emph{new} commits. If others already based work on the old ones, their history and yours no longer fit together, and a mess follows. \textbf{Never rebase a branch that you have pushed and that others use, and never rebase \texttt{main}.}
+\end{keyidea}
+Merge preserves the history as it happened; rebase makes it easy to read. Both are fine; teams choose one (Chapter~\ref{ch:git4}). Conflicts during a rebase are solved the same way, per commit: fix the file, \verb!git add!, \verb!git rebase --continue! (or \verb!git rebase --abort!).
+
+\subsection*{Cleaning up your own commits}
+\verb!git rebase -i HEAD~3! opens an editor with your last three commits. By changing the word in front of a line you can \texttt{reword} a message, \texttt{squash} a commit into the previous one, \texttt{drop} it, or reorder lines. This is how you turn ``wip'', ``fix typo'', ``fix again'' into one clean commit before others see it.
+
+\section*{Stash: put work aside}
+You are in the middle of an edit when you must urgently look at another branch. Your changes are not ready for a commit:
+\begin{verbatim}
+$ git stash                        # save changes, clean working dir
+Saved working directory and index state WIP on main: dc7e3fc ...
+$ git switch fix/camera            # do the urgent work
+$ git switch main
+$ git stash list
+stash@{0}: WIP on main: dc7e3fc Ada: update README
+$ git stash pop                    # bring the changes back
+\end{verbatim}
+\texttt{git stash -u} also stores untracked files. The stash is local and easy to forget: do not use it as long-term storage; a work-in-progress commit on a branch is safer.
+
+\section*{Cherry-pick, tags and comparing}
+\begin{description}
+  \item[Cherry-pick:] copy \emph{one} commit to the current branch, for example a bug fix that is also needed on the release branch: \verb!git cherry-pick 8cc1a09!.
+  \item[Tags:] a permanent name for a commit, for releases. \verb!git tag -a v0.1 -m "First walking release"! creates an annotated tag. Show with \texttt{git tag}, publish with \verb!git push origin v0.1! (Chapter~\ref{ch:git3}).
+  \item[Compare:] \verb!git diff main..feature/speed! shows what the feature adds; \verb!git log main..feature/speed --oneline! lists the commits that are in the feature but not in \texttt{main}; \verb!git diff --stat main! gives a summary.
+\end{description}
+
+\begin{example}
+Ada works on \texttt{feature/log} and Bob on \texttt{feature/speed}, both change line 2 of \texttt{walk.py}. Bob merges first. When Ada runs \texttt{git merge main} on her branch she gets a conflict in line 2. She opens the file, sees her \texttt{return speed * 0.5 \# log} between \texttt{HEAD} and \texttt{=======} and Bob's \texttt{0.75} below. She keeps Bob's value and her log text, deletes the markers, runs \texttt{python walk.py}, then \verb!git add walk.py! and \verb!git commit!.
+\end{example}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Which command creates the branch \texttt{fix/camera} and switches to it? Which command lists all branches?
+  \item What is a branch, technically? What happens to the labels when you make a commit on the current branch?
+  \item Explain the difference between a fast-forward merge and a merge commit. When can a fast-forward not happen?
+  \item You run \texttt{git merge feature} and see \texttt{CONFLICT (content)}. Write the four steps to finish the merge. How do you cancel instead?
+  \item In a conflicted file, which part is yours and which is the other branch's?
+  \item Why does a rebased commit get a different hash?
+  \item State the golden rule of rebase and give a reason for it.
+  \item You have uncommitted edits and must switch branches. Which commands save and restore them?
+  \item Write the command that lists the commits that are on \texttt{feature/gait} but not on \texttt{main}.
+  \item[\textbf{\thechapter.10}$\star$] A bug fix is on \texttt{main} as commit \texttt{9f3c2aa}. The branch \texttt{release/1.0} needs the same fix, but not the other new work of \texttt{main}. What do you do?
+\end{enumerate}
