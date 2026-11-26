@@ -1,6 +1,6 @@
 \bookchapter{Exploring the Booster SDK}\label{k:sdk}
 
-Booster ships a \textbf{software development kit} (SDK) for its robots: a library, in C++ with Python bindings, that lets a program switch the robot's modes, send walking commands, move the head, read the low-level state and, in the custom mode, command each joint. Our robot code uses it for the \emph{output} side: everything that makes the robot move goes through the SDK. This chapter is a guided tour with small exercises; nothing here is part of the final program yet. Milestone: one.
+Booster ships a \textbf{software development kit} (SDK) for its robots: a library, in C++ with Python bindings, that lets a program switch the robot's modes, send walking commands, move the head, read the low-level state and, in the custom mode, command each joint. Our robot code uses it for the \emph{output} side: everything that makes the robot move goes through the SDK. This chapter is a guided tour; nothing here is part of the final program yet. Milestone: one.
 
 \begin{needbox}
 \begin{itemize}[nosep]
@@ -107,13 +107,3 @@ Compare with what \verb!ros2 topic echo! showed in Chapter~\ref{k:box}: is it th
   \item In this book, the SDK is the \emph{output} of the robot code (Chapter~\ref{k:walk}); ROS~2 is the input (Chapter~\ref{k:ros}).
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item Write a function \verb!safe_mode_change(client, mode)! that calls \verb!ChangeMode!, checks the return value and raises an exception with a clear message if it is not success.
-  \item \verb!Move(0.2, 0, 0)! for $2$\,s should give $0.4$\,m. You measure $0.33$\,m on the floor with a tape. Give three possible reasons.
-  \item Write a loop that walks a square of $1$\,m: forward, turn $90^\circ$, four times, using only \verb!Move! and \verb!time.sleep!. Which value do you need for the turning time at $0.5$\,rad/s? Why will the square not close on the real robot?
-  \item The head yaw limit is $\pm1.0$\,rad (example). Write \verb!look_at(client, yaw)! that clamps the angle before calling the head function.
-  \item Why should a program never call \verb!Move! with large values right after \verb!ChangeMode(kWalking)!? What would you add?
-  \item[\textbf{\thechapter.6}$\star$] Record the low-level state for $10$\,s while the robot stands in \emph{prepare} and plot the pitch angle over time. How large is the sway? Repeat while someone gently pushes the trunk.
-\end{enumerate}

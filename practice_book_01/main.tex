@@ -16,7 +16,7 @@ This is the practical companion of \emph{Road to RoboCup}. That book explains th
 
 \textbf{The code.} All the code of this book lives in its own repository, \coderepo\guess{} (the Python package inside is called \pkg). There is one git tag per chapter, for example \texttt{ch09-blackboard}, so you can always compare your version with a working one. Python is not the fastest language for a robot, and we will measure where this hurts (Chapter~\ref{k:loops}); it is the language in which you can read every line.
 
-\textbf{Structure.} Every chapter has the same shape: \emph{what you need}, numbered \emph{steps}, a \emph{check} that tells you whether the step worked, \emph{if it does not work} (typical errors), \emph{what to remember}, and a few \emph{practice problems} with answers at the end of the book.
+\textbf{Structure.} Every chapter has the same shape: \emph{what you need}, numbered \emph{steps}, a \emph{check} that tells you whether the step worked, \emph{if it does not work} (typical errors), and \emph{what to remember}. There are no exercises: the checks tell you whether you are on track, and the robot itself is the test. When you want to understand \emph{why} a step works, read the matching chapter of \emph{Road to RoboCup}.
 \begin{enumerate}[nosep,label=\textbf{Part~\Roman*:},leftmargin=4.2em]
   \item \textbf{Workshop:} your workstation, the robot, the SDK, the model, and three hardware jobs (power supply, back cover, jerseys). The hardware chapters do not depend on the code; a group that is not programming this week can do them.
   \item \textbf{Robot code foundations:} the repository and deployment, the blackboard, a fake robot, ROS~2 input, two loops, the debug tool \emph{robotcontrol}, logging and replay, the GameController.
@@ -41,48 +41,40 @@ This is the practical companion of \emph{Road to RoboCup}. That book explains th
 \mainmatter
 
 \part{Workshop}\label{kpart:workshop}
-\includechapter{part1_workshop/01_your_workstation}
-\includechapter{part1_workshop/02_unboxing_and_first_connection}
-\includechapter{part1_workshop/03_exploring_the_booster_sdk}
-\includechapter{part1_workshop/04_the_k1_model_and_kinematics}
-\includechapter{part1_workshop/05_an_external_power_supply}
-\includechapter{part1_workshop/06_a_back_cover_with_a_free_usb_port}
-\includechapter{part1_workshop/07_jerseys_and_markings}
+\includeplanned{part1_workshop/01_your_workstation}
+\includeplanned{part1_workshop/02_unboxing_and_first_connection}
+\includeplanned{part1_workshop/03_exploring_the_booster_sdk}
+\includeplanned{part1_workshop/04_the_k1_model_and_kinematics}
+\includeplanned{part1_workshop/05_an_external_power_supply}
+\includeplanned{part1_workshop/06_a_back_cover_with_a_free_usb_port}
+\includeplanned{part1_workshop/07_jerseys_and_markings}
 
 \part{Robot Code Foundations}\label{kpart:code}
-\includechapter{part2_code/08_the_repository_and_k1setup}
-\includechapter{part2_code/09_the_blackboard}
-\includechapter{part2_code/10_a_fake_robot}
-\includechapter{part2_code/11_the_ros2_input_adapter}
-\includechapter{part2_code/12_two_loops}
-\includechapter{part2_code/13_debug_server_and_robotcontrol}
-\includechapter{part2_code/14_logging_and_replay}
-\includechapter{part2_code/15_the_gamecontroller}
+\includeplanned{part2_code/08_the_repository_and_k1setup}
+\includeplanned{part2_code/09_the_blackboard}
+\includeplanned{part2_code/10_a_fake_robot}
+\includeplanned{part2_code/11_the_ros2_input_adapter}
+\includeplanned{part2_code/12_two_loops}
+\includeplanned{part2_code/13_debug_server_and_robotcontrol}
+\includeplanned{part2_code/14_logging_and_replay}
+\includeplanned{part2_code/15_the_gamecontroller}
 
 \part{Motion}\label{kpart:motion}
-\includechapter{part3_motion/16_standing_and_walking}
-\includechapter{part3_motion/17_deploying_the_walking_policy}
-\includechapter{part3_motion/18_robotcontrol_drives_the_robot}
-\includechapter{part3_motion/19_training_your_own_motions}
+\includeplanned{part3_motion/16_standing_and_walking}
+\includeplanned{part3_motion/17_deploying_the_walking_policy}
+\includeplanned{part3_motion/18_robotcontrol_drives_the_robot}
+\includeplanned{part3_motion/19_training_your_own_motions}
 
 \part{Playing Soccer}\label{kpart:soccer}
-\includechapter{part4_soccer/20_perception}
-\includechapter{part4_soccer/21_localisation}
-\includechapter{part4_soccer/22_behaviour}
+\includeplanned{part4_soccer/20_perception}
+\includeplanned{part4_soccer/21_localisation}
+\includeplanned{part4_soccer/22_behaviour}
 
 \part{Match Day}\label{kpart:match}
-\includechapter{part5_matchday/23_health_monitoring}
-\includechapter{part5_matchday/24_match_day_checklist}
+\includeplanned{part5_matchday/23_health_monitoring}
+\includeplanned{part5_matchday/24_match_day_checklist}
 
 \part{Bonus}\label{kpart:bonus}
-\includechapter{part6_bonus/25_analysing_match_video}
-
-\ifdefstring{\answermode}{back}{%
-  \backmatter
-  \chapter*{Answers to the Practice Problems}
-  \markboth{Answers}{Answers}
-  \addcontentsline{toc}{chapter}{Answers to the Practice Problems}
-  \collectedanswers
-}{}
+\includeplanned{part6_bonus/25_analysing_match_video}
 
 \end{document}

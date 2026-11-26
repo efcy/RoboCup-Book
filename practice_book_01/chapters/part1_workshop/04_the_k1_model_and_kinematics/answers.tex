@@ -1,8 +1,0 @@
-\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
-  \item Straight: $0.44$\,m. With $h=0.3$, $k=-0.6$: $z=-0.22\cos0.3-0.22\cos(-0.3)=-0.42$\,m, so the hip is $0.42$\,m above the ankle (and $x=0$: the ankle is straight below the hip). The robot has lowered its hip by about $2$\,cm.
-  \item Largest distance: $L_1+L_2=0.44$\,m (straight). Smallest, with $k=-2.3$: by the law of cosines $d^2=L_1^2+L_2^2+2L_1L_2\cos k=2\cdot0.0484(1+\cos2.3)=0.0968\cdot0.334$, so $d\approx0.18$\,m. All points with a distance between $0.18$ and $0.44$\,m (within the hip range) are reachable.
-  \item MuJoCo reads degrees: $-30^\circ=-0.524$\,rad and $60^\circ=1.047$\,rad.
-  \item On the real joint, $0.79$\,rad on the model's scale is $0.84$\,rad, beyond the model's limit; if the real mechanical limit is at the model's $0.8$, the joint hits its end stop, the motor current rises and the policy sees a joint that does not move. Calibrate, or keep a margin in the safety layer (Chapter~\ref{k:deploy}).
-  \item In the triangle with sides $L_1$, $L_2$ and $d$, the inner angle at the knee is $\pi+k$ (for a negative $k$, it is $\pi-|k|$). The law of cosines says $d^2=L_1^2+L_2^2-2L_1L_2\cos(\pi+k)=L_1^2+L_2^2+2L_1L_2\cos k$, which is the formula of the IK solved for $\cos k$.
-  \item Open-ended: multiply the rotation about $x$ (roll) with the rotation about $y$ (pitch) and the vector of each link; compare with \texttt{d.xpos} for random angles; agreement to $10^{-6}$\,m means the axes and order are right.
-\end{enumerate}

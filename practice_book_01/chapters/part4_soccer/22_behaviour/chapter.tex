@@ -93,12 +93,3 @@ Team messages, role assignment with hysteresis, goalkeeper. Test with three fake
   \item Roles need team messages and hysteresis; set plays and penalties each get their own small behaviour and test.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item For a ball at $(1.0,-0.6)$ in the robot frame, what does \verb!walk_to! return (with the defaults)? And for $(1.0,-0.3)$?
-  \item The striker stops $0.15$\,m behind the ball and kicks when the ball is closer than $0.25$\,m and within $\pm8$\,cm sideways. Draw the region in which it kicks. What happens if the walk overshoots by $0.1$\,m?
-  \item Add the ``local game stuck'' timer: if the robot has been within $0.5$\,m of the ball for $6$\,s without a kick, return \emph{kick}. Which state must the module keep, and which representation gives it the time?
-  \item With hysteresis $h=0.3$\,m, robot $1$ (the striker) is $1.4$\,m from the ball and robot $2$ is $1.2$\,m. Who is striker? And at $1.0$\,m?
-  \item The team has a budget of $1200$ messages for a game of $2\times10$ minutes plus overtime reserve. How many messages per second can each of $5$ robots send if $20\%$ are kept in reserve?
-\end{enumerate}

@@ -36,7 +36,7 @@ In \texttt{docs/hardware.md}: nominal and full-charge voltage, capacity, maximum
 \end{stepbox}
 
 \begin{stepbox}{Step 2: size supply, cable and fuse}
-Choose the supply (voltage, continuous and peak current), the cable cross-section (voltage drop below $3\%$ at peak current, see the problems) and a fuse on the DC side that is larger than the normal peak but smaller than what the cable can carry.
+Choose the supply (voltage, continuous and peak current), the cable cross-section (voltage drop below $3\%$ at peak current; for example, $4$\,m of cable at $30$\,A and $48$\,V needs at least $4$\,mm$^2$) and a fuse on the DC side that is larger than the normal peak but smaller than what the cable can carry.
 \end{stepbox}
 
 \begin{stepbox}{Step 3: build following the guide}
@@ -73,12 +73,3 @@ With the multimeter at the robot's end of the cable, measure the voltage in damp
   \item The tether is for the lab. At a match the robot runs on its battery.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item The cable is $4$\,m long (one way), the peak current $30$\,A, the supply $48$\,V (example numbers). Compute the voltage drop for $2.5$, $4$ and $6$\,mm$^2$. Which is the smallest cross-section with less than $3\%$ drop?
-  \item With $6$\,mm$^2$, how much power is turned into heat in the cable at $30$\,A?
-  \item A $20$\,kg robot falls from standing; its centre of mass drops $0.3$\,m. How much energy is that? If one tenth of it is fed back into the line in $0.2$\,s, what is the average power? Why does this matter for a supply but not for a battery?
-  \item The battery stores $240$\,Wh and lasts $60$\,min in the lab. The team works $3$ hours per session. How many full battery changes (and how much charging) does the tether save per week with two sessions?
-  \item Why should the fuse sit close to the power supply and not close to the robot?
-\end{enumerate}

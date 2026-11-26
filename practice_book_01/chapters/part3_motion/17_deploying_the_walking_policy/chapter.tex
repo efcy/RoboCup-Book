@@ -129,12 +129,3 @@ Stand only, $30$\,s. Then $v_x=0.1$, then more. Two people, emergency stop in ha
   \item Test in this order: MuJoCo fake, hanging with zero action, hanging with the policy, floor with rope.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item Count the observation size for the example above and for the same task with a height scan of $11\times17$ points.
-  \item The test fails at index $9$. Which term is wrong (for the example order), and what is a likely cause?
-  \item With \verb!max_step = 0.05! rad at $50$\,Hz, what is the fastest a joint can move under the safety layer? Is that fast enough for a kick?
-  \item Why is damping (limp) safer than ``hold the current position'' when the robot falls?
-  \item The policy was trained with a delay of $0$ between measurement and action. On the robot the delay is $15$\,ms. Explain why this can matter at $50$\,Hz, and how the training could be changed.
-\end{enumerate}

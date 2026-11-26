@@ -182,12 +182,3 @@ Write \verb!print_graph(modules)! that prints one line ``\texttt{Provider -> Rep
   \item Each thread (Chapter~\ref{k:loops}) has its own blackboard and its own list of modules.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item Module $A$ requires $Y$ and provides $X$; module $B$ requires $X$ and provides $Y$. What does \verb!execution_order! do? Why is this a design error, and how do real teams solve ``I need last cycle's value''?
-  \item Add a check to \verb!run_cycle! (for testing only) that raises an error if a module did not write every representation it provides.
-  \item Make \verb!Blackboard.get! refuse reads of undeclared representations: give each module a \emph{view} of the blackboard that only allows its \texttt{requires}. Sketch the class.
-  \item Why should representations be \emph{replaced} (a new object every cycle) and not changed in place? Think about logging.
-  \item For the modules in the figure, list all valid execution orders.
-\end{enumerate}

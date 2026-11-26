@@ -105,13 +105,3 @@ With the robot hanging in damping, bend one knee by hand and hold it. Read hip a
   \item Forward kinematics checked against MuJoCo and a ruler is the first test that the model and the robot agree.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item With $L_1=L_2=0.22$\,m, how high above the ankle is the hip with straight legs? And with $h=0.3$, $k=-0.6$? (This is how a robot ``crouches''.)
-  \item Which points can the ankle reach? Give the smallest and largest distance from the hip if the knee range is $[-2.3,0]$\,rad.
-  \item The model says \verb!range="-30 60"! and has no compiler line. What range in radians does MuJoCo use?
-  \item A joint has the range $[-1.2,0.8]$\,rad on the model. The real joint reads $0.05$\,rad more than the model for the same pose. What can happen to a policy that commands $0.79$\,rad?
-  \item Show with the law of cosines where the formula for $\cos k$ in \verb!leg_ik! comes from: draw the triangle hip--knee--ankle and mark the inner angle at the knee.
-  \item[\textbf{\thechapter.6}$\star$] Extend \verb!leg_fk! to three dimensions with the hip roll angle, as a product of rotation matrices (\rtr{Rotation and translation matrices}), and test it against MuJoCo.
-\end{enumerate}

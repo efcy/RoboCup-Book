@@ -110,12 +110,3 @@ Implement \texttt{CameraMatrix}, \texttt{Projector}, \texttt{BallModel}; record 
   \item Test detectors on data from another day; tune the whistle on real recordings.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item Show that for a camera at height $h$ looking at a ground point at distance $d$, a small error $\delta$ in the tilt angle gives a distance error of about $\delta\,(d^2+h^2)/h$. Compute it for $h=0.9$\,m, $d=4$\,m and $\delta=1^\circ$.
-  \item The ball has a diameter of $0.2$\,m. Instead of projecting to the ground, the distance can be estimated from the ball's size in pixels. Write the formula and say when each method is better.
-  \item The robot walks forward $0.1$\,m and turns $0.1$\,rad (odometry) between two cycles. The ball model had the ball at $(2,0)$ in the robot frame. Where is it now?
-  \item White noise has a flat spectrum from $0$ to $8$\,kHz at $16$\,kHz sampling. Explain why about a quarter of its energy is between $2$ and $4$\,kHz.
-  \item Why should a detector's test set come from another day than its training set?
-\end{enumerate}

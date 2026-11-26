@@ -151,7 +151,7 @@ Deploy, connect from the laptop over the network, and repeat Step~3 with the rob
 \begin{description}[leftmargin=0.6cm,nosep]
   \item[\texttt{Connection refused}] The server is not running, or a firewall blocks the port. \verb!ss -ltnp | grep 5555! on the robot.
   \item[Garbage values after a while] A message was read partly; use \verb!recv_exact!, never a single \verb!recv!.
-  \item[Cognition becomes slow when the Wi-Fi is bad] \verb!sendall! blocks when the network is slow. See Problem~\thechapter.3.
+  \item[Cognition becomes slow when the Wi-Fi is bad] \verb!sendall! blocks when the network is slow. Let \verb!publish! put the frame into a queue of length $1$ (dropping an unsent older frame) and send from a separate thread.
 \end{description}
 \end{troublebox}
 
@@ -162,12 +162,3 @@ Deploy, connect from the laptop over the network, and repeat Step~3 with the rob
   \item The debug stream must never slow down the robot.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item A frame is $45$ bytes plus $4$ bytes of length. At $10$ frames per second, what is the data rate? How many robots could stream at $50$ frames per second over a Wi-Fi link that really delivers $5$\,Mbit/s?
-  \item Why would it be a mistake to use the time stamp sent by the laptop as the \texttt{t} of the command on the robot?
-  \item \verb!publish! is called from the cognition thread and \verb!sendall! can block. Change the server so that \verb!publish! never blocks: it puts the frame into a queue of length $1$, and a sender thread sends the newest frame.
-  \item Add a field \texttt{repeated float joint\_q = 8;} to \texttt{Frame}. Is the change compatible with an old robotcontrol that does not know the field? And with an old \emph{robot} and a new robotcontrol?
-  \item Anyone in the hall's network could connect and send commands to your robot. Suggest two simple protections.
-\end{enumerate}

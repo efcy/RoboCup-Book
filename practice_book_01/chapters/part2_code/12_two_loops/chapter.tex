@@ -124,12 +124,3 @@ Repeat the table above on the K1, with the real cognition modules you have. Writ
   \item Measure the timing, on the robot, always. Pure-Python work in another thread can delay motion by the switch interval ($5$\,ms by default).
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item Motion runs at $50$\,Hz and cognition at $20$\,Hz. How many motion steps use the same command on average? What is the oldest a valid cognition command can be when motion uses it, if cognition runs on time?
-  \item Write the test \verb!test_ttl_expires! for \texttt{CommandSlot}, using fixed numbers for \texttt{now} instead of the real clock.
-  \item A loop sleeps with \verb!time.sleep(period - work)! and the work takes $3$\,ms, the sleep overshoots by $0.2$\,ms on average. How many cycles per second does a ``$50$\,Hz'' loop run? Compare with the fixed grid.
-  \item In the experiment, why is the median lateness with $n=300\,000$ almost the same as without work, while the $99\%$ value is $5$\,ms?
-  \item Suggest a way to make the robot stop moving if the \emph{motion} thread itself hangs. (Who watches the watcher?)
-\end{enumerate}

@@ -123,12 +123,3 @@ After each session copy the logs to the laptop: \verb!rsync -a k1:/opt/k1code/lo
   \item A log is a regression test: it detects \emph{change}, you decide whether the change is right.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item Motion frames are about as large as cognition frames, and motion runs at $50$\,Hz. How much log data does one robot produce in a $2\times10$\,min game plus $30$\,min of warm-up? And five robots?
-  \item Write \verb!find_first(path, condition)! that returns the cycle number of the first frame for which \verb!condition(data)! is true, for example the first frame where the robot has fallen.
-  \item Why does \texttt{LogInput} not provide \texttt{BallPercept} when you want to test the \texttt{BallDetector}? And which representations would it provide if you want to test only the behaviour?
-  \item A module uses \verb!random.random()! to break ties between two equally good roles. Change it so that replay is deterministic and the tie-break is still ``random'' in a game.
-  \item The motion log shows a single step where the policy's output jumps. List three representations you would look at in the same cycle to find the reason.
-\end{enumerate}

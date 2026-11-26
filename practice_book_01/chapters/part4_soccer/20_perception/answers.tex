@@ -1,7 +1,0 @@
-\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
-  \item The ray to the point makes the angle $\alpha$ below the horizontal with $\tan\alpha=h/d$, so $d=h/\tan\alpha$. Then $\dd d/\dd\alpha=-h/\sin^2\alpha$, and $1/\sin^2\alpha=1+1/\tan^2\alpha=(h^2+d^2)/h^2$, so $|\Delta d|\approx\delta\,(d^2+h^2)/h$. With $\delta=0.01745$: $0.01745\cdot16.81/0.9\approx0.33$\,m. One degree of tilt error at $4$\,m costs a third of a metre.
-  \item $d\approx f\cdot D/p$ with $D=0.2$\,m and $p$ the ball's width in pixels. Size-based distance does not need the camera's tilt, but a small error in the box width gives a large relative error far away (the ball is only a few pixels); projection is better at short and middle distances when the camera pose is well calibrated, size helps far away or when the ball is in the air or the robot tilts.
-  \item First move: in the new frame the ball is at $(2-0.1,0)=(1.9,0)$ before the turn; turning the robot by $+0.1$\,rad turns the ball by $-0.1$\,rad in the robot's frame: $(1.9\cos0.1,\,-1.9\sin0.1)\approx(1.89,\,-0.19)$.
-  \item The energy of flat (white) noise is spread evenly over frequency. The band $2$--$4$\,kHz is $2$ of the $8$\,kHz up to the Nyquist frequency, so $1/4$ of the energy (minus a little from the window).
-  \item Images of one day share light, background, ball and robots; a network can learn these details. A test set from the same day measures how well it remembers that day, not how well it works at the tournament. Another day (another hall if possible) is a much more honest test.
-\end{enumerate}
