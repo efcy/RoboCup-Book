@@ -58,7 +58,7 @@ class KinematicFakeRobot:
 \end{verbatim}
 The two lines in \texttt{step} are the rotation of \rtr{Rotation and translation matrices}: the command is given in the robot's frame (forward, left), the pose in the field's frame. (The \texttt{send} here takes three numbers to keep the listing short; the version in the repository takes a \texttt{MotionCommand}.)
 
-\textbf{Test: walk a square.} Forward $1$\,m at $0.25$\,m/s, turn $90^\circ$ at $0.5$\,rad/s, four times, with $\Delta t=0.02$\,s. I ran it; the robot ends at $(-0.002,\,0.002)$\,m with $\theta=-0.003$\,rad, not exactly at $(0,0,0)$. The reason is that a quarter turn needs $\pi/2/0.5/0.02=157.08$ steps, and the program can only do $157$. Even a perfect fake shows the error of a timed open-loop square; Practice problem~\thechapter.2 asks you to fix it.
+\textbf{Test: walk a square.} Forward $1$\,m at $0.25$\,m/s, turn $90^\circ$ at $0.5$\,rad/s, four times, with $\Delta t=0.02$\,s. I ran it; the robot ends at $(-0.002,\,0.002)$\,m with $\theta=-0.003$\,rad, not exactly at $(0,0,0)$. The reason is that a quarter turn needs $\pi/2/0.5/0.02=157.08$ steps, and the program can only do $157$. Even a perfect fake shows the error of a timed open-loop square. The fix is the same as on the real robot: turn until the \emph{angle} is reached, not for a fixed time.
 
 \section*{Fake perception}
 The kinematic fake also knows where the ball is (a point that rolls with friction when ``kicked''), so it can provide a \texttt{BallPercept} directly: the ball's position in the robot's frame, with noise, and only when it is inside the camera's field of view. With it, the behaviour of Chapter~\ref{k:beh} can be developed before the real perception exists. This is a \emph{replacement module}: in fake mode, \texttt{FakeBallPerceptor} provides \texttt{BallPercept}, in real mode \texttt{BallDetector} does. The framework of Chapter~\ref{k:bb} guarantees that exactly one of them is active.
@@ -98,12 +98,3 @@ The program of Step~3 runs on the laptop with no robot and no ROS installed, and
   \item Everything that runs against the fake runs in CI.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item The robot is at $(1,2)$ with $\theta=90^\circ$ and walks with $v_x=0.4$, $v_y=0$ for $1$\,s. Where is it? And with $v_x=0$, $v_y=0.4$?
-  \item Change the square test so that the final error is (almost) zero, without changing $\Delta t$.
-  \item Add Gaussian noise to the velocities of the fake ($10\%$ of the command) and run the square $100$ times. Describe the spread of the end points.
-  \item Write \verb!FakeBallPerceptor.update! that provides \texttt{BallPercept(seen, x, y)} in the robot frame, seen only if the ball is within $\pm35^\circ$ of the robot's heading and closer than $6$\,m.
-  \item Why must a fake be \emph{deterministic} when it is used in CI? How do you make a fake with noise deterministic?
-\end{enumerate}

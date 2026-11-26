@@ -103,12 +103,3 @@ Move one arm of the hanging, damped robot slowly by hand and print again.
   \item Write down what is on the robot (OS, ROS distribution, services, topics). The rest of the book relies on that list.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item The trunk of a standing robot is about $0.5$\,m above the floor. Estimate the speed of the trunk when the robot falls flat, if it falls freely from that height. Why is ``catching'' it a bad idea?
-  \item The laptop has the address \texttt{192.168.10.50/24}, the robot \texttt{192.168.1.102/24}. Will \verb!ping! work? Explain with the subnet mask.
-  \item A battery is labelled $48$\,V$\,/\,5$\,Ah (example numbers). How much energy does it store in watt-hours? The robot uses on average $200$\,W while walking. How long does it walk?
-  \item The IMU of a hanging robot reports the acceleration $(0.0,\,0.0,\,9.8)$\,m/s$^2$. The robot is then tilted forward by $30^\circ$. What does the IMU report (approximately), if $x$ points forward and $z$ up in the trunk?
-  \item \verb!ros2 topic hz! reports $500$\,Hz for the low-level state. How many messages arrive during one cognition cycle at $20$\,Hz? What does this mean for a program that only reads ``the newest'' message?
-\end{enumerate}

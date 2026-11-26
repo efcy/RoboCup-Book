@@ -114,12 +114,3 @@ Add the game state, our penalty, the score and the time to robotcontrol's view.
   \item Test with packets from the real GameController.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item Compute the size of \verb!"<6B2H60B"! by hand. What would the size be without the \texttt{<} (native alignment), and why does that matter?
-  \item Write \verb!our_team(state, team_number)! that returns the index ($0$ or $1$) of our team block, or raises an error.
-  \item Player $3$ is penalised. Which index in \texttt{teams[k]["penalty"]} holds his or her penalty, and why?
-  \item The status packet wants the ball in millimetres relative to the robot. Our \texttt{BallModel} has metres. Write the call to \verb!encode_return! for a ball at $(1.2, -0.3)$\,m seen $0.4$\,s ago and a pose of $(-2.5,1.0)$\,m, $0.3$\,rad.
-  \item The packet number is one byte. After how many seconds does it wrap around at $2$ packets per second? How do you detect a lost packet across the wrap?
-\end{enumerate}

@@ -118,12 +118,3 @@ You do \emph{not} need ROS~2 on the laptop for this book. ROS~2 runs on the robo
   \item The simulator shows the K1 model; without a controller the model falls, and that is expected.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item Why does the book insist on a \emph{lock file} (\texttt{uv.lock}) instead of a list of package names? Describe a bug that a lock file prevents.
-  \item A training run needs $200$ million simulation steps. Your GPU simulates $4096$ robots at $50$ policy steps per second each in real time, and the simulation runs $10$ times faster than real time. How long does the training take?
-  \item \verb!nvidia-smi! shows \emph{7800MiB / 8192MiB} in use while nothing is training. Name a likely cause and a command to find it.
-  \item Write the two git commands that bring your copy of the code up to date and then show which tag you are on.
-  \item Explain in two sentences why the laptop does not need ROS~2 in this book.
-\end{enumerate}

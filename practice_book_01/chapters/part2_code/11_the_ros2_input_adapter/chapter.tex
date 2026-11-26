@@ -30,7 +30,7 @@ Rules for the adapter:
 \begin{enumerate}[nosep]
   \item \textbf{Convert at the border.} ROS messages are turned into our own dataclasses (with NumPy arrays and SI units) inside the callback. No ROS type leaves the adapter.
   \item \textbf{Reorder at the border.} The joint order of the robot's message may differ from the model's order. Map by name, once, and check it with a test.
-  \item \textbf{Keep only the newest, with a time stamp.} The state arrives much faster than cognition runs (Chapter~\ref{k:box}, Problem~2.5). The buffer stores the newest message and the time it arrived; a reader can see how old it is.
+  \item \textbf{Keep only the newest, with a time stamp.} The state arrives much faster than cognition runs (for example $500$\,Hz against $20$\,Hz: $25$ messages per cognition cycle). The buffer stores the newest message and the time it arrived; a reader can see how old it is.
   \item \textbf{Quality of service:} \emph{best effort} and \emph{keep last 1} for high-rate sensor data. An old state is worthless, so it must not be queued or re-sent.
 \end{enumerate}
 
@@ -117,12 +117,3 @@ On the robot, run the program with the real adapter and log, once per second: th
   \item A recorded bag is test data for the adapter.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item Write \verb!gravity_from_rpy(rpy)! and test it for upright, $30^\circ$ forward pitch and $90^\circ$ roll.
-  \item The message lists joints in the order \texttt{[head\_yaw, head\_pitch, l\_sh\_pitch, \dots]} and the model in another order. Write \verb!make_joint_map(msg_names, model_names)! that returns the index array, and raises an error if a name is missing.
-  \item Why must the callback not run the behaviour or call the SDK?
-  \item A callback takes $3$\,ms and the topic runs at $500$\,Hz. What fraction of one CPU core does the adapter use? What happens if the callback takes $3$\,ms at $500$\,Hz \emph{and} the GIL is busy in another thread?
-  \item Explain the difference between ``the message is old'' and ``the robot's sensor value is old''. Which one can the adapter measure?
-\end{enumerate}

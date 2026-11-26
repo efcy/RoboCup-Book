@@ -194,12 +194,3 @@ On the laptop, copy the repository into a folder \texttt{k1code} on the stick la
   \item systemd runs the code; udev only triggers a systemd unit; \texttt{k1setup -{}-root} lets you test the installation without a robot.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item Why does the udev rule not simply contain \verb!RUN+="/usr/local/bin/k1-deploy"!?
-  \item What does \verb!Restart=on-failure! with \verb!RestartSec=2! do if the program crashes at start every time? How can you see that it is happening?
-  \item Write a test \verb!test_all_robot_configs! that loads every file in \texttt{config/robots/} and checks that the player numbers are unique and between $1$ and $7$.
-  \item The \texttt{rsync} in \texttt{k1-deploy} uses \verb!--delete!. What does it do, and what would go wrong without \verb!--exclude .venv!?
-  \item Someone deploys a stick with code that does not start. Describe how you get the robot back to the previous version in the shortest time. (Hint: tags.)
-\end{enumerate}

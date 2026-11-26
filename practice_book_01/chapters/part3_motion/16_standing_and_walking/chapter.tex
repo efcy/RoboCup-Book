@@ -60,11 +60,11 @@ Run the robot code with the real adapters, robot hanging. With robotcontrol, sen
 Rope slack, mat around. Walk forward, sideways, turn, each for $3$\,s, from robotcontrol. Measure the real speed with a tape and a stopwatch and compare with the command. Write the limits that are safe on your floor into \texttt{config/team.toml}.
 \end{stepbox}
 \begin{stepbox}{Step A3: a square from cognition}
-A test behaviour module that walks a $1$\,m square (Problem~\ref{k:sdk}.3, now as a module with a state machine) runs first against the fake, then on the robot.
+A test behaviour module that walks a $1$\,m square (as in Chapter~\ref{k:sdk}, Step~4, but now as a module with a state machine that uses odometry instead of timing) runs first against the fake, then on the robot.
 \end{stepbox}
 
 \section*{Stage B: your own walking policy}
-\rtr{Velocity tracking and reward design} explains the velocity task of mjlab: the policy observes the IMU, the joints, its last action and a velocity command, and outputs joint position targets; the reward pays for tracking the command and punishes waste and unsafe motion. In booster-mjlab the velocity task exists for the T1; for the K1 you build it from the same parts, exchanging what is robot-specific (Problem~10 of that chapter asked you to design it on paper; now you implement it).
+\rtr{Velocity tracking and reward design} explains the velocity task of mjlab: the policy observes the IMU, the joints, its last action and a velocity command, and outputs joint position targets; the reward pays for tracking the command and punishes waste and unsafe motion. In booster-mjlab the velocity task exists for the T1; for the K1 you build it from the same parts, exchanging what is robot-specific.
 \begin{stepbox}{Step B1: register a K1 velocity task}
 Copy the T1 velocity configuration, replace the robot entity with the K1, the joint names and default pose with those of \texttt{docs/k1\_joints.txt}, the foot body names, and the action scales. Register it as \texttt{Mjlab-Velocity-Flat-Booster-K1} (your name). The exact file and function names in booster-mjlab may differ\guess.
 \end{stepbox}
@@ -101,12 +101,3 @@ Export the actor network to ONNX (mjlab or RSL-RL have an export step\guess) tog
   \item Measure the real speeds; never trust the command to equal the motion.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item The ramp allows $0.5$\,m/s$^2$ at $50$\,Hz. How many cycles does it take from $0$ to $0.4$\,m/s? How far does the robot walk in that time (if it follows the ramp)?
-  \item Why does \texttt{SdkWalkOutput} remember the mode instead of calling \verb!ChangeMode! every cycle?
-  \item The robot walks $0.27$\,m/s when commanded $0.35$\,m/s. A teammate proposes multiplying every command by $0.35/0.27$. Give two reasons against it.
-  \item Write the state machine for the square-walking module as a list of (state, command, condition for the next state) with odometry as feedback.
-  \item In Step~B3, what goes wrong if the exported JSON is missing the \emph{order} of the observation terms?
-\end{enumerate}

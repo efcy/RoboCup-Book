@@ -77,12 +77,3 @@ Only with a working get-up, many spare hours and a very soft mat: track a flip c
   \item Success is counted: $20$ of $20$ in simulation before the robot, then counted again on the robot.
 \end{itemize}
 \end{keyidea}
-
-\section*{Practice problems}
-\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
-  \item A motion succeeds in $20$ of $20$ simulated runs. Give an upper estimate of its failure rate with about $95\%$ confidence (rule of three: $3/n$). How many runs without failure would you need to claim less than $1\%$?
-  \item The get-up takes $6$\,s and succeeds $90\%$ of the time per try. What is the probability that the robot is up within $20$\,s, if a failed try costs $8$\,s before the next one?
-  \item Write the transitions of the selector as a Python function \verb!next_state(state, cmd, upright, fallen, done, t_in_state)!.
-  \item Why should the kick's ``done'' not be decided only by a timer?
-  \item Suggest a fair test on the real robot that compares two kicks (A and B).
-\end{enumerate}
