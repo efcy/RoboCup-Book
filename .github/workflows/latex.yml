@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build_foundation:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -17,16 +17,39 @@ jobs:
       - name: Compile with pdflatex (x2)
         uses: xu-cheng/latex-action@v4
         with:
-          root_file: main.tex
+          root_file: foundation_book/main.tex
           compiler: pdflatex
           args: -synctex=1 -interaction=nonstopmode -file-line-error
           pre_compile: |
-            pdflatex -synctex=1 -interaction=nonstopmode -file-line-error main.tex
+            pdflatex -synctex=1 -interaction=nonstopmode -file-line-error foundation_book/main.tex
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: build-${{ github.run_number }}
-          name: RoboCup-Book #${{ github.run_number }} (${{ github.sha }})
-          files: main.pdf
+          name: RoboCup-Foundation-Book #${{ github.run_number }} (${{ github.sha }})
+          files: foundation_book/main.pdf
+          generate_release_notes: true
+
+  build_practice:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Compile with pdflatex (x2)
+        uses: xu-cheng/latex-action@v4
+        with:
+          root_file: practice_book_01/main.tex
+          compiler: pdflatex
+          args: -synctex=1 -interaction=nonstopmode -file-line-error
+          pre_compile: |
+            pdflatex -synctex=1 -interaction=nonstopmode -file-line-error practice_book_01/main.tex
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: RoboCup-Practice-Book #${{ github.run_number }} (${{ github.sha }})
+          files: practice_book_01/main.pdf
           generate_release_notes: true

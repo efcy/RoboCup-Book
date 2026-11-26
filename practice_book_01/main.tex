@@ -1,0 +1,50 @@
+\documentclass[11pt,a4paper,twoside]{book}
+
+\input{preamble}
+\begin{document}
+
+\frontmatter
+\makebooktitle
+\cleardoublepage
+\tableofcontents
+
+\chapter*{How to use this book}
+\markboth{How to use this book}{How to use this book}
+\addcontentsline{toc}{chapter}{How to use this book}
+
+This is the practical companion of \emph{Road to RoboCup}. That book explains the concepts (mathematics, neural networks, control, the rules of the Humanoid Soccer League and reinforcement learning with mjlab). This book has one goal: to get the \textbf{Booster K1} to work effectively, and you build it by \textbf{following along}.
+
+\textbf{Structure.} The book is organised as a sequence of sessions at the laptop and at the robot. Every chapter has the same shape: \emph{what you need}, numbered \emph{steps}, a \emph{check} that tells you whether the step worked, \emph{if it does not work} (typical errors) and a short \emph{what to remember}. There are no practice problems; the checks take their place. Chapters that are marked \emph{Planned content} are not written yet.
+\begin{enumerate}[nosep,label=\textbf{Part~\Roman*:},leftmargin=4.2em]
+  \item \textbf{Setup:} your workstation and the simulator.
+  \item \textbf{The robot:} unboxing, connection, the model.
+  \item \textbf{Motions:} standing, walking and your own motions.
+  \item \textbf{Deployment:} from simulation to the real robot, match day.
+  \item \textbf{Bonus:} video analysis.
+\end{enumerate}
+
+\textbf{Boxes.} A \emph{Key idea} box (blue) contains the rule to remember. An orange \emph{step} box contains an action to carry out.
+
+\textbf{Safety first.} A humanoid robot falls, pinches fingers and has strong motors. Read the safety rules of the first robot chapter before you switch on anything.
+
+\mainmatter
+
+\part{Setup}\label{kpart:setup}
+\includeplanned{part1_setup/01_your_workstation}
+
+\part{The Robot}\label{kpart:robot}
+\includeplanned{part2_robot/02_unboxing_and_first_connection}
+\includeplanned{part2_robot/03_the_k1_model_and_kinematics}
+
+\part{Motions}\label{kpart:motions}
+\includeplanned{part3_motions/04_standing_and_walking}
+\includeplanned{part3_motions/05_training_your_own_motions}
+
+\part{Deployment}\label{kpart:deploy}
+\includeplanned{part4_deploy/06_from_simulation_to_the_real_robot}
+\includeplanned{part4_deploy/07_match_day_checklist}
+
+\part{Bonus}\label{kpart:bonus}
+\includeplanned{part5_bonus/08_analysing_match_video}
+
+\end{document}
