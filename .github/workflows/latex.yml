@@ -2,7 +2,8 @@ name: Build and Release LaTeX
 
 on:
   push:
-    branches: ["master"]
+    branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -27,8 +28,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: build-${{ github.run_number }}
-          name: RoboCup-Foundation-Book #${{ github.run_number }} (${{ github.sha }})
+          tag_name: foundation-build-${{ github.run_number }}
+          name: "RoboCup-Foundation-Book #${{ github.run_number }} (${{ github.sha }})"
           files: foundation_book/main.pdf
           generate_release_notes: true
 
@@ -39,7 +40,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Compile with pdflatex (x2)
-        uses: xu-cheng/latex-action@v4        
+        uses: xu-cheng/latex-action@v4
         with:
           working_directory: ./practice_book_01
           root_file: main.tex
@@ -50,9 +51,8 @@ jobs:
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
-
         with:
-          tag_name: build-${{ github.run_number }}
-          name: RoboCup-Practice-Book #${{ github.run_number }} (${{ github.sha }})
+          tag_name: practice-build-${{ github.run_number }}
+          name: "RoboCup-Practice-Book #${{ github.run_number }} (${{ github.sha }})"
           files: ./practice_book_01/main.pdf
           generate_release_notes: true
