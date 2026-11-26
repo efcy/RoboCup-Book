@@ -12,39 +12,77 @@
 \markboth{How to use this book}{How to use this book}
 \addcontentsline{toc}{chapter}{How to use this book}
 
-This is the practical companion of \emph{Road to RoboCup}. That book explains the concepts (mathematics, neural networks, control, the rules of the Humanoid Soccer League and reinforcement learning with mjlab). This book has one goal: to get the \textbf{Booster K1} to work effectively, and you build it by \textbf{following along}.
+This is the practical companion of \emph{Road to RoboCup}. That book explains the concepts (mathematics, Linux, Python, neural networks, control, the rules of the Humanoid Soccer League and reinforcement learning with mjlab). This book has one goal: a \textbf{Booster K1} that plays in the Humanoid Soccer League with a program that \emph{you} wrote, in Python, and that you understand completely. You build it by \textbf{following along}.
 
-\textbf{Structure.} The book is organised as a sequence of sessions at the laptop and at the robot. Every chapter has the same shape: \emph{what you need}, numbered \emph{steps}, a \emph{check} that tells you whether the step worked, \emph{if it does not work} (typical errors) and a short \emph{what to remember}. There are no practice problems; the checks take their place. Chapters that are marked \emph{Planned content} are not written yet.
+\textbf{The code.} All the code of this book lives in its own repository, \coderepo\guess{} (the Python package inside is called \pkg). There is one git tag per chapter, for example \texttt{ch09-blackboard}, so you can always compare your version with a working one. Python is not the fastest language for a robot, and we will measure where this hurts (Chapter~\ref{k:loops}); it is the language in which you can read every line.
+
+\textbf{Structure.} Every chapter has the same shape: \emph{what you need}, numbered \emph{steps}, a \emph{check} that tells you whether the step worked, \emph{if it does not work} (typical errors), \emph{what to remember}, and a few \emph{practice problems} with answers at the end of the book.
 \begin{enumerate}[nosep,label=\textbf{Part~\Roman*:},leftmargin=4.2em]
-  \item \textbf{Setup:} your workstation and the simulator.
-  \item \textbf{The robot:} unboxing, connection, the model.
-  \item \textbf{Motions:} standing, walking and your own motions.
-  \item \textbf{Deployment:} from simulation to the real robot, match day.
+  \item \textbf{Workshop:} your workstation, the robot, the SDK, the model, and three hardware jobs (power supply, back cover, jerseys). The hardware chapters do not depend on the code; a group that is not programming this week can do them.
+  \item \textbf{Robot code foundations:} the repository and deployment, the blackboard, a fake robot, ROS~2 input, two loops, the debug tool \emph{robotcontrol}, logging and replay, the GameController.
+  \item \textbf{Motion:} walking, deploying a learned policy safely, driving the robot from robotcontrol, your own motions.
+  \item \textbf{Playing soccer:} perception, localisation, behaviour.
+  \item \textbf{Match day:} health monitoring and the checklist.
   \item \textbf{Bonus:} video analysis.
 \end{enumerate}
 
-\textbf{Boxes.} A \emph{Key idea} box (blue) contains the rule to remember. An orange \emph{step} box contains an action to carry out.
+\textbf{Two milestones.} \emph{Milestone one} (end of Chapter~\ref{k:beh}, first version): the robot listens to the GameController, stands, walks to the ball and kicks it. \emph{Milestone two}: a full team that plays a match under the rules. Every chapter says which milestone it serves.
 
-\textbf{Safety first.} A humanoid robot falls, pinches fingers and has strong motors. Read the safety rules of the first robot chapter before you switch on anything.
+\textbf{References to the concepts book.} A chapter title in quotation marks with a small \textsuperscript{\textcolor{cupnavy}{\sffamily\scriptsize RtR}} is a chapter of \emph{Road to RoboCup}; read it when you want the why behind a step.
+
+\textbf{Boxes.} A grey box lists \emph{what you need}. An orange box is a \emph{step} to carry out, a green box the \emph{check}, a red box \emph{what to do if it does not work}. A blue \emph{Key idea} box contains the rule to remember.
+
+\textbf{Marked guesses.} This book was drafted without a K1 on the desk. Facts about the K1, its SDK and its software that could not be checked are marked with \guess{} or put in a yellow box titled \emph{Not verified on a real K1}. Check them against your robot and the current Booster documentation, and fix the book (it is in git too). Where the text says ``I ran it'' or quotes results, the code was run on a laptop with Python~3.13 (never on a K1) and the numbers come from those runs. Other listings, in particular everything that talks to the SDK or to ROS~2, are sketches that were not run; expect to fix details.
+
+\textbf{Decisions taken in this draft.} Four choices still have to be confirmed by the team; the book uses these defaults: (1) the robot code runs on the K1's own computer, robotcontrol on a laptop; (2) milestone one walks with Booster's built-in walking controller through the SDK, so the low-level command rate of the SDK does not matter yet; (3) milestone one comes before the full team; (4) the code repository is called \coderepo{} with one tag per chapter.
+
+\textbf{Safety first.} A humanoid robot falls, pinches fingers and has strong motors. Read the safety rules of Chapter~\ref{k:box} before you switch on anything, and the safety box of Chapter~\ref{k:power} before you build anything that touches power.
 
 \mainmatter
 
-\part{Setup}\label{kpart:setup}
-\includeplanned{part1_setup/01_your_workstation}
+\part{Workshop}\label{kpart:workshop}
+\includechapter{part1_workshop/01_your_workstation}
+\includechapter{part1_workshop/02_unboxing_and_first_connection}
+\includechapter{part1_workshop/03_exploring_the_booster_sdk}
+\includechapter{part1_workshop/04_the_k1_model_and_kinematics}
+\includechapter{part1_workshop/05_an_external_power_supply}
+\includechapter{part1_workshop/06_a_back_cover_with_a_free_usb_port}
+\includechapter{part1_workshop/07_jerseys_and_markings}
 
-\part{The Robot}\label{kpart:robot}
-\includeplanned{part2_robot/02_unboxing_and_first_connection}
-\includeplanned{part2_robot/03_the_k1_model_and_kinematics}
+\part{Robot Code Foundations}\label{kpart:code}
+\includechapter{part2_code/08_the_repository_and_k1setup}
+\includechapter{part2_code/09_the_blackboard}
+\includechapter{part2_code/10_a_fake_robot}
+\includechapter{part2_code/11_the_ros2_input_adapter}
+\includechapter{part2_code/12_two_loops}
+\includechapter{part2_code/13_debug_server_and_robotcontrol}
+\includechapter{part2_code/14_logging_and_replay}
+\includechapter{part2_code/15_the_gamecontroller}
 
-\part{Motions}\label{kpart:motions}
-\includeplanned{part3_motions/04_standing_and_walking}
-\includeplanned{part3_motions/05_training_your_own_motions}
+\part{Motion}\label{kpart:motion}
+\includechapter{part3_motion/16_standing_and_walking}
+\includechapter{part3_motion/17_deploying_the_walking_policy}
+\includechapter{part3_motion/18_robotcontrol_drives_the_robot}
+\includechapter{part3_motion/19_training_your_own_motions}
 
-\part{Deployment}\label{kpart:deploy}
-\includeplanned{part4_deploy/06_from_simulation_to_the_real_robot}
-\includeplanned{part4_deploy/07_match_day_checklist}
+\part{Playing Soccer}\label{kpart:soccer}
+\includechapter{part4_soccer/20_perception}
+\includechapter{part4_soccer/21_localisation}
+\includechapter{part4_soccer/22_behaviour}
+
+\part{Match Day}\label{kpart:match}
+\includechapter{part5_matchday/23_health_monitoring}
+\includechapter{part5_matchday/24_match_day_checklist}
 
 \part{Bonus}\label{kpart:bonus}
-\includeplanned{part5_bonus/08_analysing_match_video}
+\includechapter{part6_bonus/25_analysing_match_video}
+
+\ifdefstring{\answermode}{back}{%
+  \backmatter
+  \chapter*{Answers to the Practice Problems}
+  \markboth{Answers}{Answers}
+  \addcontentsline{toc}{chapter}{Answers to the Practice Problems}
+  \collectedanswers
+}{}
 
 \end{document}

@@ -1,0 +1,17 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Facing $+y$: forward $0.4$\,m means $(1,2.4)$. Sideways to the left of a robot facing $+y$ is $-x$: $(0.6,2)$.
+  \item Do not count steps with \verb!int()!: either use the exact remaining time in the last step (a shorter last \texttt{dt}), or command the turn until the \emph{angle} has reached $90^\circ$ (closed loop on the fake's angle), which is what the real code does with odometry anyway.
+  \item The end points form a cloud around the start; its spread grows with the distance walked and especially with the angle errors (an angle error after the first side turns all later sides). I ran it with the noise drawn once per side ($10\%$ standard deviation for the forward speed and the turn rate, $100$ runs, seed $0$): the standard deviation of the end point was about $0.25$\,m in $x$ and $0.27$\,m in $y$, the median distance from the start $0.28$\,m and the largest $0.90$\,m. Your numbers depend on the noise model, but not by an order of magnitude.
+  \item
+\begin{verbatim}
+def update(self, bb):
+    rx, ry, th = self.robot.x, self.robot.y, self.robot.theta
+    dx, dy = self.ball.x - rx, self.ball.y - ry
+    c, s = math.cos(th), math.sin(th)
+    x, y = c * dx + s * dy, -s * dx + c * dy     # field -> robot frame
+    seen = x > 0 and abs(math.atan2(y, x)) < math.radians(35) \
+           and math.hypot(x, y) < 6.0
+    bb.set(BallPercept(seen, x, y) if seen else BallPercept(False))
+\end{verbatim}
+  \item A test that sometimes passes and sometimes fails (a ``flaky'' test) cannot tell you whether a change broke something. Use a random generator with a fixed seed, \verb!np.random.default_rng(42)!, created by the test and passed to the fake.
+\end{enumerate}

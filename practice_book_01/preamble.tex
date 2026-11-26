@@ -51,9 +51,9 @@
 \definecolor{cupred}{RGB}{200,30,40}
 
 % ---------------- Boxes and environments ----------------
-\newtcolorbox{keyidea}[1][Key idea]{colback=blue!5,colframe=blue!60!black,fonttitle=\bfseries,title=#1}
-\newtcolorbox{aibox}[1][Link to AI and robotics]{colback=green!5,colframe=green!40!black,fonttitle=\bfseries,title=#1}
-\newtcolorbox{stepbox}[1]{colback=orange!6,colframe=orange!60!black,fonttitle=\bfseries,title=#1}
+\newtcolorbox{keyidea}[1][Key idea]{colback=blue!5,colframe=blue!60!black,fonttitle=\bfseries,title={#1}}
+\newtcolorbox{aibox}[1][Link to AI and robotics]{colback=green!5,colframe=green!40!black,fonttitle=\bfseries,title={#1}}
+\newtcolorbox{stepbox}[1]{colback=orange!6,colframe=orange!60!black,fonttitle=\bfseries,title={#1}}
 
 \numberwithin{figure}{chapter}
 \theoremstyle{definition}
@@ -199,3 +199,17 @@
 \lstset{basicstyle=\ttfamily,breaklines=true,columns=fullflexible,upquote=true,keepspaces=true,showstringspaces=false,postbreak={}}
 \let\verb\lstinline % inline code that can break across lines
 \setlength{\emergencystretch}{3em}
+
+% ---------------- Follow-along boxes ----------------
+\newtcolorbox{needbox}[1][What you need]{colback=gray!6,colframe=gray!55!black,fonttitle=\bfseries,title={#1}}
+\newtcolorbox{checkbox}[1][Check]{colback=green!5,colframe=green!45!black,fonttitle=\bfseries,title={#1}}
+\newtcolorbox{troublebox}[1][If it does not work]{colback=red!4,colframe=red!55!black,fonttitle=\bfseries,title={#1}}
+\newtcolorbox{guessbox}[1][Not verified on a real K1]{colback=yellow!10,colframe=yellow!45!black,fonttitle=\bfseries,title={#1}}
+\newtcolorbox{safetybox}[1][Safety]{colback=red!8,colframe=cupred,fonttitle=\bfseries,title={#1}}
+% \guess marks a statement about the K1, its SDK or its software that the
+% author could not check against a real robot or the current documentation.
+\newcommand{\guess}{\textsuperscript{\textcolor{cupred}{\sffamily\bfseries[?]}}}
+% Reference to a chapter of the concepts book (a separate document).
+\newcommand{\rtr}[1]{``#1''\textsuperscript{\,\textcolor{cupnavy}{\sffamily\scriptsize RtR}}}
+\newcommand{\coderepo}{\texttt{k1-in-practice-code}}
+\newcommand{\pkg}{\texttt{k1code}}

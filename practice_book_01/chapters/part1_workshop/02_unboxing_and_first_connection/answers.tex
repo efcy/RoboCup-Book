@@ -1,0 +1,7 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $v=\sqrt{2gh}=\sqrt{2\cdot9.81\cdot0.5}\approx3.1$\,m/s. A $20$\,kg robot at that speed carries a lot of momentum; hands that reach in at the last moment get caught between robot and floor. A rope or a mat is the right protection.
+  \item No. With \texttt{/24} the first three numbers must be equal: \texttt{192.168.10} and \texttt{192.168.1} are different networks, so the laptop does not know a way to the robot (without a router between them).
+  \item $48\cdot5=240$\,Wh. $240/200=1.2$\,h, about $70$ minutes in the ideal case; in practice less, because the battery should not be emptied completely and the power peaks when the robot falls or stands up.
+  \item Tilted forward by $30^\circ$, gravity now has a component along the trunk's $x$ axis: about $(-9.8\sin30^\circ,\,0,\,9.8\cos30^\circ)=(-4.9,\,0,\,8.5)$\,m/s$^2$; the sign of $x$ depends on the convention of the sensor, so check it on the real robot by tilting.
+  \item $500/20=25$ messages per cycle. A program that reads only the newest one throws $24$ away; that is fine for positions, but it loses information for things that must be summed or filtered (for example contacts that last only a few milliseconds).
+\end{enumerate}

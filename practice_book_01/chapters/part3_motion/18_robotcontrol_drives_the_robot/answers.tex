@@ -1,0 +1,23 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item \texttt{w}+\texttt{q}: walk with $v_x=0.3$, $v_{\text{yaw}}=0.6$ (forward while turning left). \texttt{w}+\texttt{s}: $v_x=0.3-0.2=0.1$, a slow walk forward; a cleaner design ignores opposite keys held together.
+  \item Commands are sent every $0.1$\,s. During a $0.25$\,s loss, the time between two \emph{received} commands is between $0.25$ and about $0.35$\,s, depending on where the gap falls between two sends. With a time to live of $0.3$\,s the robot usually keeps walking and at worst stops for a few hundredths of a second. With $0.15$\,s it stops at every such gap, for $0.1$ to $0.2$\,s: a stutter. A time to live of about three sending periods is a good compromise.
+  \item
+\begin{verbatim}
+def test_drive_dropped_while_playing():
+    slot = CommandSlot()
+    server = DebugServer(slot, port=0)
+    server.game_state = "playing"
+    server.handle(pb.Request(command=pb.MotionCommand(
+        kind="walk", vx=0.3, ttl=0.3, priority=10)))
+    assert slot.take(time.monotonic()) is STAND
+\end{verbatim}
+(This needs the server's request handling in a method \texttt{handle} that a test can call directly, and a \texttt{game\_state} attribute that cognition updates.)
+  \item A stop that lasts for ever would need a separate ``release'' command, and if that is forgotten, the robot never moves again and nobody knows why. Five seconds is long enough to walk to the robot; pressing \texttt{x} again renews it.
+  \item
+\begin{verbatim}
+def command_for(keys_down, speed=1.0):
+    if "shift" in keys_down:
+        speed *= 0.5
+    ...                         # as before
+\end{verbatim}
+\end{enumerate}

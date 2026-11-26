@@ -1,0 +1,193 @@
+\bookchapter{The blackboard and the module framework}\label{k:bb}
+
+A soccer robot does many small things in every cycle: read the sensors, find the ball, update where it is, decide what to do, turn the decision into a walking command. Strong teams such as B-Human and Berlin United (NaoTH) organise this with a \textbf{blackboard architecture}: the program is a list of \textbf{modules}, each module reads some data and writes other data, and all data lives in one place, the \textbf{blackboard}. This chapter builds that framework in about $70$ lines of Python and tests it without any robot. Milestone: one.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The repository of Chapter~\ref{k:repo}. Nothing else: no robot, no simulator.
+  \item Background: \rtr{Classes and Objects}, \rtr{Testing and Debugging}, \rtr{Collections: Lists, Dictionaries and Sets}.
+\end{itemize}
+\end{needbox}
+
+\section*{Three ideas}
+\begin{description}[leftmargin=0.6cm]
+  \item[Representations.] Each piece of data is a small dataclass with a clear meaning: \texttt{JointState}, \texttt{ImuState}, \texttt{BallPercept}, \texttt{RobotPose}, \texttt{GameState}, \texttt{MotionCommand}. The blackboard holds \emph{one} current value of each type.
+  \item[Modules declare what they need.] Each module lists the representations it \texttt{requires} and the ones it \texttt{provides}. It may only read what it requires and must write what it provides.
+  \item[The framework finds the order.] From the declarations the framework computes the order in which the modules run (every module after the modules that provide its inputs). It refuses to start if a representation is required but never provided, or provided twice.
+\end{description}
+
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.2mm]},md/.style={draw,thick,rounded corners=3pt,fill=blue!8,minimum width=2.3cm,minimum height=0.75cm,font=\scriptsize},rp/.style={draw,fill=yellow!20,font=\scriptsize,minimum height=0.55cm}]
+ \node[md] (in) at (0,0) {SensorInput};
+ \node[md] (bd) at (3.2,0.9) {BallDetector};
+ \node[md] (loc) at (3.2,-0.9) {Localisation};
+ \node[md] (beh) at (6.6,0) {Behaviour};
+ \node[md] (cmd) at (9.6,0) {CommandOutput};
+ \node[rp] at (1.6,0.9) {Image}; \node[rp] at (1.6,-0.9) {Odometry};
+ \node[rp] at (5.0,0.9) {BallPercept}; \node[rp] at (5.0,-0.9) {RobotPose};
+ \node[rp] at (8.1,0) {MotionCommand};
+ \draw[->,thick] (in)--(bd); \draw[->,thick] (in)--(loc); \draw[->,thick] (bd)--(beh); \draw[->,thick] (loc)--(beh); \draw[->,thick] (beh)--(cmd);
+\end{tikzpicture}
+\captionof{figure}{Modules (blue) and the representations (yellow) that connect them. The framework derives the order SensorInput, BallDetector, Localisation, Behaviour, CommandOutput from the declarations alone.}
+\end{center}
+
+\section*{The code}
+\begin{verbatim}
+class Blackboard:
+    """Holds the newest value of every representation type."""
+
+    def __init__(self):
+        self._data = {}
+
+    def set(self, value):
+        self._data[type(value)] = value
+
+    def get(self, kind):
+        try:
+            return self._data[kind]
+        except KeyError:
+            raise KeyError(
+                f"{kind.__name__} is not on the blackboard") from None
+
+    def snapshot(self):
+        return dict(self._data)
+
+
+class Module:
+    requires: tuple = ()
+    provides: tuple = ()
+
+    def update(self, bb: Blackboard) -> None:
+        raise NotImplementedError
+\end{verbatim}
+The order is a \textbf{topological sort} (a depth-first search through ``who provides what I need''):
+\begin{verbatim}
+def execution_order(modules):
+    """Sort modules so that every module runs after its providers."""
+    providers = {}
+    for m in modules:
+        for rep in m.provides:
+            if rep in providers:
+                raise ValueError(
+                    f"{rep.__name__} is provided by "
+                    f"{type(providers[rep]).__name__} and {type(m).__name__}")
+            providers[rep] = m
+    for m in modules:
+        for rep in m.requires:
+            if rep not in providers:
+                raise ValueError(f"{type(m).__name__} requires "
+                                 f"{rep.__name__}, but nobody provides it")
+    order, done, active = [], set(), set()
+
+    def visit(m):
+        if m in done:
+            return
+        if m in active:
+            raise ValueError(f"cycle through {type(m).__name__}")
+        active.add(m)
+        for rep in m.requires:
+            visit(providers[rep])
+        active.remove(m)
+        done.add(m)
+        order.append(m)
+
+    for m in modules:
+        visit(m)
+    return order
+
+
+def run_cycle(order, bb):
+    for m in order:
+        m.update(bb)
+\end{verbatim}
+
+\section*{A first test with three toy modules}
+\begin{verbatim}
+from dataclasses import dataclass
+
+@dataclass
+class Image:
+    pixels: int
+
+@dataclass
+class BallPercept:
+    seen: bool
+    x: float = 0.0
+
+@dataclass
+class MotionRequest:
+    vx: float
+
+class Camera(Module):
+    provides = (Image,)
+    def update(self, bb):
+        bb.set(Image(pixels=42))
+
+class BallDetector(Module):
+    requires = (Image,)
+    provides = (BallPercept,)
+    def update(self, bb):
+        bb.set(BallPercept(True, bb.get(Image).pixels / 10))
+
+class Striker(Module):
+    requires = (BallPercept,)
+    provides = (MotionRequest,)
+    def update(self, bb):
+        b = bb.get(BallPercept)
+        bb.set(MotionRequest(vx=0.3 if b.seen and b.x > 0.5 else 0.0))
+
+order = execution_order([Striker(), BallDetector(), Camera()])
+print([type(m).__name__ for m in order])
+bb = Blackboard()
+run_cycle(order, bb)
+print(bb.get(MotionRequest))
+\end{verbatim}
+Output (I ran it):
+\begin{verbatim}
+['Camera', 'BallDetector', 'Striker']
+MotionRequest(vx=0.3)
+\end{verbatim}
+The modules were given in the wrong order on purpose; the framework sorted them. Leaving out \texttt{Camera} gives \emph{BallDetector requires Image, but nobody provides it}, and two \texttt{Camera} modules give \emph{Image is provided by Camera and Camera}, before anything runs.
+
+\begin{aibox}[Why not just call the functions in the right order?]
+With five modules you could. With fifty, written by ten students over two years, nobody knows the right order any more, and a module that reads a value from the \emph{previous} cycle by accident gives bugs that appear only sometimes. The declarations make the data flow explicit, checkable, and printable as a diagram. They also make logging and replay (Chapter~\ref{k:log}) almost free: the blackboard \emph{is} the complete state of a cycle.
+\end{aibox}
+
+\section*{Steps}
+\begin{stepbox}{Step 1: the framework}
+Put the code above into \texttt{src/k1code/framework.py}, and the toy modules into \texttt{tests/test\_framework.py} as tests: one for the order, one for each error.
+\end{stepbox}
+\begin{stepbox}{Step 2: the first real representations}
+In \texttt{src/k1code/representations/}, write dataclasses for \texttt{JointState} (time, positions, velocities, temperatures as NumPy arrays of length $22$), \texttt{ImuState} (time, gyro, projected gravity), \texttt{BallPercept}, \texttt{RobotPose}, \texttt{GameState} (Chapter~\ref{k:gc}) and \texttt{MotionCommand} (Chapter~\ref{k:loops}). Give every field a unit in a comment.
+\end{stepbox}
+\begin{stepbox}{Step 3: print the graph}
+Write \verb!print_graph(modules)! that prints one line ``\texttt{Provider -> Representation -> User}'' per edge. Later you can turn it into a picture with Graphviz.
+\end{stepbox}
+
+\begin{checkbox}
+\verb!uv run pytest tests/test_framework.py! passes, including the two error tests; the graph of the toy modules prints three lines.
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[\texttt{KeyError: ... is not on the blackboard}] A module reads something it did not declare in \texttt{requires}, so the framework did not order it correctly. Add it to \texttt{requires}.
+  \item[A module sees an old value] Two modules communicate through a variable outside the blackboard. Move the data to a representation.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item Representations are typed dataclasses; the blackboard holds the newest one of each type.
+  \item Modules declare \texttt{requires} and \texttt{provides}; the framework sorts them and refuses inconsistent sets.
+  \item Each thread (Chapter~\ref{k:loops}) has its own blackboard and its own list of modules.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Module $A$ requires $Y$ and provides $X$; module $B$ requires $X$ and provides $Y$. What does \verb!execution_order! do? Why is this a design error, and how do real teams solve ``I need last cycle's value''?
+  \item Add a check to \verb!run_cycle! (for testing only) that raises an error if a module did not write every representation it provides.
+  \item Make \verb!Blackboard.get! refuse reads of undeclared representations: give each module a \emph{view} of the blackboard that only allows its \texttt{requires}. Sketch the class.
+  \item Why should representations be \emph{replaced} (a new object every cycle) and not changed in place? Think about logging.
+  \item For the modules in the figure, list all valid execution orders.
+\end{enumerate}

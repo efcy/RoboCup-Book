@@ -1,0 +1,13 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $1/(0.49+0.01+0.01+0.01)=1/0.52\approx1.9$; and $1/(4\cdot0.0625)=4$.
+  \item Directly: $0^\circ$, wrong (both point almost backwards). With vectors: $(\cos170^\circ+\cos(-170^\circ))/2=-0.985$, $(\sin170^\circ+\sin(-170^\circ))/2=0$, so $\operatorname{atan2}(0,-0.985)=180^\circ$, right.
+  \item From $(0,0)$ the posts $(7,1.3)$ and $(7,-1.3)$ are both at $\sqrt{49+1.69}=7.12$\,m, at bearings $+0.184$ and $-0.184$\,rad. The distance cannot tell them apart; the bearing $+0.18$ says it is the left post $(7,1.3)$. Without a precise bearing (or with a wrong heading) the two would be confused.
+  \item The particles move $10\%$ too far; the spread grows with the odometry noise, and the estimate drifts ahead of the true position (after $10$\,s at $0.3$\,m/s, about $0.3$\,m too far). When a post is seen, the particles that happen to be near the true pose get high weights, and after resampling the estimate jumps back. Better: calibrate the odometry so the filter does not have to fix it.
+  \item
+\begin{verbatim}
+def spread(pf):
+    mean = np.average(pf.p[:, :2], axis=0, weights=pf.w)
+    var = np.average(((pf.p[:, :2] - mean) ** 2).sum(1), weights=pf.w)
+    return np.sqrt(var)          # metres; ok if below e.g. 0.3
+\end{verbatim}
+\end{enumerate}

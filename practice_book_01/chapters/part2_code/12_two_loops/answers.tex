@@ -1,0 +1,14 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $50/20=2.5$ steps per command. The command is renewed every $50$\,ms, so when motion uses it, it is at most about $50$\,ms old (plus the cognition cycle's duration, since the command is made from data read at the start of that cycle).
+  \item
+\begin{verbatim}
+def test_ttl_expires():
+    slot = CommandSlot()
+    slot.put(MotionCommand("walk", vx=0.3, t=100.0, ttl=0.5))
+    assert slot.take(100.4).kind == "walk"
+    assert slot.take(100.6) is STAND
+\end{verbatim}
+  \item Each cycle takes $3+17+0.2=20.2$\,ms, so $49.5$ cycles per second instead of $50$; after one minute the loop is $30$ cycles (and $0.6$\,s) behind. With the fixed grid the overshoot does not add up: every cycle aims at its own planned time.
+  \item The work takes $17$\,ms of each $50$\,ms cognition period. Most motion steps wake up while cognition is sleeping, so they get the GIL at once; only the steps that wake up during the $17$\,ms of work wait for the switch interval. That is about a third of the steps, enough to set the $99\%$ value but not the median.
+  \item A watchdog outside the motion thread: for example the motion loop increments a counter every step, and a separate thread (or better, a separate process or the systemd watchdog) checks that the counter changes; if it does not change for $0.2$\,s, it sends the damping command through the SDK. Booster's own services may also stop the robot when commands stop arriving\guess.
+\end{enumerate}

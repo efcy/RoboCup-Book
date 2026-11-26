@@ -1,0 +1,7 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $(1.0,-0.6)$: angle $=\operatorname{atan2}(-0.6,1.0)=-0.540$\,rad, larger than $0.5$ in size, so turn on the spot: $v_{\text{yaw}}=1.5\cdot(-0.540)=-0.81$\,rad/s. $(1.0,-0.3)$: angle $-0.291$, so walk: $v_x=0.3\cdot\min(1,1.044)=0.3$\,m/s and $v_{\text{yaw}}=-0.44$\,rad/s.
+  \item The kick region is the part of the disc of radius $0.25$\,m around the robot's origin with $|y|<0.08$\,m: a narrow strip in front of (and, in this simple version, also behind!) the robot; a real version also requires $x>0$. If the robot overshoots, the ball is behind or under it: it is still inside the disc, so it ``kicks'' a ball it cannot reach. Add $x>0.1$ to the condition, and let the walk slow down near the target (it does: $v_x$ shrinks with the distance).
+  \item State: the time at which the robot first came within $0.5$\,m of the ball in this episode (reset when it moves away or kicks). The time comes from \texttt{FrameInfo}. In \texttt{update}: if close and no start time, set it; if close and \texttt{now - start > 6}, return \emph{kick}; if not close, clear it.
+  \item Change only if $d_2<d_1-h$: $1.2<1.4-0.3=1.1$ is false, robot $1$ stays striker. At $1.0$: $1.0<1.1$, robot $2$ becomes striker.
+  \item Usable: $0.8\cdot1200=960$ messages over $1200$\,s: $0.8$ per second for the team, $0.16$ per second per robot, about one message every $6$\,s. (If your rules' budget is different, redo the computation: this decides how ``chatty'' the team can be.)
+\end{enumerate}

@@ -1,0 +1,129 @@
+\bookchapter{Your workstation}\label{k:ws}
+
+Everything in this book starts at a laptop: you write the code there, you test it against a simulated robot there, and you watch the real robot from there. This chapter sets up that laptop once, so that every later chapter can say ``open a terminal in the repository'' and it simply works. Milestone: both.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item A laptop or desktop with \textbf{Ubuntu 26.04 LTS} (other recent Ubuntu versions work too; the commands are the same).
+  \item For training policies (Chapters~\ref{k:walk} and~\ref{k:train}): an \textbf{NVIDIA graphics card}. Without one you can do every chapter except the training runs; use a shared training computer of the team for those.
+  \item A GitHub account, and about $20$\,GB of free disk space.
+  \item Background: \rtr{Bash Basics}, \rtr{Packages and Environments}, \rtr{Git and GitHub}.
+\end{itemize}
+\end{needbox}
+
+\section*{The plan}
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.2mm]},bx/.style={draw,thick,rounded corners=3pt,minimum width=3.0cm,minimum height=0.9cm,font=\scriptsize,align=center}]
+ \node[bx,fill=blue!8] (lap) at (0,0) {laptop\\ code, tests, robotcontrol};
+ \node[bx,fill=green!10] (sim) at (4.6,0.9) {fake robot / MuJoCo\\ (Chapter~\ref{k:fake})};
+ \node[bx,fill=orange!12] (k1) at (4.6,-0.9) {K1 onboard computer\\ runs \texttt{k1code}};
+ \node[bx,fill=gray!12] (gpu) at (-4.6,0) {GPU computer\\ trains policies};
+ \draw[<->,thick] (lap)--(sim); \draw[<->,thick] (lap)--node[below left,font=\scriptsize]{SSH, debug} (k1);
+ \draw[->,thick] (gpu)--node[above,font=\scriptsize]{\texttt{.onnx}} (lap);
+\end{tikzpicture}
+\captionof{figure}{The computers of the book. Code is written on the laptop, tested against a fake robot, and deployed to the K1. Policies are trained on a computer with a GPU (it may be the same laptop).}
+\end{center}
+
+\section*{Steps}
+\begin{stepbox}{Step 1: basic tools}
+\begin{verbatim}
+sudo apt update && sudo apt upgrade
+sudo apt install git curl tmux htop build-essential
+\end{verbatim}
+\end{stepbox}
+
+\begin{stepbox}{Step 2: the graphics driver (only with an NVIDIA card)}
+\begin{verbatim}
+sudo ubuntu-drivers install
+sudo reboot
+nvidia-smi
+\end{verbatim}
+\verb!nvidia-smi! prints a table with the name of the card, the driver version and the memory. If it prints \emph{command not found} or \emph{no devices}, the driver is not loaded.
+\end{stepbox}
+
+\begin{stepbox}{Step 3: uv, the Python manager}
+\begin{verbatim}
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv --version
+\end{verbatim}
+\texttt{uv} installs Python versions, creates virtual environments and installs packages from a lock file. We use it everywhere, on the laptop and on the robot, so that both run \emph{the same} versions (\rtr{Packages and Environments}).
+\end{stepbox}
+
+\begin{stepbox}{Step 4: git and an SSH key for GitHub}
+\begin{verbatim}
+git config --global user.name  "Your Name"
+git config --global user.email "you@example.org"
+ssh-keygen -t ed25519
+cat ~/.ssh/id_ed25519.pub   # paste into GitHub -> Settings -> SSH keys
+ssh -T git@github.com
+\end{verbatim}
+\end{stepbox}
+
+\begin{stepbox}{Step 5: the code of this book}
+\begin{verbatim}
+mkdir -p ~/k1 && cd ~/k1
+git clone git@github.com:<your-team>/k1-in-practice-code.git
+cd k1-in-practice-code
+uv sync          # creates .venv and installs the locked packages
+uv run pytest    # runs the tests; all must pass
+\end{verbatim}
+The address is the one of your team's copy (a \emph{fork}) of the code repository\guess. Chapter~\ref{k:repo} explains what is inside.
+\end{stepbox}
+
+\begin{stepbox}{Step 6: the simulator}
+The physics simulator of the book is MuJoCo; training uses mjlab (\rtr{Your first mjlab environment}). The quickest test from the mjlab documentation is
+\begin{verbatim}
+uvx --from mjlab --refresh demo
+\end{verbatim}
+A window opens with a simulated robot. Close it. Then get the Booster tasks and the K1 model:
+\begin{verbatim}
+cd ~/k1
+git clone https://github.com/BoosterRobotics/booster-mjlab.git
+cd booster-mjlab && uv sync
+\end{verbatim}
+The repository address and the folder that holds the K1 model (an MJCF file with the $22$ joints) are not verified\guess; look for a file with \texttt{k1} in its name and \texttt{.xml} at the end: \verb!find . -iname "*k1*.xml"!.
+\end{stepbox}
+
+\begin{stepbox}{Step 7: look at the K1}
+\begin{verbatim}
+uv run python -m mujoco.viewer --mjcf=<path to the K1 xml>
+\end{verbatim}
+In the viewer, press the space bar to start and stop the simulation, double-click a body to select it, and use the panel on the right to move the joints with sliders.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item \verb!uv run pytest! in the code repository ends with \emph{passed} and no \emph{failed}.
+  \item The K1 appears in the MuJoCo viewer. Without a controller it collapses when you start the simulation: that is correct, nothing holds the joints yet. With the \emph{keyframe} ``home'' (or similar)\guess{} loaded and the simulation paused, it stands in its default pose.
+  \item \verb!nvidia-smi! shows your card (only if you have one).
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[\texttt{uv: command not found}] Open a new terminal; the installer adds \verb!~/.local/bin! to the \texttt{PATH} only for new shells.
+  \item[The viewer does not open] On a computer without a screen (a server over SSH) there is no window. Use the laptop, or forward the display with \verb!ssh -X!.
+  \item[\texttt{Permission denied (publickey)}] The public key is not in GitHub, or you used the HTTPS address. Run \verb!ssh -vT git@github.com! and read which key is offered.
+  \item[Tests fail right after cloning] Check the Python version: \verb!uv run python --version! must match the one in \texttt{pyproject.toml}.
+\end{description}
+\end{troublebox}
+
+\section*{ROS 2 on the laptop?}
+You do \emph{not} need ROS~2 on the laptop for this book. ROS~2 runs on the robot and only delivers sensor data into our program (Chapter~\ref{k:ros}); the laptop talks to the robot through our own debug connection (Chapter~\ref{k:rc}). This is a deliberate choice: ROS~2 on two computers with different Ubuntu versions is a common source of trouble (different ROS distributions do not always talk to each other).
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item One laptop with git, uv and (if possible) an NVIDIA driver; the same Python versions on laptop and robot thanks to the lock file.
+  \item \verb!uv sync! then \verb!uv run pytest! is the first thing you do after every clone or pull.
+  \item The simulator shows the K1 model; without a controller the model falls, and that is expected.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Why does the book insist on a \emph{lock file} (\texttt{uv.lock}) instead of a list of package names? Describe a bug that a lock file prevents.
+  \item A training run needs $200$ million simulation steps. Your GPU simulates $4096$ robots at $50$ policy steps per second each in real time, and the simulation runs $10$ times faster than real time. How long does the training take?
+  \item \verb!nvidia-smi! shows \emph{7800MiB / 8192MiB} in use while nothing is training. Name a likely cause and a command to find it.
+  \item Write the two git commands that bring your copy of the code up to date and then show which tag you are on.
+  \item Explain in two sentences why the laptop does not need ROS~2 in this book.
+\end{enumerate}

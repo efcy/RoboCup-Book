@@ -1,0 +1,70 @@
+\bookchapter{Jerseys and markings}\label{k:jersey}
+
+The referee, the audience and the other team's robots must see at a glance which team a robot belongs to and which number it has. The rules of the Humanoid Soccer League therefore require team markings; the GameController even sends the colours of both teams in every packet (\rtr{The GameController protocol}). This chapter designs, makes and tests a set of jerseys for the K1. Milestone: two (required for official games).
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The current HSL rules (the section on robot markings and jerseys) and the official guide for jerseys of your competition, if there is one\guess. Booster's robot models (CAD) for the shape of the trunk\guess.
+  \item Fabric or thin sports material in two colours, hook-and-loop tape (Velcro), or a vinyl cutter; numbers $1$ to $7$\guess{} (enough for the team size of your level).
+  \item Background: \rtr{The Humanoid Soccer League}, \rtr{Images and Video with OpenCV}.
+\end{itemize}
+\end{needbox}
+
+\begin{guessbox}
+The details of the markings rules change between years: which colours are allowed, how large the numbers must be and where they sit, and whether the colour is chosen by the team or assigned by the organisers. The steps below assume (1) the team colour is set in the GameController per game, (2) the robot must show its player number on the back and the front, (3) each team needs a second set in another colour in case both teams have the same colour. Replace these with the rules of your year.
+\end{guessbox}
+
+\section*{Design rules that come from perception}
+A jersey is also an input to every robot's camera, including your own. Avoid the colours of the ball and the field (white, the ball's pattern, green), avoid shiny material (reflections of the hall lights look like white blobs), and keep the jersey from covering the robot's sensors, joints and air openings. A jersey must also not hinder motion: test it with the robot crouching, kicking and getting up.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: read the rules and write a one-page summary}
+Colours allowed, size and position of numbers, what must stay visible, how the colour of a game is decided. Put the page into \texttt{docs/jerseys.md} with the rule numbers.
+\end{stepbox}
+
+\begin{stepbox}{Step 2: templates from the robot model}
+Use the CAD model to get the outline of the trunk's front and back, and print it on paper at $1:1$. Draw the jersey and the number on the template, cut it, and hold the paper on the robot. Adjust until nothing touches a joint.
+\end{stepbox}
+
+\begin{stepbox}{Step 3: make two sets}
+Cut the jerseys in both colours, attach the numbers (sewn, glued or vinyl), and add hook-and-loop strips to the robot and the jersey so a change takes seconds. Label each jersey on the inside with colour and number.
+\end{stepbox}
+
+\begin{stepbox}{Step 4: test on the camera}
+Put a robot with a jersey $6$\,m away (the length of a mid-division half is $7$\,m), take pictures with the robot's camera\guess{} and with a phone, under bright and dim light. Check: can a person read the number in the robot's camera image? Does your ball detector (Chapter~\ref{k:percep}) fire on the jersey?
+\end{stepbox}
+
+\begin{stepbox}{Step 5: the configuration knows the colour}
+Add the jersey colours of the team to \texttt{config/team.toml} (Chapter~\ref{k:repo}). The GameController sends each team's colour in its packets; the robot code compares them and logs a warning if the colour on the robot is not the colour the GameController expects.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item Two complete sets, every robot can change jersey in under $30$\,s.
+  \item The number is readable in the robot camera's image at $6$\,m in the dim test.
+  \item The robot can crouch, kick and get up with the jersey on, and the jersey stays in place.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[The ball detector fires on jerseys] Change the colour or pattern, or add jersey images as negative examples when training the detector.
+  \item[The jersey slides during a get-up] More hook-and-loop area, and a strap around the trunk.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item Read the markings rules of the current year; make two colour sets.
+  \item A jersey is a perception input: no white, no green, no shine, nothing over sensors or joints.
+  \item The team configuration knows the colours, and the code checks them against the GameController.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A number is $12$\,cm high. The camera has a focal length of $f=600$\,pixels (example). How many pixels high is the number at $3$\,m and at $6$\,m? A person needs about $15$ pixels to read a digit reliably; how high must the number be for $6$\,m?
+  \item Write a Python function \verb!colour_ok(gc_colour, robot_colour)! that returns \texttt{True} if they match, and a second function that, given the two teams' colours from the GameController, tells your team which of its two sets to wear.
+  \item Why is white a bad jersey colour for the HSL? Name two parts of the perception that could be confused.
+  \item The jersey covers a ventilation opening of the trunk. What would you measure to show whether this is a problem?
+\end{enumerate}

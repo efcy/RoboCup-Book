@@ -1,0 +1,173 @@
+\bookchapter{The debug server and robotcontrol}\label{k:rc}
+
+You cannot fix what you cannot see. The robot has no screen, and \texttt{print} over SSH stops being useful the moment two loops print at once. This chapter builds a \textbf{debug server} in the robot code that streams the contents of the blackboard to a desktop program, \textbf{robotcontrol}, and receives commands from it. The messages are defined with \textbf{protobuf} in one \texttt{.proto} file, so that the team's other tools (for example tools written in Rust) can read the same stream. Milestone: one.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The two loops (Chapter~\ref{k:loops}) running against the fake robot. Python packages \texttt{protobuf} and \texttt{grpcio-tools} (only for generating code).
+  \item Background: \rtr{Networking: From Cable to Socket}, \rtr{Protobuf Serialization}, \rtr{UDP Networking}.
+\end{itemize}
+\end{needbox}
+
+\section*{The messages}
+\begin{verbatim}
+syntax = "proto3";
+package k1debug;
+
+message Vec3 { float x = 1; float y = 2; float z = 3; }
+message BallPercept { bool seen = 1; float x = 2; float y = 3; }
+message RobotPose { float x = 1; float y = 2; float theta = 3; }
+
+message MotionCommand {
+  string kind = 1;            // "stand", "walk" or "kick"
+  float vx = 2; float vy = 3; float vyaw = 4;
+  float ttl = 5;
+  int32 priority = 6;
+}
+
+message Frame {               // robot -> robotcontrol
+  uint32 cycle = 1;
+  double time = 2;
+  string game_state = 3;
+  Vec3 gravity = 4;
+  BallPercept ball = 5;
+  RobotPose pose = 6;
+  MotionCommand command = 7;  // what motion is executing
+  map<string, string> extra = 15;  // anything else, as text
+}
+
+message Request {             // robotcontrol -> robot
+  oneof what {
+    MotionCommand command = 1;
+    string subscribe = 2;     // e.g. "frames@10" for 10 frames per second
+  }
+}
+\end{verbatim}
+The important representations get their own typed messages; everything else can be sent as text in \texttt{extra} until it deserves a message. Field numbers are forever: never reuse a number for another meaning, or old logs and other tools will misread it. Generate the Python code with
+\begin{verbatim}
+python -m grpc_tools.protoc -Iproto --python_out=src/k1code proto/debug.proto
+\end{verbatim}
+
+\section*{Transport: TCP with a length prefix}
+A TCP connection is a stream of bytes, not of messages, so each message is sent with its length in front (four bytes, little-endian):
+\begin{verbatim}
+import struct
+
+def send_msg(sock, msg):
+    data = msg.SerializeToString()
+    sock.sendall(struct.pack("<I", len(data)) + data)
+
+def recv_exact(sock, n):
+    buf = b""
+    while len(buf) < n:
+        part = sock.recv(n - len(buf))
+        if not part:
+            raise ConnectionError("closed")
+        buf += part
+    return buf
+
+def recv_msg(sock, cls):
+    (n,) = struct.unpack("<I", recv_exact(sock, 4))
+    msg = cls()
+    msg.ParseFromString(recv_exact(sock, n))
+    return msg
+\end{verbatim}
+Why TCP and not UDP? robotcontrol must not lose a command, and the stream for one viewer at $10$ frames per second is small: a frame with a ball, a game state and one extra value was $45$ bytes in my test.
+
+\section*{The debug server}
+\begin{verbatim}
+class DebugServer:
+    """Streams frames to one robotcontrol and passes its commands on."""
+
+    def __init__(self, slot, port=5555):
+        self.slot = slot                       # the CommandSlot of motion
+        self.srv = socket.create_server(("0.0.0.0", port))
+        self.conn = None
+        threading.Thread(target=self._accept, daemon=True).start()
+
+    def _accept(self):
+        while True:
+            conn, addr = self.srv.accept()
+            self.conn = conn
+            threading.Thread(target=self._read, args=(conn,),
+                             daemon=True).start()
+
+    def _read(self, conn):
+        try:
+            while True:
+                req = recv_msg(conn, pb.Request)
+                if req.WhichOneof("what") == "command":
+                    c = req.command
+                    self.slot.put(MotionCommand(
+                        c.kind, c.vx, c.vy, c.vyaw, t=time.monotonic(),
+                        ttl=c.ttl, source="robotcontrol",
+                        priority=c.priority))
+        except (ConnectionError, OSError):
+            if self.conn is conn:
+                self.conn = None
+
+    def publish(self, frame):
+        """Called by cognition once per cycle (or every n-th cycle)."""
+        conn = self.conn
+        if conn is None:
+            return
+        try:
+            send_msg(conn, frame)
+        except OSError:
+            self.conn = None
+\end{verbatim}
+Commands from robotcontrol go straight into the \texttt{CommandSlot} of Chapter~\ref{k:loops}, with the source \texttt{robotcontrol} and the time of \emph{arrival} (the laptop's clock is not the robot's clock). I tested server and client on one laptop: a walk command with priority $10$ arrived in the slot and won; $0.6$\,s later it had expired and the slot returned \emph{stand}. The value $0.2$ came back as \texttt{0.20000000298023224}: protobuf's \texttt{float} has $32$ bits.
+
+\section*{robotcontrol, version 1}
+The first robotcontrol is a command-line program on the laptop:
+\begin{verbatim}
+uv run robotcontrol watch k1-03         # prints frames
+uv run robotcontrol send k1-03 stand    # one command
+\end{verbatim}
+It looks up the robot's address in \texttt{config/robots/k1-03.toml}. Later versions add a live plot of selected values, a field view with pose and ball, and the keyboard driving of Chapter~\ref{k:cmd}. Because the stream is protobuf, a team member can write a faster or prettier viewer in another language from the same \texttt{.proto} file.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: proto and code generation}
+Add \texttt{proto/debug.proto}, a script that generates the Python module, and a test that builds a \texttt{Frame}, serializes and parses it.
+\end{stepbox}
+\begin{stepbox}{Step 2: a FrameBuilder module}
+A cognition module that \texttt{requires} the representations you want to see and fills a \texttt{Frame}; it calls \verb!server.publish! every second cycle ($10$ frames per second).
+\end{stepbox}
+\begin{stepbox}{Step 3: robotcontrol watch and send}
+Write both subcommands. Run the robot code with the fake robot, connect, watch the pose change while you send a walk command.
+\end{stepbox}
+\begin{stepbox}{Step 4: on the robot}
+Deploy, connect from the laptop over the network, and repeat Step~3 with the robot hanging and the walk command \emph{not yet executed} (the output adapter only logs commands until Chapter~\ref{k:walk}).
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item robotcontrol shows $10$ frames per second from the fake robot and from the real one.
+  \item Closing robotcontrol while it sends a walk command: the robot code falls back to cognition's command (or \emph{stand}) within the time to live.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[\texttt{Connection refused}] The server is not running, or a firewall blocks the port. \verb!ss -ltnp | grep 5555! on the robot.
+  \item[Garbage values after a while] A message was read partly; use \verb!recv_exact!, never a single \verb!recv!.
+  \item[Cognition becomes slow when the Wi-Fi is bad] \verb!sendall! blocks when the network is slow. See Problem~\thechapter.3.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item One \texttt{.proto} file defines the debug messages for all tools; field numbers never change meaning.
+  \item TCP with a length prefix; commands go into the same command slot as cognition's, with source, priority and time to live.
+  \item The debug stream must never slow down the robot.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A frame is $45$ bytes plus $4$ bytes of length. At $10$ frames per second, what is the data rate? How many robots could stream at $50$ frames per second over a Wi-Fi link that really delivers $5$\,Mbit/s?
+  \item Why would it be a mistake to use the time stamp sent by the laptop as the \texttt{t} of the command on the robot?
+  \item \verb!publish! is called from the cognition thread and \verb!sendall! can block. Change the server so that \verb!publish! never blocks: it puts the frame into a queue of length $1$, and a sender thread sends the newest frame.
+  \item Add a field \texttt{repeated float joint\_q = 8;} to \texttt{Frame}. Is the change compatible with an old robotcontrol that does not know the field? And with an old \emph{robot} and a new robotcontrol?
+  \item Anyone in the hall's network could connect and send commands to your robot. Suggest two simple protections.
+\end{enumerate}

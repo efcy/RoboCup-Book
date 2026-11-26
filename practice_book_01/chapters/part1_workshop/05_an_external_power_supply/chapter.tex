@@ -1,0 +1,84 @@
+\bookchapter{An external power supply}\label{k:power}
+
+A battery that lasts well under an hour is fine for a match and annoying for a lab afternoon: half of the session is charging. Many teams therefore run the robot from a \textbf{tethered power supply} while developing: a cable from a mains power supply to an adapter that sits where the battery would be. There are guides for this on the internet written by other teams; this chapter does not replace them. It explains what to check so that you can follow such a guide with understanding, and how to test the result. Milestone: none (a lab tool), but it saves hours every week.
+
+\begin{safetybox}[Read this first]
+\begin{itemize}[nosep]
+  \item \textbf{Do not work on mains voltage.} Use a finished, certified, closed power supply unit; never open it, never build the mains side yourself.
+  \item Do this chapter \textbf{with a teacher or another adult who is qualified} in electronics. The DC side of a robot supply carries tens of amperes; a short circuit can melt cables and start a fire even at low voltage.
+  \item A battery is the robot's energy \emph{and} a part of its safety system. Do not open, modify or bypass the battery or its electronics.
+  \item Opening the robot or using a non-original power source may affect the \textbf{warranty}. Ask Booster first\guess.
+\end{itemize}
+\end{safetybox}
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The robot's manual and the label of its battery. A multimeter. A bench power supply with adjustable current limit for the first test.
+  \item The guide your team follows (put its link into \texttt{docs/hardware.md} of the code repository), and its parts.
+  \item Background: \rtr{Electronics Basics}, \rtr{Power and Safety}, \rtr{Modern Robot Actuators}.
+\end{itemize}
+\end{needbox}
+
+\section*{What to understand before you build}
+\textbf{Voltage.} The supply must deliver the voltage the robot expects from its battery. A battery's voltage is not constant: it is highest when full and drops while it discharges. Read the nominal and the full-charge voltage from the label\guess, and choose a supply voltage inside that range.
+
+\textbf{Current.} The average power of a walking robot is moderate, but when it stands up or catches a fall, many motors pull hard at once. The supply must deliver these \emph{peaks} without its voltage collapsing, otherwise the robot's computer resets in the middle of a fall. Estimate the peak from the battery's maximum discharge current or from measurements, and choose a supply with margin.
+
+\textbf{The cable.} A long cable has resistance, and current through resistance means a voltage drop $\Delta U=I\cdot R$. Copper has the resistivity $\rho=0.0175\,\Omega\,\text{mm}^2/\text{m}$, so a cable with cross-section $A$ and length $\ell$ (there and back: $2\ell$) has $R=\rho\cdot2\ell/A$. Thick, short cables; a tether that hangs from above, together with the safety rope, so the robot cannot step on it.
+
+\textbf{Energy that flows back.} When a motor is slowed down by its load (a leg that is lowered, a robot that falls), it works as a generator and pushes energy back into the supply line. A battery simply absorbs it. Many power supplies cannot, and the voltage on the line rises. Good guides handle this, for example with a supply that tolerates back-feed or with a circuit that burns the extra energy in a resistor. If your guide does not mention it, ask why.
+
+\textbf{Smart batteries.} Some robots read the battery's state (charge, temperature) over a data line and refuse to run, or show wrong values, without it\guess. Find out whether the K1 does this before you buy parts.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: write down the numbers}
+In \texttt{docs/hardware.md}: nominal and full-charge voltage, capacity, maximum current of the battery, connector type, and whether there is a data connection between battery and robot.
+\end{stepbox}
+
+\begin{stepbox}{Step 2: size supply, cable and fuse}
+Choose the supply (voltage, continuous and peak current), the cable cross-section (voltage drop below $3\%$ at peak current, see the problems) and a fuse on the DC side that is larger than the normal peak but smaller than what the cable can carry.
+\end{stepbox}
+
+\begin{stepbox}{Step 3: build following the guide}
+Build the adapter as the guide describes. Mark polarity on every connector; check it with the multimeter \emph{before} the first connection to the robot.
+\end{stepbox}
+
+\begin{stepbox}{Step 4: first power-on with a current limit}
+Robot hanging, in damping. Feed the adapter from the bench supply with its current limit set low (for example $2$\,A). Switch on: the robot's computer should boot. Read the current while it boots. Then raise the limit to the planned value and switch to the real supply.
+\end{stepbox}
+
+\begin{stepbox}{Step 5: measure under load}
+With the multimeter at the robot's end of the cable, measure the voltage in damping, in prepare, and while the hanging robot ``walks in the air''. Then, on the floor with the rope, let it walk and stand up from lying (if your code can already do it). Write all values into \texttt{docs/hardware.md}.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item The voltage at the robot never drops more than $3\%$ below the supply voltage, and never rises above the battery's full-charge voltage, also when the robot is lowered quickly.
+  \item The robot runs a $30$-minute session without a reset, and the cable and adapter are only slightly warm afterwards.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[The computer resets when the robot stands up] Voltage collapse at peak current: the supply is too weak or the cable too thin. Measure at both ends of the cable to find out which.
+  \item[The supply switches off when the robot sits down] Over-voltage protection triggered by back-fed energy. See ``Energy that flows back''.
+  \item[The robot reports a battery error] The robot expects a smart battery; see the guide and Booster's documentation.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item Voltage in the battery's range, current for the \emph{peaks}, short and thick cables, a fuse, and a plan for energy that flows back.
+  \item No work on mains; an adult who is qualified checks the build.
+  \item The tether is for the lab. At a match the robot runs on its battery.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item The cable is $4$\,m long (one way), the peak current $30$\,A, the supply $48$\,V (example numbers). Compute the voltage drop for $2.5$, $4$ and $6$\,mm$^2$. Which is the smallest cross-section with less than $3\%$ drop?
+  \item With $6$\,mm$^2$, how much power is turned into heat in the cable at $30$\,A?
+  \item A $20$\,kg robot falls from standing; its centre of mass drops $0.3$\,m. How much energy is that? If one tenth of it is fed back into the line in $0.2$\,s, what is the average power? Why does this matter for a supply but not for a battery?
+  \item The battery stores $240$\,Wh and lasts $60$\,min in the lab. The team works $3$ hours per session. How many full battery changes (and how much charging) does the tether save per week with two sessions?
+  \item Why should the fuse sit close to the power supply and not close to the robot?
+\end{enumerate}

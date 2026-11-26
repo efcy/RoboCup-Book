@@ -1,0 +1,109 @@
+\bookchapter{A fake robot: simulation in the loop}\label{k:fake}
+
+If every test needs the real robot, you test little: the robot must be charged, hung up, supervised, and there is only one of it for the whole team. The cure is a \textbf{fake robot}: an object with the same interface as the real one that the robot code cannot tell apart from the real thing. Then the complete program runs on any laptop, in CI, and against recorded data. This chapter defines that interface and builds the first, very simple fake. Milestone: one.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The framework of Chapter~\ref{k:bb}. For level~2 (end of chapter), MuJoCo and the K1 model (Chapter~\ref{k:ws}).
+  \item Background: \rtr{Simulation and sim-to-real}, \rtr{Rotation and translation matrices}.
+\end{itemize}
+\end{needbox}
+
+\section*{One interface, three implementations}
+The robot code talks to the outside world through exactly two adapter objects: an \textbf{input} that delivers the newest sensor data, and an \textbf{output} that executes motion commands. Everything else is behind them.
+\begin{verbatim}
+class RobotIO(Protocol):
+    def read(self) -> SensorFrame: ...        # newest joints, IMU, (image)
+    def send(self, cmd: MotionCommand) -> None: ...
+\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.2mm]},bx/.style={draw,thick,rounded corners=3pt,minimum width=2.8cm,minimum height=0.8cm,font=\scriptsize,align=center}]
+ \node[bx,fill=blue!8,minimum height=2.6cm] (code) at (0,0) {robot code\\ (blackboard,\\ modules, loops)};
+ \node[bx,fill=orange!12] (real) at (5,1.1) {ROS 2 input + SDK output\\ (real K1, Ch.~\ref{k:ros}, \ref{k:walk})};
+ \node[bx,fill=green!10] (kin) at (5,0) {kinematic fake\\ (this chapter)};
+ \node[bx,fill=green!20] (mj) at (5,-1.1) {MuJoCo fake\\ (level 2)};
+ \draw[<->,thick] (code.east|-real)--(real); \draw[<->,thick] (code.east|-kin)--(kin); \draw[<->,thick] (code.east|-mj)--(mj);
+\end{tikzpicture}
+\captionof{figure}{The robot code sees only the \texttt{RobotIO} interface. Which implementation is behind it is chosen by a command-line flag: \texttt{-{}-fake kinematic}, \texttt{-{}-fake mujoco}, or nothing for the real robot.}
+\end{center}
+
+\section*{Level 1: the kinematic fake}
+The simplest fake assumes a perfect walking controller: the body moves exactly with the commanded velocity, clipped to the limits of the real walk. No physics, no falling, no legs. It is enough to test behaviour, localisation and the GameController handling, which is most of the code.
+\begin{verbatim}
+import math
+
+class KinematicFakeRobot:
+    """Level 1 fake: the body follows the walk command exactly."""
+
+    def __init__(self, x=0.0, y=0.0, theta=0.0, max_v=0.5, max_w=1.0):
+        self.x, self.y, self.theta = x, y, theta
+        self.max_v, self.max_w = max_v, max_w
+        self.cmd = (0.0, 0.0, 0.0)
+
+    def send(self, vx, vy, vyaw):
+        clip = lambda v, m: max(-m, min(m, v))
+        self.cmd = (clip(vx, self.max_v), clip(vy, self.max_v),
+                    clip(vyaw, self.max_w))
+
+    def step(self, dt):
+        vx, vy, w = self.cmd
+        c, s = math.cos(self.theta), math.sin(self.theta)
+        self.x += (c * vx - s * vy) * dt      # robot frame -> field frame
+        self.y += (s * vx + c * vy) * dt
+        self.theta = (self.theta + w * dt + math.pi) % (2 * math.pi) - math.pi
+
+    def read(self):
+        return {"pose": (self.x, self.y, self.theta),
+                "gravity": (0.0, 0.0, -1.0), "gyro": (0.0, 0.0, self.cmd[2])}
+\end{verbatim}
+The two lines in \texttt{step} are the rotation of \rtr{Rotation and translation matrices}: the command is given in the robot's frame (forward, left), the pose in the field's frame. (The \texttt{send} here takes three numbers to keep the listing short; the version in the repository takes a \texttt{MotionCommand}.)
+
+\textbf{Test: walk a square.} Forward $1$\,m at $0.25$\,m/s, turn $90^\circ$ at $0.5$\,rad/s, four times, with $\Delta t=0.02$\,s. I ran it; the robot ends at $(-0.002,\,0.002)$\,m with $\theta=-0.003$\,rad, not exactly at $(0,0,0)$. The reason is that a quarter turn needs $\pi/2/0.5/0.02=157.08$ steps, and the program can only do $157$. Even a perfect fake shows the error of a timed open-loop square; Practice problem~\thechapter.2 asks you to fix it.
+
+\section*{Fake perception}
+The kinematic fake also knows where the ball is (a point that rolls with friction when ``kicked''), so it can provide a \texttt{BallPercept} directly: the ball's position in the robot's frame, with noise, and only when it is inside the camera's field of view. With it, the behaviour of Chapter~\ref{k:beh} can be developed before the real perception exists. This is a \emph{replacement module}: in fake mode, \texttt{FakeBallPerceptor} provides \texttt{BallPercept}, in real mode \texttt{BallDetector} does. The framework of Chapter~\ref{k:bb} guarantees that exactly one of them is active.
+
+\section*{Level 2: MuJoCo}
+For the motion part (Chapters~\ref{k:walk} to~\ref{k:train}) a kinematic fake is useless: it cannot fall. Level~2 runs the K1 model in MuJoCo, steps the physics in its own thread at the simulation rate, and offers the same \texttt{read} and \texttt{send}; \texttt{send} feeds the walking policy (or, for milestone one, a simple stand-in for Booster's walk that moves the body like level~1). Build it after Chapter~\ref{k:deploy}, reusing the observation code from there.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: the interface}
+Write \texttt{src/k1code/adapters/base.py} with \texttt{SensorFrame} (a dataclass) and the \texttt{RobotIO} protocol. Write the kinematic fake in \texttt{adapters/fake.py}.
+\end{stepbox}
+\begin{stepbox}{Step 2: the input module}
+Write \texttt{SensorInput(Module)}: it provides \texttt{JointState}, \texttt{ImuState} and \texttt{Odometry} and fills them from \verb!io.read()!. The same module works for the fake and the real robot.
+\end{stepbox}
+\begin{stepbox}{Step 3: a main loop that runs on the laptop}
+\verb!python -m k1code.main --robot k1-03 --fake kinematic! runs the cognition modules at $20$\,Hz and prints the pose once per second.
+\end{stepbox}
+\begin{stepbox}{Step 4: a test}
+\texttt{tests/test\_fake.py}: walking straight for $2$\,s at $0.3$\,m/s ends $0.6$\,m ahead (within $1$\,cm); turning for $\pi$\,s at $0.5$\,rad/s turns $90^\circ$.
+\end{stepbox}
+
+\begin{checkbox}
+The program of Step~3 runs on the laptop with no robot and no ROS installed, and the tests pass in CI.
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[The fake drifts sideways when it should go straight] Robot frame and field frame mixed up: check the signs in \texttt{step} with a pen and paper for $\theta=90^\circ$.
+  \item[The angle jumps from $3.14$ to $-3.14$] That is correct: angles are wrapped into $[-\pi,\pi)$. Never subtract angles without wrapping the result again.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item The robot code talks to the world through one input and one output; fakes implement the same interface.
+  \item A kinematic fake (perfect walking, fake ball) is enough for most of the cognition code; MuJoCo is needed for motion.
+  \item Everything that runs against the fake runs in CI.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item The robot is at $(1,2)$ with $\theta=90^\circ$ and walks with $v_x=0.4$, $v_y=0$ for $1$\,s. Where is it? And with $v_x=0$, $v_y=0.4$?
+  \item Change the square test so that the final error is (almost) zero, without changing $\Delta t$.
+  \item Add Gaussian noise to the velocities of the fake ($10\%$ of the command) and run the square $100$ times. Describe the spread of the end points.
+  \item Write \verb!FakeBallPerceptor.update! that provides \texttt{BallPercept(seen, x, y)} in the robot frame, seen only if the ball is within $\pm35^\circ$ of the robot's heading and closer than $6$\,m.
+  \item Why must a fake be \emph{deterministic} when it is used in CI? How do you make a fake with noise deterministic?
+\end{enumerate}

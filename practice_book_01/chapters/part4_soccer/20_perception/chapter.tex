@@ -1,0 +1,121 @@
+\bookchapter{Perception: ball, posts and whistle}\label{k:percep}
+
+Up to now the robot has played against a fake ball (Chapter~\ref{k:fake}). This chapter gives it real eyes and ears: a \textbf{ball and goal post detector} on the camera images, the \textbf{projection} of a detection from the image onto the field, a simple \textbf{ball model} that remembers the ball when it is not visible, and a \textbf{whistle detector} on the microphone. Milestone: one (ball), two (posts and whistle).
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The robot's camera images: from a ROS~2 image topic or directly from the camera device\guess. A few thousand labelled images from your own field (Step~2).
+  \item A GPU computer for training the detector; ONNX Runtime (or TensorRT) on the robot.
+  \item Background: \rtr{The perception pipeline}, \rtr{Object Detection and YOLO}, \rtr{Training Vision Models Effectively}, \rtr{Microphones and Sound}.
+\end{itemize}
+\end{needbox}
+
+\section*{The pipeline}
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.2mm]},md/.style={draw,thick,rounded corners=3pt,fill=blue!8,minimum width=2.0cm,minimum height=0.75cm,font=\scriptsize,align=center}]
+ \node[md] (img) at (0,0) {ImageInput};
+ \node[md] (det) at (2.7,0) {Detector\\ (YOLO, ONNX)};
+ \node[md] (cam) at (2.7,-1.3) {CameraMatrix\\ (head kinematics)};
+ \node[md] (proj) at (5.6,0) {Projector};
+ \node[md] (bm) at (8.4,0.7) {BallModel};
+ \node[md] (gp) at (8.4,-0.7) {GoalPostPercept};
+ \draw[->,thick] (img)--(det); \draw[->,thick] (det)--(proj); \draw[->,thick] (cam)--(proj); \draw[->,thick] (proj)--(bm); \draw[->,thick] (proj)--(gp);
+\end{tikzpicture}
+\captionof{figure}{Perception modules in the cognition loop. The detector finds boxes in pixels; the projector turns them into positions on the ground in the robot's frame, using the camera pose computed from the joint angles.}
+\end{center}
+
+\section*{From pixel to ground}
+The detector gives the ball's centre in pixels. To get its position on the field, intersect the camera ray through that pixel with the plane at ball-centre height. For a camera at height $h$ tilted down by the angle $\varphi$, with focal length $f$ and principal point $(c_x,c_y)$ (pinhole model, \rtr{The perception pipeline}):
+\begin{verbatim}
+import numpy as np
+
+def pixel_to_ground(u, v, f, cx, cy, height, pitch, z_target=0.0):
+    """Point on the plane z = z_target that pixel (u, v) looks at.
+    Camera at (0, 0, height), tilted down by pitch (rad). Robot frame:
+    x forward, y left, z up. Image: u to the right, v down."""
+    d = np.array([f, -(u - cx), -(v - cy)], dtype=float)   # x, y, z
+    c, s = np.cos(pitch), np.sin(pitch)
+    d = np.array([c * d[0] + s * d[2], d[1], -s * d[0] + c * d[2]])
+    if d[2] >= 0:
+        return None                  # above the horizon: never hits ground
+    k = (z_target - height) / d[2]
+    return k * d[0], k * d[1]
+\end{verbatim}
+On the robot the camera's height and tilt come from the head and leg joint angles through the kinematic chain (Chapter~\ref{k:model}): a \texttt{CameraMatrix} module computes the full camera pose every cycle, and the calibration offsets from \texttt{config/robots/*.toml} correct it.
+
+I tested the function with $f=600$, image $640\times480$, camera height $0.9$\,m and tilt $30^\circ$ (example values, not the K1's camera\guess): projecting a ball centre at $(2.0,0.5,0.1)$\,m into the image gives the pixel $(179.3,153.6)$, and \verb!pixel_to_ground! on that pixel returns $(2.000,0.500)$. The centre of the image looks at the ground $1.56$\,m ahead ($=0.9/\tan30^\circ$). How precise is it? An error of \emph{one pixel} in $v$ moves the result by $1$\,cm at $2$\,m, $3$\,cm at $4$\,m, and $6.5$\,cm at $6$\,m: errors grow roughly with the square of the distance. With this tilt a ball at $6$\,m is just above the top of the image ($v=-7.4$), so the head must look up to see far.
+
+\section*{The ball model}
+A percept is one measurement. The behaviour needs more: where is the ball \emph{now}, even if it was last seen $0.5$\,s ago, behind a robot? The \texttt{BallModel} keeps the ball's position in the robot's frame, moves it with the robot's odometry when the robot walks (so a ball that was ahead stays at the same place on the field), blends in new percepts (a simple low-pass filter, or the Kalman filter of \rtr{State estimation and the Kalman filter}), and counts the \texttt{age}: seconds since the last percept. The behaviour (Chapter~\ref{k:beh}) trusts a ball with small age and searches when it gets old.
+
+\section*{The whistle}
+\begin{guessbox}
+Whether the HSL rules of your year require robots to react to the referee's whistle (for example to start playing after a kick-off) must be checked in the rules\guess. The detector below is useful either way, and its principle is the one used by teams in other leagues.
+\end{guessbox}
+A referee's whistle is loud in a narrow band of a few kilohertz; crowd noise and speech are mostly lower. The simplest detector measures, per audio frame, the share of energy in that band, and reports a whistle when the share stays high for several frames:
+\begin{verbatim}
+RATE, FRAME = 16000, 1024        # samples per second, per frame (64 ms)
+
+def band_ratio(frame, lo=2000, hi=4000):
+    """Share of the frame's energy between lo and hi Hz."""
+    spec = np.abs(np.fft.rfft(frame * np.hanning(len(frame)))) ** 2
+    freqs = np.fft.rfftfreq(len(frame), 1 / RATE)
+    band = spec[(freqs >= lo) & (freqs <= hi)].sum()
+    return band / (spec.sum() + 1e-12)
+
+class WhistleDetector:
+    def __init__(self, threshold=0.35, frames_needed=4):
+        self.threshold, self.needed, self.count = threshold, frames_needed, 0
+
+    def update(self, frame):
+        self.count = self.count + 1 if band_ratio(frame) > self.threshold else 0
+        return self.count >= self.needed      # ~0.25 s of whistle
+\end{verbatim}
+I tested it with \emph{synthetic} sound only: white noise (standard deviation $0.3$) plus $20$ random tones between $100$ and $1500$\,Hz as ``crowd'', with and without a $3150$\,Hz tone as ``whistle''. White noise alone already puts about a quarter of its energy into the band, so my first threshold of $0.6$ never fired; with $0.35$, $0$ of $2000$ noise frames crossed the threshold, a whistle of amplitude $0.5$ crossed it in all frames, one of $0.3$ in only $2\%$. In a sequence of $10$ noise frames and $6$ whistle frames, the detector reported the whistle from the fourth whistle frame on. Real whistles in a real hall are different: record them (Step~4) and tune on recordings.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: images on the blackboard}
+An \texttt{ImageInput} (in the ROS input adapter, or a separate camera thread) provides \texttt{Image} with a time stamp, at the camera's rate; cognition uses the newest. Log every tenth image (Chapter~\ref{k:log}).
+\end{stepbox}
+\begin{stepbox}{Step 2: data and training}
+Record images on your field, with balls, posts and robots (in jerseys!) at many distances and light conditions. Label them (ball, goal post, robot), train a small YOLO model (\rtr{Object Detection and YOLO}), and export it to ONNX. Keep a test set from a \emph{different day}.
+\end{stepbox}
+\begin{stepbox}{Step 3: on the robot}
+The \texttt{Detector} module runs the model with ONNX Runtime (or TensorRT on the Jetson\guess); measure its time per image and the cognition loop's timing (Chapter~\ref{k:loops}).
+\end{stepbox}
+\begin{stepbox}{Step 4: projection and whistle}
+Implement \texttt{CameraMatrix}, \texttt{Projector}, \texttt{BallModel}; record whistles in a hall (several whistles, with noise) and tune \texttt{WhistleDetector} on the recordings.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item A ball placed at $1$, $2$, $3$ and $4$\,m in front of the standing robot is projected within $5\%$ of the true distance.
+  \item The detector finds the ball in at least $95\%$ of the test images up to $4$\,m, and the cognition loop still runs at its rate.
+  \item The whistle detector fires on all recorded whistles and on none of $10$ minutes of recorded noise.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[Distances wrong by a constant factor] Focal length or image size wrong (images scaled for the network but pixels not scaled back).
+  \item[Distances wrong only while walking] The image and the joint angles are from different times. Use the joint state closest to the image's time stamp.
+  \item[Detector good on the laptop, bad on the robot] Different colour format (RGB vs.\ BGR) or a different resize. Compare the network's input arrays on both.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item Detector in pixels, projection with the camera pose from the joints, ball model with age.
+  \item Projection errors grow with the square of the distance: precise calibration of the camera's tilt matters.
+  \item Test detectors on data from another day; tune the whistle on real recordings.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Show that for a camera at height $h$ looking at a ground point at distance $d$, a small error $\delta$ in the tilt angle gives a distance error of about $\delta\,(d^2+h^2)/h$. Compute it for $h=0.9$\,m, $d=4$\,m and $\delta=1^\circ$.
+  \item The ball has a diameter of $0.2$\,m. Instead of projecting to the ground, the distance can be estimated from the ball's size in pixels. Write the formula and say when each method is better.
+  \item The robot walks forward $0.1$\,m and turns $0.1$\,rad (odometry) between two cycles. The ball model had the ball at $(2,0)$ in the robot frame. Where is it now?
+  \item White noise has a flat spectrum from $0$ to $8$\,kHz at $16$\,kHz sampling. Explain why about a quarter of its energy is between $2$ and $4$\,kHz.
+  \item Why should a detector's test set come from another day than its training set?
+\end{enumerate}

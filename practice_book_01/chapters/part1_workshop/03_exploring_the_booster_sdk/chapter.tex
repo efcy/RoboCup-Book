@@ -1,0 +1,119 @@
+\bookchapter{Exploring the Booster SDK}\label{k:sdk}
+
+Booster ships a \textbf{software development kit} (SDK) for its robots: a library, in C++ with Python bindings, that lets a program switch the robot's modes, send walking commands, move the head, read the low-level state and, in the custom mode, command each joint. Our robot code uses it for the \emph{output} side: everything that makes the robot move goes through the SDK. This chapter is a guided tour with small exercises; nothing here is part of the final program yet. Milestone: one.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The hanging robot and the SSH connection of Chapter~\ref{k:box}.
+  \item The SDK and its examples, from Booster's GitHub page (repository \texttt{booster\_robotics\_sdk}\guess) or preinstalled on the robot\guess. Use the version that matches the robot's firmware; read its \texttt{README} and change log first.
+  \item Background: \rtr{DDS Under the Hood, and Using It Without ROS}, \rtr{Classes and Objects}.
+\end{itemize}
+\end{needbox}
+
+\begin{guessbox}
+Names of modules, classes and functions in this chapter (\texttt{booster\_robotics\_sdk\_python}, \texttt{ChannelFactory}, \texttt{B1LocoClient}, \texttt{RobotMode}, \texttt{Move}, \texttt{RotateHead}, \texttt{B1LowStateSubscriber}) are written as the author remembers them from the public SDK for the Booster robots; the K1 may use other class names, and the SDK changes between versions. Step~1 shows how to find the real names on your robot; replace them in this chapter and in the code.
+\end{guessbox}
+
+\section*{How the SDK talks to the robot}
+The SDK does not talk to the motors directly. Booster's own services on the robot do that; the SDK sends \emph{requests} to them (change mode, walk with this velocity) and receives \emph{state} from them, through DDS, the same middleware that ROS~2 uses. That is why the SDK must be told which network interface to use, and why a program on the laptop can in principle use the SDK too, as long as it is in the same network. In this book the robot code runs on the robot, so the interface is the local one.
+
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.2mm]},bx/.style={draw,thick,rounded corners=3pt,minimum width=2.6cm,minimum height=0.85cm,font=\scriptsize,align=center}]
+ \node[bx,fill=blue!8] (us) at (0,0) {our program\\ (\pkg)};
+ \node[bx,fill=orange!12] (sdk) at (3.4,0) {Booster SDK\\ (library)};
+ \node[bx,fill=gray!12] (svc) at (6.8,0) {Booster services\\ (walking, modes)};
+ \node[bx,fill=green!10] (hw) at (10.2,0) {motors, IMU};
+ \draw[->,thick] (us)--(sdk); \draw[<->,thick] (sdk)--node[above,font=\scriptsize]{DDS}(svc); \draw[<->,thick] (svc)--(hw);
+\end{tikzpicture}
+\captionof{figure}{The SDK is a client of Booster's services. Requests go right, state comes back left.}
+\end{center}
+
+\section*{Steps}
+\begin{stepbox}{Step 1: find the real names}
+On the robot, in Python:
+\begin{verbatim}
+import booster_robotics_sdk_python as sdk
+print([n for n in dir(sdk) if not n.startswith("_")])
+help(sdk.B1LocoClient)       # or the class with "Loco" in its name
+\end{verbatim}
+Write down the classes for: the channel set-up, the high-level (locomotion) client, the robot modes, the low-level state subscriber and the low-level command publisher. Then open the SDK's \texttt{example} folder and find one Python example for each.
+\end{stepbox}
+
+\begin{stepbox}{Step 2: change modes from a program}
+With the robot hanging and a person at the emergency stop:
+\begin{verbatim}
+import time
+import booster_robotics_sdk_python as sdk
+
+sdk.ChannelFactory.Instance().Init(0, "127.0.0.1")   # domain, interface
+client = sdk.B1LocoClient()
+client.Init()
+print(client.ChangeMode(sdk.RobotMode.kPrepare))      # 0 means success?
+time.sleep(3)
+print(client.ChangeMode(sdk.RobotMode.kDamping))
+\end{verbatim}
+Note what the return value means (Step 1: the documentation of the function).
+\end{stepbox}
+
+\begin{stepbox}{Step 3: move the head}
+In \emph{prepare}, call the head function with small angles, for example \verb!client.RotateHead(0.0, 0.3)! (pitch, yaw in radians\guess), wait, and return to $(0,0)$. Find the limits of both head joints in the documentation or in the model (Chapter~\ref{k:model}).
+\end{stepbox}
+
+\begin{stepbox}{Step 4: the first steps on the floor}
+Only after Steps 2 and 3 work reliably: lower the robot to the floor (rope still attached but slack), go to \emph{prepare}, then \emph{walking}, and send a small velocity for two seconds:
+\begin{verbatim}
+client.ChangeMode(sdk.RobotMode.kWalking)
+t0 = time.monotonic()
+while time.monotonic() - t0 < 2.0:
+    client.Move(0.2, 0.0, 0.0)     # vx m/s, vy m/s, vyaw rad/s
+    time.sleep(0.1)
+client.Move(0.0, 0.0, 0.0)
+\end{verbatim}
+Why the loop? Many walking services stop if they do not receive commands for a while\guess. Whether the K1 needs repeated commands, and how long one command stays valid, is something to find out and write down.
+\end{stepbox}
+
+\begin{stepbox}{Step 5: read the low-level state with the SDK}
+\begin{verbatim}
+def on_state(msg):
+    q = [m.q for m in msg.motor_state_serial]       # field names: Step 1
+    print(round(msg.imu_state.rpy[1], 3), [round(v, 2) for v in q[:4]])
+
+sub = sdk.B1LowStateSubscriber(on_state)
+sub.InitChannel()
+time.sleep(2)
+\end{verbatim}
+Compare with what \verb!ros2 topic echo! showed in Chapter~\ref{k:box}: is it the same data? At what rate does the callback run?
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item You have a one-page ``SDK cheat sheet'' for your SDK version: the real class and function names, the units, the return codes, the rate of the state, and whether \verb!Move! must be repeated.
+  \item The robot walks forward about $0.4$\,m in Step~4 and stops.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[\texttt{ModuleNotFoundError}] The Python bindings are not built or not in this environment. Build them as described in the SDK's \texttt{README}, or use the robot's system Python if they are installed there\guess.
+  \item[A call returns an error code] Most often the robot is in the wrong mode for that call (for example \verb!Move! in damping). Check the mode first.
+  \item[The callback never runs] Wrong network interface or DDS domain in \verb!Init!.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item The SDK is a DDS client of Booster's services: modes, walking, head, low-level state and commands.
+  \item Always check the real names and units for your SDK version, and keep them on a cheat sheet in the code repository.
+  \item In this book, the SDK is the \emph{output} of the robot code (Chapter~\ref{k:walk}); ROS~2 is the input (Chapter~\ref{k:ros}).
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Write a function \verb!safe_mode_change(client, mode)! that calls \verb!ChangeMode!, checks the return value and raises an exception with a clear message if it is not success.
+  \item \verb!Move(0.2, 0, 0)! for $2$\,s should give $0.4$\,m. You measure $0.33$\,m on the floor with a tape. Give three possible reasons.
+  \item Write a loop that walks a square of $1$\,m: forward, turn $90^\circ$, four times, using only \verb!Move! and \verb!time.sleep!. Which value do you need for the turning time at $0.5$\,rad/s? Why will the square not close on the real robot?
+  \item The head yaw limit is $\pm1.0$\,rad (example). Write \verb!look_at(client, yaw)! that clamps the angle before calling the head function.
+  \item Why should a program never call \verb!Move! with large values right after \verb!ChangeMode(kWalking)!? What would you add?
+  \item[\textbf{\thechapter.6}$\star$] Record the low-level state for $10$\,s while the robot stands in \emph{prepare} and plot the pitch angle over time. How large is the sway? Repeat while someone gently pushes the trunk.
+\end{enumerate}

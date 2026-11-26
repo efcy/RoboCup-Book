@@ -1,0 +1,130 @@
+\bookchapter{Localisation: where am I?}\label{k:loc}
+
+To walk to its kick-off position, to kick towards the right goal and to tell the GameController where it is, the robot needs its \textbf{pose} on the field: $x$, $y$ and the heading $\theta$. It has two sources: \textbf{odometry} (how far it walked, which drifts) and \textbf{landmarks} (goal posts, lines, which it sees only sometimes). A \textbf{particle filter} combines them. \rtr{Localisation on the field} explains the idea; this chapter builds a first version in the robot code and tests it in the fake. Milestone: two (milestone one kicks towards where the robot faces, which works if it starts the right way round).
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item Perception with goal posts (Chapter~\ref{k:percep}), odometry from the walk (from the SDK if the built-in walk provides it\guess, otherwise integrated commands), the fake robot.
+  \item Background: \rtr{Localisation on the field}, \rtr{State estimation and the Kalman filter}, \rtr{Conditional Probability and Bayes' Rule}.
+\end{itemize}
+\end{needbox}
+
+\section*{A particle filter in $50$ lines}
+Each particle is a guess $(x,y,\theta)$ with a weight. Odometry moves all particles (with noise); a seen landmark reweights them by how well they explain it; when most weight sits on a few particles, they are resampled.
+\begin{verbatim}
+import numpy as np
+
+rng = np.random.default_rng(0)
+# opponent goal posts in the mid division (field 14 m x 9 m, goal 2.6 m)
+POSTS = np.array([[7.0, 1.3], [7.0, -1.3]])
+
+class ParticleFilter:
+    def __init__(self, n, starts):
+        """starts: list of possible start poses (x, y, theta)."""
+        idx = rng.integers(len(starts), size=n)
+        self.p = np.array(starts, float)[idx] \
+                 + rng.normal(0, [.2, .2, .1], (n, 3))
+        self.w = np.full(n, 1 / n)
+
+    def predict(self, dx, dy, dtheta, noise=(.02, .02, .02)):
+        """Odometry in the robot frame since the last call."""
+        c, s = np.cos(self.p[:, 2]), np.sin(self.p[:, 2])
+        n = len(self.p)
+        dx = dx + rng.normal(0, noise[0], n)
+        dy = dy + rng.normal(0, noise[1], n)
+        self.p[:, 0] += c * dx - s * dy
+        self.p[:, 1] += s * dx + c * dy
+        self.p[:, 2] += dtheta + rng.normal(0, noise[2], n)
+
+    def correct(self, seen, sigma_d=0.3, sigma_a=0.1):
+        """seen: list of (distance, bearing) of goal posts."""
+        for d, a in seen:
+            best = np.zeros(len(self.p))
+            for post in POSTS:            # we do not know which post it is
+                vx, vy = post[0] - self.p[:, 0], post[1] - self.p[:, 1]
+                pd = np.hypot(vx, vy)
+                pa = np.arctan2(vy, vx) - self.p[:, 2]
+                da = (a - pa + np.pi) % (2 * np.pi) - np.pi
+                lik = np.exp(-0.5 * ((d - pd) / sigma_d) ** 2
+                             - 0.5 * (da / sigma_a) ** 2)
+                best = np.maximum(best, lik)
+            self.w *= best + 1e-12
+        self.w /= self.w.sum()
+        if 1 / np.sum(self.w ** 2) < len(self.p) / 2:    # resample
+            idx = rng.choice(len(self.p), len(self.p), p=self.w)
+            self.p, self.w = self.p[idx], np.full(len(self.p), 1 / len(self.p))
+
+    def estimate(self):
+        x, y = np.average(self.p[:, :2], axis=0, weights=self.w)
+        th = np.arctan2(np.average(np.sin(self.p[:, 2]), weights=self.w),
+                        np.average(np.cos(self.p[:, 2]), weights=self.w))
+        return x, y, th
+\end{verbatim}
+\texttt{1/sum(w**2)} is the \emph{effective number of particles}: $n$ when all weights are equal, $1$ when one particle has all the weight. The heading is averaged through sine and cosine, because the average of $179^\circ$ and $-179^\circ$ is $180^\circ$, not $0^\circ$.
+
+\section*{Test in a toy world}
+The robot starts at the side line, $(-3.5,-4.5)$, facing into the field ($\theta=90^\circ$). The filter knows only that robots start on one of the two side lines, so it is given two start hypotheses, $(-3.5,\pm4.5)$ facing inwards. The robot turns towards the opponent goal and walks slowly; it ``sees'' a post when it is within $\pm0.8$\,rad of its heading (distance noise $0.2$\,m, bearing noise $0.05$\,rad). I ran this simulation ($500$ particles, $150$ steps, one seed):
+\begin{center}
+\small
+\begin{tabular}{rccc}
+\hline
+step & true $(x,y,\theta)$ & estimate & posts seen\\
+\hline
+$0$ & $(-3.50,-4.50,1.55)$ & $(-3.51,\phantom{-}0.43,-1.61)$ & $0$\\
+$30$ & $(-3.46,-4.39,0.95)$ & $(-3.39,-4.38,\phantom{-}0.97)$ & $2$\\
+$90$ & $(-3.25,-4.30,0.09)$ & $(-3.19,-4.39,\phantom{-}0.10)$ & $2$\\
+$149$ & $(-3.02,-4.28,0.09)$ & $(-2.98,-4.33,\phantom{-}0.11)$ & $2$\\
+\hline
+\end{tabular}
+\end{center}
+Look at step $0$: with no landmark seen yet, the \emph{average} of the particles lies in the middle of the field between the two hypotheses, a place where no particle is. The average of a filter with two clusters is meaningless. As soon as the posts are seen, one cluster dies out and the estimate is within about $10$\,cm. Two lessons: report the estimate only when the particles agree (their spread is small), and use the structure of the game (start positions, the side from which a penalised robot returns) to keep the hypotheses few.
+
+\begin{guessbox}[The symmetric field]
+In this toy only the \emph{opponent's} goal posts exist, so the filter can tell left from right. On a real field both goals look the same, and a robot that sees a goal cannot know which one it is. Teams handle this with the known start poses, with the team's shared ball position, and with the knowledge from the GameController (for example which side a robot returns from after a penalty)\guess. Plan this before the tournament: a robot that scores own goals is worse than one that does nothing.
+\end{guessbox}
+
+\section*{Steps}
+\begin{stepbox}{Step 1: odometry}
+An \texttt{Odometry} representation: the robot's motion in its own frame since the last cycle. From the walking controller if available, else from the commanded and ramped velocities. Measure on the floor how much it drifts over $5$\,m.
+\end{stepbox}
+\begin{stepbox}{Step 2: the module}
+\texttt{Localisation} requires \texttt{Odometry}, \texttt{GoalPostPercept}, \texttt{GameState}; provides \texttt{RobotPose} with an \texttt{ok} flag (particles agree). It resets the particles to the legal start poses when the game state becomes \emph{initial} or a penalty ends.
+\end{stepbox}
+\begin{stepbox}{Step 3: field lines}
+Add line points from perception as a second kind of measurement (distance from each projected line point to the nearest field line); lines are visible almost everywhere, posts only sometimes.
+\end{stepbox}
+\begin{stepbox}{Step 4: compare with reality}
+Put marks on the field at known positions, drive the robot to them (Chapter~\ref{k:cmd}), and compare. The GameController's log of your status packets is a second source (\rtr{The GameController protocol}).
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item In the fake, starting from either side line, the estimate is within $0.2$\,m and $10^\circ$ after seeing one goal, and \texttt{ok} is false before that.
+  \item On the real field, at five marked spots, the error is below $0.3$\,m.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[The estimate jumps between two places] Two clusters with similar weights: correct, but do not use the average. Use the best cluster.
+  \item[All particles collapse to a wrong place] Too little odometry noise, or overconfident measurements ($\sigma$ too small). Increase them.
+  \item[Good while standing, bad while walking] Image and joint angles from different times (Chapter~\ref{k:percep}), or odometry with the wrong sign of rotation.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item Particles: predict with odometry, reweight with landmarks, resample when the effective number drops.
+  \item The average of a multi-modal filter is meaningless; report a pose only when the particles agree.
+  \item The symmetric field needs game knowledge; plan for it.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Compute the effective number of particles for weights $(0.7,0.1,0.1,0.1)$ and $(0.25,0.25,0.25,0.25)$.
+  \item Average the angles $170^\circ$ and $-170^\circ$ directly and with sine and cosine. Which is right?
+  \item A robot at $(0,0)$ facing $+x$ sees a post at distance $7.12$\,m and bearing $0.18$\,rad. Which of the two posts of the toy is it more likely to be, and why is the bearing so important here?
+  \item Odometry overestimates every step by $10\%$. What does the filter do if the robot sees no landmark for $10$\,s? And then sees a post?
+  \item Write \verb!spread(pf)!: the weighted standard deviation of the particle positions, as the basis for the \texttt{ok} flag.
+\end{enumerate}

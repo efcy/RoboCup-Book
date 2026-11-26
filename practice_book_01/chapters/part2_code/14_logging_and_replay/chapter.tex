@@ -1,0 +1,134 @@
+\bookchapter{Logging and replay}\label{k:log}
+
+The robot did something strange in the second half and nobody knows why. If the program wrote down the whole blackboard in every cycle, you can find out: open the log, go to the moment, and look at what each module saw and produced. Even better, you can \textbf{replay} the log: feed the recorded sensor data into the \emph{current} modules and see whether your fix changes the decision. A recorded log becomes a test case. This is the most useful debugging tool in this book. Milestone: one.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The framework (Chapter~\ref{k:bb}) and the loops (Chapter~\ref{k:loops}).
+  \item Background: \rtr{Logging, Replay and Visualisation}, \rtr{Files, Errors and Command-Line Programs}, \rtr{Testing and Debugging}.
+\end{itemize}
+\end{needbox}
+
+\section*{Why the blackboard makes this easy}
+Because all data of a cycle lives on the blackboard, ``the state of the program in cycle $k$'' is simply the blackboard after cycle $k$. And because modules are sorted by what they need, replaying is simple too: put the recorded \emph{inputs} (the representations that came from the robot) on a fresh blackboard and run the modules that compute everything else.
+
+\section*{The recorder}
+\begin{verbatim}
+import pickle
+import time
+
+class Recorder:
+    """Appends one frame per cycle: (cycle, time, {name: value})."""
+
+    def __init__(self, path):
+        self.f = open(path, "ab")
+        self.cycle = 0
+
+    def record(self, bb):
+        frame = (self.cycle, time.time(),
+                 {type(v).__name__: v for v in bb.snapshot().values()})
+        pickle.dump(frame, self.f, protocol=pickle.HIGHEST_PROTOCOL)
+        self.cycle += 1
+
+    def close(self):
+        self.f.close()
+
+def read_log(path):
+    """Yields the frames of a log file. Only open logs you made yourself:
+    unpickling a file can run code that is hidden in it."""
+    with open(path, "rb") as f:
+        while True:
+            try:
+                yield pickle.load(f)
+            except EOFError:
+                return
+\end{verbatim}
+\texttt{pickle} stores any Python object, including dataclasses with NumPy arrays, with no extra code. Its two drawbacks: it is Python-only, and loading a pickle from an unknown source is unsafe. Both are acceptable for the team's own logs; the protobuf stream of Chapter~\ref{k:rc} is the format for other tools. A realistic cognition frame (joint positions, velocities and temperatures as arrays of $22$, an IMU state, a ball percept and a pose) took $1072$ bytes in my test, so $20$ frames per second fill about $77$\,MB per hour: fine for the robot's storage. Images are a different matter; record only every tenth, as JPEG, in a separate file.
+
+\section*{Replay}
+\begin{verbatim}
+from k1code.framework import Blackboard, Module, execution_order, run_cycle
+
+class LogInput(Module):
+    """Puts the recorded inputs of one frame on the blackboard."""
+
+    def __init__(self, data, names):
+        self.values = [data[n] for n in names]
+        self.provides = tuple(type(v) for v in self.values)
+
+    def update(self, bb):
+        for v in self.values:
+            bb.set(v)
+
+def replay(path, modules, inputs):
+    """Run modules on recorded inputs; yield (recorded, replayed) frames."""
+    for cycle, t, data in read_log(path):
+        bb = Blackboard()
+        order = execution_order([LogInput(data, inputs)] + modules)
+        run_cycle(order, bb)
+        yield data, {type(v).__name__: v for v in bb.snapshot().values()}
+\end{verbatim}
+\texttt{LogInput} takes the place of \texttt{SensorInput}: the framework does not care where a representation comes from. I tested it with the three toy modules of Chapter~\ref{k:bb}: recorded $100$ cycles ($16\,100$ bytes), replayed them with \texttt{Image} as input through \texttt{BallDetector} and \texttt{Striker}, and compared the \texttt{MotionRequest}: $0$ of $100$ frames differ, as it must be with unchanged code.
+
+\begin{aibox}[Modules with memory]
+A module that keeps state between cycles (a filter, a timer in the behaviour) needs the replay to run \emph{in order}, with the same module objects for all frames, starting from the beginning of the log. The simple \texttt{replay} above creates the order anew each frame but takes the module objects from the caller, so their state survives. Modules that read the clock directly break replay: give them the time through a representation (\texttt{FrameInfo} with the cycle's time stamp), never \verb!time.monotonic()! inside a module.
+\end{aibox}
+
+\section*{Logs as tests}
+\begin{verbatim}
+def test_striker_on_recorded_game():
+    diffs = 0
+    for old, new in replay("logs/2026-11-friendly-half1.log",
+                           [BallDetector(), Localisation(), Behaviour()],
+                           inputs=["JointState", "ImuState", "Image",
+                                   "GameState", "FrameInfo"]):
+        diffs += old["MotionCommand"].kind != new["MotionCommand"].kind
+    assert diffs == 0
+\end{verbatim}
+Such a test does not say the behaviour is \emph{right}. It says it has not \emph{changed}. When you change the behaviour on purpose, the test fails, you look at the differences, and if they are what you wanted, you record a new reference.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: record in both loops}
+Cognition and motion each get a recorder (two files per run, named with date, robot and loop). A command-line flag turns logging off.
+\end{stepbox}
+\begin{stepbox}{Step 2: a log viewer}
+\verb!uv run k1log show run.log --from 120 --to 130 --rep BallPercept! prints the chosen representation for a range of cycles. A second command plots a number over time with Matplotlib.
+\end{stepbox}
+\begin{stepbox}{Step 3: replay test in CI}
+Record a short run with the fake robot, put it into \texttt{tests/logs/} (small logs only; large ones in a separate storage), and add a replay test.
+\end{stepbox}
+\begin{stepbox}{Step 4: logs from the robot}
+After each session copy the logs to the laptop: \verb!rsync -a k1:/opt/k1code/logs/ logs/k1-03/!, and delete old logs on the robot when its disk is more than half full.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item Replaying a log with unchanged code gives $0$ differences; changing a threshold in the behaviour gives differences exactly where expected.
+  \item The replay test runs in CI.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[\texttt{AttributeError} when loading an old log] A representation class was renamed or its fields changed; pickle needs the class. Keep a version number in each log and a small converter, or replay old logs with the tag of their time.
+  \item[Replay differs although nothing changed] A module uses the clock, a random generator without a seed, or a global variable.
+  \item[The log is cut off] The program was killed during a write; \texttt{read\_log} then raises an error at the end. Catch \texttt{pickle.UnpicklingError} on the last frame.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item Record the blackboard every cycle; replay recorded inputs through the current modules.
+  \item Modules must not read the clock or use unseeded randomness, or replay breaks.
+  \item A log is a regression test: it detects \emph{change}, you decide whether the change is right.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Motion frames are about as large as cognition frames, and motion runs at $50$\,Hz. How much log data does one robot produce in a $2\times10$\,min game plus $30$\,min of warm-up? And five robots?
+  \item Write \verb!find_first(path, condition)! that returns the cycle number of the first frame for which \verb!condition(data)! is true, for example the first frame where the robot has fallen.
+  \item Why does \texttt{LogInput} not provide \texttt{BallPercept} when you want to test the \texttt{BallDetector}? And which representations would it provide if you want to test only the behaviour?
+  \item A module uses \verb!random.random()! to break ties between two equally good roles. Change it so that replay is deterministic and the tie-break is still ``random'' in a game.
+  \item The motion log shows a single step where the policy's output jumps. List three representations you would look at in the same cycle to find the reason.
+\end{enumerate}

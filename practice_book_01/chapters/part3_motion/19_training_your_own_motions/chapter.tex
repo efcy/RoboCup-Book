@@ -1,0 +1,88 @@
+\bookchapter{Training your own motions}\label{k:train}
+
+Walking is not enough to play: a robot must \textbf{get up} after a fall (the rules give it a limited time, \rtr{Preparing for a tournament}), and it must \textbf{kick}. This chapter trains both in mjlab, and adds a \textbf{motion selector} to the motion loop that switches between the policies. As a showpiece at the end: the webster flip of the concepts book's first pages, for teams that have time left. Milestone: two (milestone one walks through the ball and gets up by hand).
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item A GPU computer with booster-mjlab, the deployment chain of Chapter~\ref{k:deploy}, motion-capture clips if you use tracking (for example retargeted clips, \rtr{Imitating motions: BeyondMimic and AMP}).
+  \item Background: \rtr{Imitating motions: BeyondMimic and AMP}, \rtr{Training a kick}, \rtr{Reward design}.
+\end{itemize}
+\end{needbox}
+
+\section*{Three ways to a motion}
+\rtr{Training a kick} compares the options; in short:
+\begin{description}[leftmargin=0.6cm]
+  \item[Tracking a reference] (BeyondMimic style): take a clip (motion capture or keyframes), retarget it to the K1, and train a policy that follows it while staying balanced. Most direct for motions with a clear shape: a kick, a get-up, a flip.
+  \item[Style reward] (AMP): the policy reaches a goal (``kick the ball to there'') while a discriminator rewards motion that \emph{looks like} the reference clips. More flexible, harder to tune.
+  \item[Pure reward] with no reference: possible, often finds strange motions; good for getting up from any pose.
+\end{description}
+booster-mjlab contains a get-up task for the K1\guess{} (\rtr{Velocity tracking and reward design}); start there. For the kick, start from the design of \rtr{Training a kick}.
+
+\section*{The motion selector}
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.2mm]},st/.style={draw,thick,rounded corners=6pt,fill=blue!8,minimum width=1.9cm,minimum height=0.8cm,font=\scriptsize,align=center}]
+ \node[st] (w) at (0,0) {walk\\ policy};
+ \node[st] (k) at (4,1.1) {kick\\ policy};
+ \node[st] (f) at (4,-1.1) {fallen\\ (damping)};
+ \node[st] (g) at (8,-1.1) {get-up\\ policy};
+ \draw[->,thick] (w) to[bend left=15] node[above,font=\scriptsize,sloped]{kick command} (k);
+ \draw[->,thick] (k) to[bend left=15] node[below,font=\scriptsize,sloped]{done} (w);
+ \draw[->,thick] (w)--node[below,font=\scriptsize,sloped]{fall detected}(f);
+ \draw[->,thick] (k)--node[right,font=\scriptsize]{fall}(f);
+ \draw[->,thick] (f)--node[above,font=\scriptsize]{lying still}(g);
+ \draw[->,thick] (g.north) to[bend right=40] node[above,font=\scriptsize]{upright} (w.north);
+ \draw[->,thick] (g) to[bend left=30] node[below,font=\scriptsize]{failed} (f);
+\end{tikzpicture}
+\captionof{figure}{The motion selector is a small state machine in the motion loop. Each state runs one policy (or damping). Transitions happen on commands from cognition and on the robot's own state.}
+\end{center}
+Each policy has its own JSON description (observation, action scale, default pose, gains), so the selector also switches the observation builder and the gains. Two details make the transitions work. The \emph{last action} in the observation of a policy that has just started is zero, which the policy never saw in the middle of a motion: start each policy from the pose it was trained to start from, or train it with random start poses. And a policy must report when it is \emph{done} (the kick has ended, the robot is upright), for example from a timer and the gravity vector.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: get-up in simulation}
+Train the get-up task. Evaluate: $20$ falls from random poses (face up and face down), count how often the robot stands within the time the rules allow, and how long it takes.
+\end{stepbox}
+\begin{stepbox}{Step 2: kick in simulation}
+Train a kick (reference clip or reward, as you decided after reading the concepts chapter). Evaluate: $20$ kicks with the ball placed in front of the foot with random offsets of $\pm3$\,cm; count kicks that hit the ball and send it at least $3$\,m, and falls.
+\end{stepbox}
+\begin{stepbox}{Step 3: the selector}
+Implement it as a module in the motion loop with a \texttt{MotionState} representation (current motion, time in it), and test the transitions against the MuJoCo fake.
+\end{stepbox}
+\begin{stepbox}{Step 4: on the robot}
+Same procedure as Chapter~\ref{k:deploy}: hanging (kick in the air), then on the floor. For the get-up, lay the robot on the mat by hand, face up and face down; two people ready to catch the head.
+\end{stepbox}
+\begin{stepbox}{Step 5 (showpiece): the webster flip}
+Only with a working get-up, many spare hours and a very soft mat: track a flip clip, and test it in simulation thousands of times before anyone tries it on the real robot. Expect broken parts if it fails, and decide as a team whether that risk is worth it.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item Each motion succeeds in $20$ of $20$ simulated runs (get-up within the allowed time; kick hits and goes $\ge3$\,m; no fall).
+  \item On the real robot, get-up works $9$ of $10$ times from each side, and the kick moves the ball at least $2$\,m.
+  \item The selector switches walk $\rightarrow$ kick $\rightarrow$ walk without a stumble in the MuJoCo fake.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[The robot falls right after the kick] The transition back to walking: the walk policy starts from a pose it does not know. Train the walk with random start poses near the kick's end pose, or add a short ``recover'' phase.
+  \item[Get-up works in simulation, not on the mat] Friction of the mat, cables, the jersey (Chapter~\ref{k:jersey}): try on the real field carpet; randomise friction more in training.
+  \item[A joint gets hot after a few get-ups] Get-ups use high torques; the health monitor (Chapter~\ref{k:health}) must see it, and the behaviour may need to wait before the next try.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item Get-up and kick are separate policies; a motion selector in the motion loop switches between them.
+  \item Every policy comes with its description; the selector switches observation, gains and policy together.
+  \item Success is counted: $20$ of $20$ in simulation before the robot, then counted again on the robot.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item A motion succeeds in $20$ of $20$ simulated runs. Give an upper estimate of its failure rate with about $95\%$ confidence (rule of three: $3/n$). How many runs without failure would you need to claim less than $1\%$?
+  \item The get-up takes $6$\,s and succeeds $90\%$ of the time per try. What is the probability that the robot is up within $20$\,s, if a failed try costs $8$\,s before the next one?
+  \item Write the transitions of the selector as a Python function \verb!next_state(state, cmd, upright, fallen, done, t_in_state)!.
+  \item Why should the kick's ``done'' not be decided only by a timer?
+  \item Suggest a fair test on the real robot that compares two kicks (A and B).
+\end{enumerate}

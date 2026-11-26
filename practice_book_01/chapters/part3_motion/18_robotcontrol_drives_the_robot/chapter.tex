@@ -1,0 +1,98 @@
+\bookchapter{robotcontrol drives the robot}\label{k:cmd}
+
+When you test a walk, tune a kick or carry the robot to the field, you want to drive it by hand. robotcontrol can already send single commands (Chapter~\ref{k:rc}); this chapter turns it into a remote control with a keyboard, and settles once and for all who may command the motion when: cognition, robotcontrol, or the safety layer. Milestone: one.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item robotcontrol and the debug server (Chapter~\ref{k:rc}), the command slot (Chapter~\ref{k:loops}), a walking robot (Chapter~\ref{k:walk}).
+  \item Background: \rtr{Game flow as a state machine}, \rtr{Terminal Tools with Ratatui} (for the idea of a terminal user interface).
+\end{itemize}
+\end{needbox}
+
+\section*{Who is in charge}
+All commands go into the same \texttt{CommandSlot}. Each has a source, a priority and a time to live; motion takes the valid command with the highest priority.
+\begin{center}
+\small
+\begin{tabular}{llrl}
+\hline
+source & sends & priority & time to live\\
+\hline
+default & stand & $-1$ & for ever\\
+cognition & walk, stand, kick & $0$ & $0.5$\,s, renewed every cycle\\
+robotcontrol (drive) & walk, stand, kick & $10$ & $0.3$\,s, renewed while a key is held\\
+robotcontrol (stop) & stand & $100$ & $5$\,s\\
+\hline
+\end{tabular}
+\end{center}
+The safety layer is not in this table on purpose: it does not compete with commands, it sits \emph{after} them and can always override (Chapter~\ref{k:deploy}).
+
+Two consequences are worth saying out loud. First, \textbf{driving is a dead man's switch}: the robot only walks while robotcontrol keeps sending, so a crashed laptop or a lost Wi-Fi stops the robot within $0.3$\,s. Second, \textbf{robotcontrol is ignored during a game}: when the GameController state is \emph{ready}, \emph{set} or \emph{playing}, the debug server drops drive commands (but not \emph{stop}). Otherwise a forgotten laptop could move a robot during a match, which the rules forbid.
+
+\section*{The drive loop}
+\begin{verbatim}
+KEYS = {"w": (0.3, 0, 0), "s": (-0.2, 0, 0), "a": (0, 0.2, 0),
+        "d": (0, -0.2, 0), "q": (0, 0, 0.6), "e": (0, 0, -0.6)}
+
+def command_for(keys_down, speed=1.0):
+    """Sum the velocities of all pressed keys."""
+    v = [0.0, 0.0, 0.0]
+    for k in keys_down:
+        for i, x in enumerate(KEYS.get(k, (0, 0, 0))):
+            v[i] += speed * x
+    kind = "walk" if any(v) else "stand"
+    return pb.MotionCommand(kind=kind, vx=v[0], vy=v[1], vyaw=v[2],
+                            ttl=0.3, priority=10)
+
+def drive(sock, read_keys):
+    while True:
+        keys = read_keys()             # the set of keys held right now
+        if "x" in keys:                # x = stop, highest priority
+            send_msg(sock, pb.Request(command=pb.MotionCommand(
+                kind="stand", ttl=5.0, priority=100)))
+        else:
+            send_msg(sock, pb.Request(command=command_for(keys)))
+        time.sleep(0.1)                # 10 commands per second
+\end{verbatim}
+How to read ``which keys are held right now'' depends on the user interface: a terminal can only see key presses, not releases, so a terminal version treats a key as held for $0.2$\,s after its last repeat; a small window with \texttt{tkinter} or \texttt{pygame} gets press and release events. A game controller (gamepad) is even nicer and gives proportional speeds. The command function is the same for all of them, and it is easy to test without a keyboard.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: command semantics in code}
+Put the priority table into \texttt{commands.py} as constants. Write tests: drive overrides cognition; drive expires after $0.3$\,s; stop overrides drive; drive is dropped while the game state is \emph{playing}.
+\end{stepbox}
+\begin{stepbox}{Step 2: robotcontrol drive}
+Implement \verb!robotcontrol drive k1-03! with the user interface you prefer. Show the current command and the robot's state (from the frames) on screen.
+\end{stepbox}
+\begin{stepbox}{Step 3: drive the fake, then the robot}
+First against the fake robot, then the real robot on the floor with the rope. Practise driving it to a marked spot and turning it to face a direction.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item Releasing all keys stops the robot within $0.3$\,s; closing robotcontrol or pulling the Wi-Fi does too.
+  \item With the GameController in \emph{playing}, drive commands have no effect, and \emph{stop} still works.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[The robot stutters while a key is held] The commands arrive too rarely for their time to live: the drive loop must send more often than every $0.3$\,s, also when the network delays a few packets. Send at $10$\,Hz.
+  \item[Cognition and robotcontrol ``fight''] Two sources with the same priority. Check the source and priority fields in robotcontrol's frame view.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item One command slot; priorities and times to live decide who is in charge.
+  \item Driving is a dead man's switch; stop has the highest priority.
+  \item robotcontrol cannot move a robot during a game.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Keys \texttt{w} and \texttt{q} are held. Which command does \verb!command_for! produce? And with \texttt{w} and \texttt{s}?
+  \item The Wi-Fi drops packets for $0.25$\,s now and then. With $10$ commands per second and a time to live of $0.3$\,s, does the robot stop? What if the time to live were $0.15$\,s?
+  \item Write the test ``drive is dropped while playing'' for the debug server.
+  \item Why does \emph{stop} have a time to live of $5$\,s and not ``for ever''?
+  \item Extend \verb!command_for! with a ``slow'' modifier: while \texttt{shift} is held, all speeds are halved.
+\end{enumerate}

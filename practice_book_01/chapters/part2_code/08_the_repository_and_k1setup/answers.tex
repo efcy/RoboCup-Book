@@ -1,0 +1,17 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item udev kills programs started with \texttt{RUN} after a short time, and they run in a restricted environment where mounting file systems often does not work. Copying code and restarting a service takes longer; starting a systemd unit runs it as a normal service with its own log.
+  \item systemd starts the program again $2$\,s after each crash. After too many restarts in a short time (the default limit is $5$ starts in $10$\,s) it gives up and marks the unit as failed. \verb!systemctl status k1code! shows ``activating (auto-restart)'' or ``failed'', and the journal shows the exception each time.
+  \item
+\begin{verbatim}
+from pathlib import Path
+from k1code.config import load_config
+
+def test_all_robot_configs():
+    names = [p.stem for p in Path("config/robots").glob("*.toml")]
+    numbers = [load_config(n).robot["player_number"] for n in names]
+    assert len(numbers) == len(set(numbers))
+    assert all(1 <= n <= 7 for n in numbers)
+\end{verbatim}
+  \item \verb!--delete! removes files on the robot that no longer exist on the stick, so old modules do not stay behind. Without excluding \texttt{.venv}, the virtual environment on the robot (not on the stick) would be deleted, and the service could no longer start.
+  \item Keep a second stick with the last tag that worked (or check out the tag on the laptop, \verb!git checkout ch14-log!, and copy it to the stick), plug it in, and the robot is back in seconds. Then find the bug calmly.
+\end{enumerate}

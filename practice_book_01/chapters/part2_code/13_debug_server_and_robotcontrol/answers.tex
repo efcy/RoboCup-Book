@@ -1,0 +1,33 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $49\cdot10=490$ bytes/s, about $3.9$\,kbit/s. At $50$ frames per second: $19.6$\,kbit/s per robot, so $5\,000/19.6\approx255$ robots; the debug stream is tiny. (Images would be a different story.)
+  \item The two computers' clocks are not synchronised, and \verb!time.monotonic()! on two computers has completely different zero points. A command could look $1000$\,s old, or valid for ever. The robot stamps commands with its own clock when they arrive.
+  \item
+\begin{verbatim}
+import queue
+
+def __init__(self, slot, port=5555):
+    ...
+    self.out = queue.Queue(maxsize=1)
+    threading.Thread(target=self._send, daemon=True).start()
+
+def publish(self, frame):
+    try:
+        self.out.get_nowait()          # drop the old frame if unsent
+    except queue.Empty:
+        pass
+    self.out.put_nowait(frame)
+
+def _send(self):
+    while True:
+        frame = self.out.get()
+        conn = self.conn
+        if conn is not None:
+            try:
+                send_msg(conn, frame)
+            except OSError:
+                self.conn = None
+\end{verbatim}
+(With one producer, the get-then-put pair is safe.)
+  \item Yes in both directions. An old robotcontrol skips the unknown field number $8$ when parsing. An old robot does not send it, and the new robotcontrol sees an empty list. That is the reason for field numbers in protobuf.
+  \item Listen only on the team's own network interface or address (not \texttt{0.0.0.0}), and require a shared team token in the first message of a connection before commands are accepted; also accept commands only while the robot is not in a game (the GameController state says so).
+\end{enumerate}
