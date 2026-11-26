@@ -1,0 +1,117 @@
+\bookchapter{The K1 model and kinematics}\label{k:model}
+
+Every later chapter uses a description of the robot: the policy was trained on it, the safety layer reads the joint limits from it, and the ball's position is computed through the chain of joints from the foot to the camera. This chapter opens that description, the \textbf{MJCF model}, and checks it against the real robot with forward and inverse kinematics of the leg. Milestone: one.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The K1 model from Chapter~\ref{k:ws} (an MJCF file), Python with \texttt{mujoco} and \texttt{numpy}.
+  \item The robot, hanging and in damping, and a ruler.
+  \item Background: \rtr{Reference frames and robot geometry}, \rtr{Rotation and translation matrices}, \rtr{Angles, radians and trigonometry}.
+\end{itemize}
+\end{needbox}
+
+\section*{What is in an MJCF file}
+An MJCF file is XML. The important elements are: \texttt{<body>} (a rigid part with a position relative to its parent, so the bodies form a tree from the trunk to the feet, hands and head), \texttt{<joint>} (how a body can move relative to its parent: a hinge with an axis and a \texttt{range}), \texttt{<geom>} (shapes for collisions and drawing), \texttt{<inertial>} (mass and inertia), \texttt{<site>} (named points, for example the sole of a foot or the camera) and \texttt{<actuator>} (which joints have motors, with what gains and force limits).
+
+\begin{guessbox}
+The K1 is described as having $22$ joints: head yaw and pitch; for each arm shoulder pitch, shoulder roll, elbow pitch and elbow yaw; for each leg hip pitch, hip roll, hip yaw, knee, ankle pitch and ankle roll\guess. Read the real names and order from the model (Step~1). \textbf{The order matters}: the walking policy, the SDK and the model each have a joint order, and Chapter~\ref{k:deploy} depends on mapping them correctly.
+\end{guessbox}
+
+\section*{Steps}
+\begin{stepbox}{Step 1: print the joint table}
+\begin{verbatim}
+import mujoco
+m = mujoco.MjModel.from_xml_path("k1.xml")      # your path
+for j in range(m.njnt):
+    jt = m.joint(j)
+    print(j, jt.name, jt.type, m.jnt_range[j], m.jnt_limited[j])
+for a in range(m.nu):
+    print(a, m.actuator(a).name, m.actuator_forcerange[a])
+\end{verbatim}
+Save the output as \texttt{docs/k1\_joints.txt} in the code repository. The first joint is usually a \emph{free} joint ($7$ numbers in \texttt{qpos}: position and a quaternion) that lets the trunk move in the world; it is not a motor.
+\end{stepbox}
+
+\begin{stepbox}{Step 2: radians or degrees?}
+Look for \texttt{<compiler angle="radian"/>} at the top of the file. Without it, MuJoCo reads joint ranges \textbf{in degrees}. I tested this with a tiny two-joint model: \verb!range="-1.5 1.5"! without the compiler line gave the limits $\pm0.026$\,rad, that is $\pm1.5^\circ$. Inside Python, \texttt{m.jnt\_range} is always in radians.
+\end{stepbox}
+
+\begin{stepbox}{Step 3: forward kinematics of a leg}
+In the side view the leg is a chain of two links: thigh and shank. With the hip angle $h$ and the knee angle $k$ (both $0$ for a straight leg), the ankle relative to the hip is
+\[
+x = L_1\sin h + L_2\sin(h+k),\qquad z = -L_1\cos h - L_2\cos(h+k).
+\]
+\begin{verbatim}
+import numpy as np
+THIGH, SHANK = 0.22, 0.22    # example; read the K1's from the model
+
+def leg_fk(hip, knee):
+    x = THIGH * np.sin(hip) + SHANK * np.sin(hip + knee)
+    z = -THIGH * np.cos(hip) - SHANK * np.cos(hip + knee)
+    return x, z
+\end{verbatim}
+Find $L_1$ and $L_2$ in the model: they are the distances between the hip, knee and ankle joints, from the \texttt{pos} attributes of the bodies (or from \texttt{d.xpos} after \verb!mujoco.mj_kinematics!).
+\end{stepbox}
+
+\begin{stepbox}{Step 4: compare with MuJoCo}
+Set the same angles in MuJoCo and read the ankle position:
+\begin{verbatim}
+d = mujoco.MjData(m)
+d.qpos[iq_hip], d.qpos[iq_knee] = 0.5, -0.2   # m.joint(name).qposadr
+mujoco.mj_kinematics(m, d)
+print(d.xpos[m.body("left_ankle").id] - d.xpos[m.body("left_hip").id])
+\end{verbatim}
+Do the numbers agree with \verb!leg_fk(0.5, -0.2)!? When I tested this with a two-link model whose joints turn about the $+y$ axis, they did \textbf{not}: my formula gave $x=+0.17$\,m, MuJoCo $x=-0.17$\,m. A positive rotation about $+y$ moves the foot \emph{backwards}. Either the sign convention of the formula or the axis must be adapted. This is exactly the kind of bug that a check catches and that a robot on the floor does not forgive.
+\end{stepbox}
+
+\begin{stepbox}{Step 5: inverse kinematics}
+Which hip and knee angles put the ankle at a given $(x,z)$? With the law of cosines:
+\begin{verbatim}
+def leg_ik(x, z):
+    c = (x*x + z*z - THIGH**2 - SHANK**2) / (2 * THIGH * SHANK)
+    if not -1 <= c <= 1:
+        raise ValueError("out of reach")
+    knee = -np.arccos(c)                 # knee bends backwards
+    hip = np.arctan2(x, -z) - np.arctan2(SHANK * np.sin(knee),
+                                         THIGH + SHANK * np.cos(knee))
+    return hip, knee
+\end{verbatim}
+I checked it by round trips: for $(h,k)=(0.3,-0.6)$, $(-0.2,-1.0)$ and $(0.5,-0.2)$, \verb!leg_ik(*leg_fk(h, k))! returns the same angles to four decimals.
+\end{stepbox}
+
+\begin{stepbox}{Step 6: the real leg}
+With the robot hanging in damping, bend one knee by hand and hold it. Read hip and knee angles (Chapter~\ref{k:box}, Step~7), compute the ankle position with your (corrected) \verb!leg_fk!, and measure the horizontal distance between hip joint and ankle joint with a ruler.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item Your FK and MuJoCo agree to better than $1$\,mm for ten random angle pairs inside the joint ranges.
+  \item The FK of the real robot's angles agrees with the ruler to about $1$\,cm (the ruler is the limit).
+  \item \texttt{docs/k1\_joints.txt} lists all joints with their order, limits and units.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[Signs are wrong] Compare the joint axis in the MJCF (\texttt{axis="0 1 0"} or \texttt{"0 -1 0"}) with your formula. Left and right legs often have mirrored axes.
+  \item[An offset of a constant angle] The zero of the real joint (its \emph{calibration}) differs from the model's zero. Write the offset down; if it is larger than about $2^\circ$, recalibrate as described in the manual\guess.
+  \item[The joint index is wrong] \texttt{qpos} indices are not joint numbers: use \texttt{m.joint(name).qposadr}.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item The MJCF model is the single source for joint names, order, axes, limits and lengths. Every other part of the code reads it from there.
+  \item Check units (degrees or radians) and signs (axis directions) before you trust any number.
+  \item Forward kinematics checked against MuJoCo and a ruler is the first test that the model and the robot agree.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item With $L_1=L_2=0.22$\,m, how high above the ankle is the hip with straight legs? And with $h=0.3$, $k=-0.6$? (This is how a robot ``crouches''.)
+  \item Which points can the ankle reach? Give the smallest and largest distance from the hip if the knee range is $[-2.3,0]$\,rad.
+  \item The model says \verb!range="-30 60"! and has no compiler line. What range in radians does MuJoCo use?
+  \item A joint has the range $[-1.2,0.8]$\,rad on the model. The real joint reads $0.05$\,rad more than the model for the same pose. What can happen to a policy that commands $0.79$\,rad?
+  \item Show with the law of cosines where the formula for $\cos k$ in \verb!leg_ik! comes from: draw the triangle hip--knee--ankle and mark the inner angle at the knee.
+  \item[\textbf{\thechapter.6}$\star$] Extend \verb!leg_fk! to three dimensions with the hip roll angle, as a product of rotation matrices (\rtr{Rotation and translation matrices}), and test it against MuJoCo.
+\end{enumerate}

@@ -1,0 +1,205 @@
+\bookchapter{The repository, configuration and k1setup}\label{k:repo}
+
+From this chapter on we write the robot program. Before the first line of robot logic, three things need a home: the \textbf{repository} (where every file lives, how tests run), the \textbf{configuration} (what differs between robots and between games), and the \textbf{deployment} (how the code gets onto the robot and starts by itself). The last one is a small command-line program, \texttt{k1setup}, that installs the system files: a systemd service that runs the robot code, and a udev rule that deploys new code from a USB stick. Milestone: one.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The laptop of Chapter~\ref{k:ws}, the robot with SSH access (Chapter~\ref{k:box}) and the free USB port (Chapter~\ref{k:cover}).
+  \item Background: \rtr{Modules, Packages and Project Layout}, \rtr{Processes, systemd and Logs}, \rtr{Devices, udev Rules and Audio}, \rtr{Git: Best Practices and Recovery}.
+\end{itemize}
+\end{needbox}
+
+\section*{The layout}
+\begin{verbatim}
+k1-in-practice-code/
+  pyproject.toml         name, Python version, dependencies, scripts
+  uv.lock                exact versions (commit it!)
+  config/team.toml       team number, colours, ports
+  config/robots/k1-03.toml   one file per robot
+  proto/debug.proto      messages between robot and robotcontrol
+  src/k1code/
+    framework.py         blackboard, modules, execution order  (Ch. 9)
+    representations/     the dataclasses on the blackboard
+    modules/             cognition modules (perception, behaviour, ...)
+    motion/              motion thread, policy, safety           (Ch. 16-17)
+    adapters/            ROS 2 input, SDK output, fake robot     (Ch. 10-11)
+    debug/               debug server                            (Ch. 13)
+    logs/                recorder and replay                     (Ch. 14)
+    gamecontroller.py                                            (Ch. 15)
+    main.py              starts everything
+  src/robotcontrol/      the desktop tool                        (Ch. 13)
+  src/k1setup/           this chapter
+  tests/                 unit tests and replay tests
+  logs/                  recorded logs used as tests (small ones only)
+  docs/                  hardware notes, SDK cheat sheet, joint table
+\end{verbatim}
+Three programs share one repository: the robot code, the desktop tool and the set-up tool. They share the configuration, the message definitions and the representations, so a change to a message changes all three together, in one commit.
+
+\section*{Configuration}
+What differs between robots (player number, address, calibration) goes into one file per robot; what is the same for the team goes into one team file. Both are TOML, which Python reads without extra packages:
+\begin{verbatim}
+# config/robots/k1-03.toml
+player_number = 3
+ip = "10.0.12.13"
+serial = "K1-XXXX"            # from the sticker on the robot
+[calibration]
+joint_offsets = { left_knee = 0.012, right_knee = -0.004 }
+camera_pitch_offset = 0.02    # rad
+\end{verbatim}
+\begin{verbatim}
+import tomllib
+from dataclasses import dataclass
+from pathlib import Path
+
+@dataclass(frozen=True)
+class Config:
+    team: dict
+    robot: dict
+
+def load_config(robot_name, root="config"):
+    root = Path(root)
+    with open(root / "team.toml", "rb") as f:
+        team = tomllib.load(f)
+    with open(root / "robots" / f"{robot_name}.toml", "rb") as f:
+        robot = tomllib.load(f)
+    return Config(team, robot)
+\end{verbatim}
+The robot finds its own name in a command-line argument that the systemd service passes (below). The rule: \emph{no number that differs between robots is written in the code}.
+
+\section*{Deployment: systemd and udev}
+On the robot the code lives in \texttt{/opt/k1code} with its own virtual environment. A systemd \textbf{service} starts it at boot and restarts it if it crashes; a udev \textbf{rule} notices a USB stick with the label \texttt{K1DEPLOY} and starts a second, one-shot service that copies the new code from the stick and restarts the first one.
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.2mm]},bx/.style={draw,thick,rounded corners=3pt,minimum width=2.5cm,minimum height=0.85cm,font=\scriptsize,align=center}]
+ \node[bx,fill=gray!12] (usb) at (0,0) {USB stick\\ label K1DEPLOY};
+ \node[bx,fill=yellow!20] (udev) at (3.3,0) {udev rule\\ \texttt{99-k1-deploy}};
+ \node[bx,fill=orange!12] (dep) at (6.9,0) {\texttt{k1-deploy@sda1}\\ copies the code};
+ \node[bx,fill=blue!8] (svc) at (10.3,0) {\texttt{k1code.service}\\ restarted};
+ \draw[->,thick] (usb)--(udev); \draw[->,thick] (udev)--node[above,font=\scriptsize]{starts}(dep); \draw[->,thick] (dep)--(svc);
+\end{tikzpicture}
+\captionof{figure}{Deployment by USB stick. udev only \emph{asks} systemd to start the copy; a long job inside a udev rule itself would be killed.}
+\end{center}
+
+The four files, as \texttt{k1setup} writes them:
+\begin{verbatim}
+# /etc/systemd/system/k1code.service
+[Unit]
+Description=K1 robot code
+After=network-online.target
+[Service]
+User=robot
+WorkingDirectory=/opt/k1code
+ExecStart=/opt/k1code/.venv/bin/python -m k1code.main --robot k1-03
+Restart=on-failure
+RestartSec=2
+[Install]
+WantedBy=multi-user.target
+
+# /etc/systemd/system/k1-deploy@.service
+[Unit]
+Description=Deploy robot code from USB stick %i
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/k1-deploy /dev/%i
+
+# /etc/udev/rules.d/99-k1-deploy.rules
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="K1DEPLOY", \
+  TAG+="systemd", ENV{SYSTEMD_WANTS}+="k1-deploy@%k.service"
+
+# /usr/local/bin/k1-deploy
+#!/bin/sh
+set -e
+mnt=$(mktemp -d)
+mount -o ro "$1" "$mnt"
+rsync -a --delete --exclude .venv "$mnt/k1code/" /opt/k1code/
+umount "$mnt"
+systemctl restart k1code.service
+\end{verbatim}
+\begin{guessbox}[Your own deployment code]
+The team already has working systemd and udev code for USB deployment; the files above are a minimal version for the book. Replace them with the team's version and keep this chapter's explanation. Whether the K1's operating system runs other services that must be stopped while our code runs (for example Booster's own demo programs)\guess{} is something to add to \texttt{k1setup}.
+\end{guessbox}
+
+\section*{k1setup}
+\texttt{k1setup} keeps the four files as text in Python and writes them where they belong. Its important feature is \texttt{-{}-root}: it can write everything into a test folder instead of \texttt{/}, so you can test it on the laptop and look at the result before you touch a robot.
+\begin{verbatim}
+import argparse, pathlib, subprocess
+
+FILES = {"etc/systemd/system/k1code.service": SERVICE,   # texts above
+         "etc/systemd/system/k1-deploy@.service": DEPLOY_SERVICE,
+         "etc/udev/rules.d/99-k1-deploy.rules": UDEV_RULE,
+         "usr/local/bin/k1-deploy": DEPLOY_SCRIPT}
+
+def install(root, robot, dry_run):
+    for rel, text in FILES.items():
+        path = pathlib.Path(root) / rel
+        print(("would write " if dry_run else "write ") + str(path))
+        if not dry_run:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text.replace("{robot}", robot))
+            if rel.startswith("usr/local/bin"):
+                path.chmod(0o755)
+    if root == "/" and not dry_run:
+        subprocess.run(["systemctl", "daemon-reload"], check=True)
+        subprocess.run(["udevadm", "control", "--reload"], check=True)
+        subprocess.run(["systemctl", "enable", "k1code.service"], check=True)
+
+def main():
+    ap = argparse.ArgumentParser(prog="k1setup")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("install", help="write the system files")
+    p.add_argument("--robot", required=True, help="e.g. k1-03")
+    p.add_argument("--root", default="/", help="install below this folder")
+    p.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args()
+    install(args.root, args.robot, args.dry_run)
+\end{verbatim}
+I ran it with \verb!--root! set to a temporary folder: it wrote the four files with the robot name filled in and the script executable (\texttt{-rwxr-xr-x}). \verb!systemd-analyze verify! accepted the service file apart from the missing Python interpreter, which exists only on the robot.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: the repository}
+Create the layout above (or check out the tag \texttt{ch08-repo}), with an empty \texttt{tests/test\_config.py} that loads the configuration of every robot file. Commit, push.
+\end{stepbox}
+\begin{stepbox}{Step 2: continuous integration}
+Add a GitHub Actions workflow that runs \verb!uv sync! and \verb!uv run pytest! on every push. From Chapter~\ref{k:log} on, the tests include replays of recorded logs.
+\end{stepbox}
+\begin{stepbox}{Step 3: test k1setup on the laptop}
+\verb!uv run k1setup install --robot k1-03 --root /tmp/fakeroot! and read every file it wrote.
+\end{stepbox}
+\begin{stepbox}{Step 4: install on the robot}
+Copy the repository once with \verb!rsync -a --exclude .venv ./ k1:/opt/k1code/!, then on the robot: \verb!cd /opt/k1code && uv sync! and \verb!sudo .venv/bin/k1setup install --robot k1-03!.
+\end{stepbox}
+\begin{stepbox}{Step 5: deploy by stick}
+On the laptop, copy the repository into a folder \texttt{k1code} on the stick labelled \texttt{K1DEPLOY}, plug it into the robot, wait, and read the log: \verb!journalctl -u 'k1-deploy@*' -u k1code -n 30!.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item CI is green on GitHub.
+  \item After a reboot of the robot, \verb!systemctl status k1code! shows \emph{active (running)} (the program does nothing yet but log one line per second; that is \texttt{main.py} of tag \texttt{ch08-repo}).
+  \item Plugging in the stick changes the code on the robot and restarts the service within a few seconds; the journal shows both.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[Nothing happens when the stick is plugged in] \verb!udevadm monitor --property! shows whether \texttt{ID\_FS\_LABEL} is really \texttt{K1DEPLOY}; \verb!udevadm control --reload! after changing a rule.
+  \item[The service restarts in a loop] Read \verb!journalctl -u k1code -n 50!: usually a Python exception at start, for example a missing robot configuration file.
+  \item[\texttt{uv sync} on the robot fails] The robot needs internet once, or a wheel cache copied from the laptop; the robot's CPU is ARM, so some wheels differ from the laptop's\guess.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item One repository for robot code, robotcontrol and k1setup; one lock file; tests in CI.
+  \item Robot-specific numbers live in \texttt{config/robots/*.toml}, never in the code.
+  \item systemd runs the code; udev only triggers a systemd unit; \texttt{k1setup -{}-root} lets you test the installation without a robot.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Why does the udev rule not simply contain \verb!RUN+="/usr/local/bin/k1-deploy"!?
+  \item What does \verb!Restart=on-failure! with \verb!RestartSec=2! do if the program crashes at start every time? How can you see that it is happening?
+  \item Write a test \verb!test_all_robot_configs! that loads every file in \texttt{config/robots/} and checks that the player numbers are unique and between $1$ and $7$.
+  \item The \texttt{rsync} in \texttt{k1-deploy} uses \verb!--delete!. What does it do, and what would go wrong without \verb!--exclude .venv!?
+  \item Someone deploys a stick with code that does not start. Describe how you get the robot back to the previous version in the shortest time. (Hint: tags.)
+\end{enumerate}

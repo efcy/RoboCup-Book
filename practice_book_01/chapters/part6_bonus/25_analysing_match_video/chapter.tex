@@ -1,0 +1,92 @@
+\bookchapter{Bonus: analysing match video}\label{k:video}
+
+Your robots' logs show what \emph{they} believed. A video from the stands shows what really happened, for all robots, including the opponent's. Combining both is the best way to find out why a game was lost: the robot that searched for a ball it was standing next to, the goalkeeper that was always two metres off, the striker that took $40$\,s per attack. This bonus chapter builds a small video-analysis tool in Python: it maps the image to the field, detects and tracks robots and the ball, and computes a few statistics. Milestone: none (it improves the team between tournaments).
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item Videos of games, filmed from a fixed, high position (a phone on a tripod in the stands), with all four field corners in view.
+  \item The detector of Chapter~\ref{k:percep} (retrained for this view), OpenCV, NumPy, Matplotlib.
+  \item Background: \rtr{Images and Video with OpenCV}, \rtr{Object Detection and YOLO}, \rtr{Statistics: Learning from Data}.
+\end{itemize}
+\end{needbox}
+
+\section*{From the image to the field}
+The field is a plane, so the mapping from field coordinates to image pixels is a \textbf{homography}: a $3\times3$ matrix $H$ with $(u,v,1)^\top\sim H\,(x,y,1)^\top$ (equal up to a scale factor). Four points whose positions are known on both sides, for example the four field corners, determine it. OpenCV computes it with \verb!cv2.findHomography!; the method behind it fits in a few lines of NumPy:
+\begin{verbatim}
+import numpy as np
+
+def homography(src, dst):
+    """3x3 matrix H with dst ~ H @ src, from 4 or more point pairs (DLT)."""
+    rows = []
+    for (x, y), (u, v) in zip(src, dst):
+        rows.append([-x, -y, -1, 0, 0, 0, u * x, u * y, u])
+        rows.append([0, 0, 0, -x, -y, -1, v * x, v * y, v])
+    _, _, vt = np.linalg.svd(np.array(rows, float))
+    H = vt[-1].reshape(3, 3)
+    return H / H[2, 2]
+
+def apply(H, pts):
+    p = np.c_[pts, np.ones(len(pts))] @ H.T
+    return p[:, :2] / p[:, 2:]
+\end{verbatim}
+I tested it with a made-up camera: the four corners of the mid-division field ($14\times9$\,m) were mapped into pixels by a known homography, $2$ pixels of noise were added, and the field-from-pixel homography was estimated from these four noisy points. Test points at $(0,0)$, $(4.5,-3)$ and $(-6,2)$\,m came back as $(-0.04,-0.04)$, $(4.47,-3.02)$ and $(-6.04,1.95)$: errors of about $5$\,cm. More points (line crossings, penalty marks) make it more precise.
+
+A robot's position is its \emph{feet}: map the bottom centre of its box, not the box centre (which is $0.5$\,m above the ground and would be mapped to a wrong place). For the ball, the box centre is close enough.
+
+\section*{Tracking and statistics}
+Detections in each frame are matched to the tracks of the previous frame (nearest neighbour on the field, with a maximum distance; or a ready-made tracker such as ByteTrack). Jersey colours from the image crops tell the teams apart, the number (if readable) the player. Then the statistics are simple arithmetic on the tracks:
+\begin{itemize}[nosep]
+  \item distance walked and average speed per robot;
+  \item \textbf{possession}: which team's robot is closest to the ball, in percent of the playing time;
+  \item time to the ball after a kick-off or set play;
+  \item fallen time (a robot whose box becomes wide and flat);
+  \item heat maps: where each robot spent its time.
+\end{itemize}
+
+\section*{Video and logs together}
+Synchronise the video with the robot logs and the GameController log through an event visible in all of them (the GameController's change to \emph{playing}). Now you can compare the robot's believed pose (log and status packets) with its true pose (video), and its ball model with the true ball. A plot of the localisation error over a whole game is a better test of Chapter~\ref{k:loc} than any number of marks on the lab floor.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: film}
+Fixed camera, high, the whole field, $30$ frames per second is enough; note the time of the first \emph{playing}.
+\end{stepbox}
+\begin{stepbox}{Step 2: calibrate}
+Click the four corners (and more points) in one frame; compute and save $H$. Check it by drawing the field lines from the rules onto the frame.
+\end{stepbox}
+\begin{stepbox}{Step 3: detect and track}
+Run the detector on every second frame; map to the field; track; save the tracks as a CSV file (time, track id, team, $x$, $y$).
+\end{stepbox}
+\begin{stepbox}{Step 4: statistics and comparison}
+Compute the statistics above; plot the true and the believed path of one of your robots for one half.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item The drawn field lines lie on the real lines within a few pixels everywhere.
+  \item For one half, you have a table of possession, distance and fallen time per robot, and one plot of localisation error over time.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[Lines do not match at the edges] Lens distortion of the phone camera; undistort the frames first (OpenCV's camera calibration with a chessboard).
+  \item[Tracks swap between robots] Robots close together; use the jersey colour in the matching, and accept some manual correction.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item A fixed camera and a homography turn pixels into field positions; use the robots' feet.
+  \item Tracks give statistics; synchronised with the logs they measure your localisation and perception in real games.
+  \item Analyse every tournament game you can film; the findings go into the next season's plan.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Why are four point pairs the minimum for a homography? Count the unknowns.
+  \item A robot's box goes from pixel $(800,400)$ to $(860,560)$ (top-left, bottom-right). Which pixel do you map to the field for its position?
+  \item The video has $30$ frames per second and you detect every second frame. A robot walks $0.3$\,m/s. How far does it move between two detections? What maximum matching distance would you choose?
+  \item Possession is defined as ``our robot is closest to the ball''. Name a situation where this definition is misleading, and suggest a better one.
+  \item The localisation error of one robot is $0.2$\,m most of the time but jumps to $3$\,m for $10$\,s twice per half. What would you look for in its log at those times?
+\end{enumerate}

@@ -1,0 +1,112 @@
+\bookchapter{Standing and walking}\label{k:walk}
+
+Cognition now produces \texttt{MotionCommand}s, and the motion loop receives them. This chapter makes the robot actually \emph{move}, in two stages. \textbf{Stage A} (milestone one) passes the commands to Booster's built-in walking controller through the SDK: quick to get running, and good enough to walk to a ball. \textbf{Stage B} trains our own walking policy in mjlab, which Chapter~\ref{k:deploy} then deploys in place of the built-in walk. Milestone: one (stage A), two (stage B).
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item Stage A: your SDK cheat sheet (Chapter~\ref{k:sdk}), the loops (Chapter~\ref{k:loops}), robotcontrol (Chapter~\ref{k:rc}), the robot with rope and mat.
+  \item Stage B: a computer with an NVIDIA GPU, booster-mjlab (Chapter~\ref{k:ws}).
+  \item Background: \rtr{Velocity tracking and reward design}, \rtr{Balance and the centre of mass}, \rtr{Deep RL and PPO}.
+\end{itemize}
+\end{needbox}
+
+\section*{Stage A: the SDK output}
+The motion loop's last module, \texttt{SdkWalkOutput}, turns the current \texttt{MotionCommand} into SDK calls. It does three things besides calling \verb!Move!:
+\begin{description}[leftmargin=0.6cm]
+  \item[Mode handling.] It switches the robot to \emph{walking} once (and back to \emph{damping} when the program stops or the safety layer says so), and never calls \verb!ChangeMode! every cycle.
+  \item[Limits and ramps.] Commands are clipped to safe limits and the velocity changes by at most a small amount per step, so a jump from $0$ to $0.5$\,m/s becomes a smooth start.
+  \item[Rate.] It calls \verb!Move! at the motion rate (or at the rate the SDK expects, from your cheat sheet).
+\end{description}
+\begin{verbatim}
+class SdkWalkOutput(Module):
+    requires = (MotionCommand, SafetyState)
+    provides = (OutputState,)
+
+    def __init__(self, client, limits, max_acc=(0.5, 0.5, 1.0), dt=0.02):
+        self.client, self.limits = client, limits     # (vx, vy, vyaw) max
+        self.step = [a * dt for a in max_acc]          # change per cycle
+        self.v = [0.0, 0.0, 0.0]
+        self.mode = None
+
+    def update(self, bb):
+        cmd, safety = bb.get(MotionCommand), bb.get(SafetyState)
+        if not safety.ok:
+            self.set_mode(sdk.RobotMode.kDamping)
+            self.v = [0.0, 0.0, 0.0]
+        else:
+            self.set_mode(sdk.RobotMode.kWalking)
+            target = [cmd.vx, cmd.vy, cmd.vyaw] if cmd.kind == "walk" \
+                     else [0.0, 0.0, 0.0]
+            for i in range(3):
+                t = max(-self.limits[i], min(self.limits[i], target[i]))
+                d = max(-self.step[i], min(self.step[i], t - self.v[i]))
+                self.v[i] += d
+            self.client.Move(*self.v)
+        bb.set(OutputState(mode=self.mode, v=tuple(self.v)))
+
+    def set_mode(self, mode):
+        if mode != self.mode:
+            self.client.ChangeMode(mode)       # check the result! (Ch. 3)
+            self.mode = mode
+\end{verbatim}
+\begin{guessbox}[Kicking with the built-in controller]
+Whether Booster's built-in controller for the K1 offers a kick\guess{} is unknown to the author. If not, milestone one ``kicks'' by walking through the ball: line up behind it and walk forward at full speed for one second. It is not elegant, it is legal, and it scores in an empty goal. Chapter~\ref{k:train} trains a real kick.
+\end{guessbox}
+
+\begin{stepbox}{Step A1: hanging}
+Run the robot code with the real adapters, robot hanging. With robotcontrol, send \emph{walk} with $v_x=0.2$: the legs step in the air. Send nothing: after the time to live, the legs stop. Stop the program: the robot goes to damping.
+\end{stepbox}
+\begin{stepbox}{Step A2: on the floor}
+Rope slack, mat around. Walk forward, sideways, turn, each for $3$\,s, from robotcontrol. Measure the real speed with a tape and a stopwatch and compare with the command. Write the limits that are safe on your floor into \texttt{config/team.toml}.
+\end{stepbox}
+\begin{stepbox}{Step A3: a square from cognition}
+A test behaviour module that walks a $1$\,m square (Problem~\ref{k:sdk}.3, now as a module with a state machine) runs first against the fake, then on the robot.
+\end{stepbox}
+
+\section*{Stage B: your own walking policy}
+\rtr{Velocity tracking and reward design} explains the velocity task of mjlab: the policy observes the IMU, the joints, its last action and a velocity command, and outputs joint position targets; the reward pays for tracking the command and punishes waste and unsafe motion. In booster-mjlab the velocity task exists for the T1; for the K1 you build it from the same parts, exchanging what is robot-specific (Problem~10 of that chapter asked you to design it on paper; now you implement it).
+\begin{stepbox}{Step B1: register a K1 velocity task}
+Copy the T1 velocity configuration, replace the robot entity with the K1, the joint names and default pose with those of \texttt{docs/k1\_joints.txt}, the foot body names, and the action scales. Register it as \texttt{Mjlab-Velocity-Flat-Booster-K1} (your name). The exact file and function names in booster-mjlab may differ\guess.
+\end{stepbox}
+\begin{stepbox}{Step B2: train and play}
+\begin{verbatim}
+uv run train Mjlab-Velocity-Flat-Booster-K1 --env.scene.num-envs 4096
+uv run play  Mjlab-Velocity-Flat-Booster-K1 --checkpoint-file latest
+\end{verbatim}
+Watch the reward curves; compare with what the concepts book says to expect. Play the policy with commands from the keyboard if the play script supports it, or with a fixed command list.
+\end{stepbox}
+\begin{stepbox}{Step B3: export}
+Export the actor network to ONNX (mjlab or RSL-RL have an export step\guess) together with a small JSON file that records: the observation terms in order with their scales, the action scale, the default pose, the joint order, the control rate, and the gains used in simulation. Chapter~\ref{k:deploy} needs all of it. Without that file the network is useless.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item Stage A: the robot walks the square from a cognition module, on the floor, and stops when the program stops.
+  \item Stage B: in the simulator (play mode), the policy walks a square from commands: four sides of $1$\,m, ending within $0.3$\,m of the start, without falling, in $10$ of $10$ tries with random pushes on.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[The robot stumbles when a command starts] Lower the acceleration limits of the ramp.
+  \item[Real speed much lower than the command] Normal to some degree. Do not scale the commands to ``correct'' it; let localisation and closed-loop behaviour deal with it.
+  \item[Training reward stays flat] Usually a wrong joint order or default pose: the robot starts in a pose it cannot hold. Play the task with zero actions first and look at the start pose.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item Milestone one walks with Booster's controller: one output module with mode handling, limits and ramps.
+  \item Our own policy is trained in mjlab from the T1 velocity task adapted to the K1, and exported \emph{with} a description of its observation and action.
+  \item Measure the real speeds; never trust the command to equal the motion.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item The ramp allows $0.5$\,m/s$^2$ at $50$\,Hz. How many cycles does it take from $0$ to $0.4$\,m/s? How far does the robot walk in that time (if it follows the ramp)?
+  \item Why does \texttt{SdkWalkOutput} remember the mode instead of calling \verb!ChangeMode! every cycle?
+  \item The robot walks $0.27$\,m/s when commanded $0.35$\,m/s. A teammate proposes multiplying every command by $0.35/0.27$. Give two reasons against it.
+  \item Write the state machine for the square-walking module as a list of (state, command, condition for the next state) with odometry as feedback.
+  \item In Step~B3, what goes wrong if the exported JSON is missing the \emph{order} of the observation terms?
+\end{enumerate}

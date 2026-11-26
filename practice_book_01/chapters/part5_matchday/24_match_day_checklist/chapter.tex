@@ -1,0 +1,88 @@
+\bookchapter{The match-day checklist}\label{k:match}
+
+At a tournament, time is short, the hall is loud, and the person who knows how the Wi-Fi configuration works is at lunch. Teams that do well have a \textbf{printed checklist} that anyone in the team can follow, and they have \emph{practised} it. This chapter writes that checklist from everything the book has built, and tests it in a mock game. The rules side (inspection, set-up times, forfeits) is in \rtr{Preparing for a tournament}; this is the practical side for the K1. Milestone: two.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item Everything from the previous chapters, two complete jersey sets, all batteries and chargers, two deploy sticks.
+  \item Background: \rtr{Preparing for a tournament}, \rtr{The Humanoid Soccer League}.
+\end{itemize}
+\end{needbox}
+
+\section*{The checklist}
+\textbf{Before travelling}
+\begin{itemize}[nosep]
+  \item[$\square$] Code: the tag for the tournament is created, CI green, the replay tests pass. A deploy stick with this tag and one with the previous good tag, both labelled.
+  \item[$\square$] Configuration: one file per robot, the team file with the team number given by the organisers; both jersey colours.
+  \item[$\square$] Hardware: batteries charged, chargers, tether (Chapter~\ref{k:power}) for the team area, the original back covers (Chapter~\ref{k:cover}), spare screws, tools, mat, rope or gantry.
+  \item[$\square$] Laptop: robotcontrol works offline, the GameController is installed, the logs folder is empty enough.
+\end{itemize}
+\textbf{At arrival and inspection}
+\begin{itemize}[nosep]
+  \item[$\square$] Robots inspected as required (emergency stop shown working; questions about modifications answered).
+  \item[$\square$] Field Wi-Fi: each robot's address set and tested; robotcontrol reaches every robot; the GameController's packets arrive (Chapter~\ref{k:gc}).
+  \item[$\square$] Camera: images on the real field and light; detector checked; camera calibration checked with a ball at known distances (Chapter~\ref{k:percep}).
+  \item[$\square$] Whistle recordings in the hall, if your behaviour uses the whistle.
+\end{itemize}
+\textbf{Before each game}
+\begin{itemize}[nosep]
+  \item[$\square$] Jerseys in the colour the GameController shows for our team; numbers match the robot files.
+  \item[$\square$] Batteries: full (rule from Chapter~\ref{k:health}); health bar green for every robot.
+  \item[$\square$] Code version on every robot is the tournament tag (robotcontrol shows it).
+  \item[$\square$] Robots in \emph{initial}, standing, at the side line; logging on.
+\end{itemize}
+\textbf{During the game} (one person per job: GameController watcher, robotcontrol watcher, robot handler)
+\begin{itemize}[nosep]
+  \item[$\square$] Penalised robots: placed as the referee says; localisation resets (Chapter~\ref{k:loc}).
+  \item[$\square$] Half time: battery rule, swap hot robots, copy no code unless a tested fix exists.
+\end{itemize}
+\textbf{After the game}
+\begin{itemize}[nosep]
+  \item[$\square$] Copy logs and the GameController log; write three lines: what went well, what went wrong, which log and cycle show it.
+  \item[$\square$] Charge everything.
+\end{itemize}
+
+\section*{Quick fixes}
+\begin{description}[leftmargin=0.6cm]
+  \item[A robot does not start] \verb!journalctl -u k1code -n 50!; most often a configuration error. Fix the file, not the code.
+  \item[A broken robot must be replaced] Copy its robot file to the substitute with the same player number; swap the jersey; check the address.
+  \item[A fix in the code] Only if it is small, tested with the fake robot and a replay test, and committed with a tag. Otherwise use the previous good stick.
+  \item[The Wi-Fi is lost] The robots continue with the last game state (Chapter~\ref{k:gc}); robotcontrol is not needed to play.
+\end{description}
+
+\section*{Steps}
+\begin{stepbox}{Step 1: write your version}
+Copy the list into \texttt{docs/match\_day.md}, adapt it to your robots and the rules of the year, and print it.
+\end{stepbox}
+\begin{stepbox}{Step 2: a mock game}
+With the GameController and two or more robots (or one robot and fakes), play a mock game of $2\times10$ minutes \emph{following only the printed list}, with a team member who did not write the list in charge. Break something on purpose (a wrong team number, an empty battery) and fix it with the list.
+\end{stepbox}
+\begin{stepbox}{Step 3: improve the list}
+Everything that was missing or unclear goes into the list. Repeat the mock game once.
+\end{stepbox}
+
+\begin{checkbox}
+The checklist is printed, and a mock game was played from it twice, the second time without anyone needing to ask the author of the list.
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[The list is too long to follow] Split it into cards: one per phase, one per role. Every line must be something you can tick.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item A printed list per phase; practised in a mock game by someone who did not write it.
+  \item Two deploy sticks (tournament tag and previous good tag); configuration problems are fixed in the configuration.
+  \item After every game: logs, three lines of notes, charge.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Rewrite the line ``check the robots'' so that someone can tick it. Give three better lines.
+  \item During half time someone wants to deploy a ``quick fix'' that was written in the stands. List the questions you ask before allowing it.
+  \item The organisers give your team the number $27$; your file says $12$. What fails, and what does the robot do in the game?
+  \item Plan the roles for a team of four people during a game. Who watches what, and who may touch a robot?
+\end{enumerate}

@@ -1,0 +1,16 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Pinhole model: pixels $=f\cdot H/d$. At $3$\,m: $600\cdot0.12/3=24$ pixels; at $6$\,m: $12$ pixels. For $15$ pixels at $6$\,m: $H=15\cdot6/600=0.15$\,m, so $15$\,cm.
+  \item
+\begin{verbatim}
+def colour_ok(gc_colour, robot_colour):
+    return gc_colour == robot_colour
+
+def which_set(our_sets, gc_our_colour):
+    """our_sets: e.g. {"blue": "set A", "red": "set B"}."""
+    if gc_our_colour not in our_sets:
+        raise ValueError(f"we have no {gc_our_colour} jersey")
+    return our_sets[gc_our_colour]
+\end{verbatim}
+  \item The field lines are white, so line detection would find lines on robots; and the ball is mostly white, so the ball detector gets false positives. Goal posts are white too.
+  \item The temperature of the computer and of the motors near the opening, over a $30$-minute session, with and without the jersey (the health monitor of Chapter~\ref{k:health} logs them).
+\end{enumerate}

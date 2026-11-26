@@ -1,0 +1,7 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Per cycle $0.5\cdot0.02=0.01$\,m/s, so $40$ cycles ($0.8$\,s). Distance: average speed $0.2$\,m/s for $0.8$\,s, $0.16$\,m.
+  \item A mode change takes time and may make the robot move into a standing pose again; calling it each cycle could restart the transition all the time, or flood Booster's services with requests. A mode is a state, not a command.
+  \item The ratio is not constant: it depends on the speed, the direction, the floor and the battery. And the behaviour should not need exact speeds: it walks towards a target and corrects with feedback (localisation, ball position), which works whatever the true speed is. Scaling also hides a problem you should know about.
+  \item (forward, walk $v_x=0.25$, odometry distance since entering $\ge1$\,m) $\rightarrow$ (turn, walk $v_{\text{yaw}}=0.5$, odometry angle since entering $\ge\pi/2$) $\rightarrow$ forward, and after the fourth turn $\rightarrow$ (done, stand, never). Use the odometry difference since entering the state, not time.
+  \item The deployed code would build the observation in some other order; the network would read, for example, joint velocities where it expects joint positions. It would output nonsense, the robot would fall, and nothing would show an error. The order is part of the policy.
+\end{enumerate}

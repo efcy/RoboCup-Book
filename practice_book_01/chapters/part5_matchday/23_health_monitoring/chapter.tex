@@ -1,0 +1,105 @@
+\bookchapter{Health monitoring}\label{k:health}
+
+A robot rarely fails all at once. The battery sags, a knee motor heats up over twenty minutes of walking, the cognition loop gets slower when the hall's Wi-Fi is busy, the disk fills with logs. A \textbf{health monitor} watches all of these, shows them in robotcontrol, writes them into the log, and lets the behaviour react before the robot falls over or shuts down in the middle of a game. Milestone: two.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The loops with timing statistics (Chapter~\ref{k:loops}), the joint state with temperatures (Chapter~\ref{k:ros}), robotcontrol (Chapter~\ref{k:rc}).
+  \item The battery state from the robot: voltage or charge, from a ROS~2 topic or the SDK\guess.
+  \item Background: \rtr{Power and Safety}, \rtr{System Load and Performance}, \rtr{Processes, systemd and Logs}.
+\end{itemize}
+\end{needbox}
+
+\section*{What to watch}
+\begin{center}
+\small
+\begin{tabular}{p{3.9cm}p{3.6cm}p{5.6cm}}
+\hline
+quantity & source & why\\
+\hline
+battery charge / voltage & robot state\guess & time left in this half; low voltage makes motors weak\\
+motor temperatures & joint state & hot motors lose torque and switch off\\
+motion loop lateness, overruns & Chapter~\ref{k:loops} & a late policy stumbles\\
+cognition loop rate & Chapter~\ref{k:loops} & slow perception, late decisions\\
+CPU temperature and load & \texttt{/sys/class/thermal}, \texttt{os.getloadavg} & throttling slows everything\\
+free disk space & \texttt{shutil.disk\_usage} & logs stop, programs fail\\
+GameController and team messages & Chapters~\ref{k:gc}, \ref{k:beh} & lost Wi-Fi\\
+falls and get-ups & motion selector & wear, and a sign of a problem\\
+\hline
+\end{tabular}
+\end{center}
+
+\section*{Thresholds with hysteresis}
+Each quantity has a \emph{warn} and a \emph{critical} level. A value that hovers around a threshold must not make the warning flicker, so a level is only left when the value has dropped a margin below it:
+\begin{verbatim}
+class Threshold:
+    """warn/critical with hysteresis: a level is left only `margin` below."""
+
+    def __init__(self, name, warn, critical, margin):
+        self.name, self.warn, self.crit = name, warn, critical
+        self.margin = margin
+        self.level = "ok"
+
+    def check(self, value):
+        if value >= self.crit:
+            self.level = "critical"
+        elif value >= self.warn:
+            if self.level != "critical" or value < self.crit - self.margin:
+                self.level = "warn"
+        elif value < self.warn - self.margin:
+            self.level = "ok"
+        elif self.level == "critical":
+            self.level = "warn"
+        return self.level
+\end{verbatim}
+For a motor temperature with warn $65^\circ$C, critical $75^\circ$C and margin $3^\circ$C, I fed the sequence $60,66,64,63,61,76,74,71,66,61$ and got \emph{ok, warn, warn, warn, ok, critical, critical, warn, warn, ok}: $64$ and $63$ stay \emph{warn} (above $62$), $74$ stays \emph{critical} (above $72$). The numbers are examples; take the K1's limits from Booster's documentation\guess{} and keep a safety distance.
+
+A \texttt{HealthMonitor} module runs once per second in cognition, checks all quantities, and provides one \texttt{HealthState}: the worst level and a list of messages (``\texttt{left\_knee=76.0 critical}''). robotcontrol shows it as a coloured bar.
+
+\section*{Reacting}
+The monitor only reports; others decide. The motion safety layer (Chapter~\ref{k:deploy}) already acts on \emph{critical} motor temperature by itself. The behaviour can act on \emph{warn}: walk slower, avoid get-up attempts in quick succession, and, if the team allows, tell the coach (robotcontrol) that this robot should be substituted. A battery \emph{warn} before the second half means: swap the battery now.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: collect}
+A \texttt{SystemInfo} input (CPU temperature, load, disk) read once per second, and the battery value from the robot. Find the battery source in your topic list (Chapter~\ref{k:box}) or the SDK cheat sheet.
+\end{stepbox}
+\begin{stepbox}{Step 2: monitor and show}
+\texttt{HealthMonitor} with the thresholds in \texttt{config/team.toml}; a health bar in robotcontrol; health in every log.
+\end{stepbox}
+\begin{stepbox}{Step 3: a battery curve}
+Charge fully, then walk the robot (or let it stand and step in place) until the battery warning, logging the battery value. Plot charge against time. Now you know how long a battery lasts \emph{for your code}, and at which value to swap before a half.
+\end{stepbox}
+\begin{stepbox}{Step 4: a heat test}
+Twenty minutes of walking and get-ups; plot the motor temperatures. Which joint gets hottest? Does it reach \emph{warn}?
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item robotcontrol shows the health bar for every connected robot; a hot-air blower on one motor (carefully!) or a lowered threshold produces \emph{warn} and then \emph{critical}.
+  \item \texttt{docs/hardware.md} contains the battery curve and the heat test.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[Battery percentage jumps] The value is computed from voltage, which drops under load; average it over $10$\,s, or compare only values measured while standing.
+  \item[CPU temperature file not found] The thermal zone has another number on this board: list \verb!/sys/class/thermal/thermal_zone*/type!.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item Watch battery, temperatures, loop timing, CPU, disk and communication; show and log them.
+  \item Thresholds with hysteresis; the monitor reports, the safety layer and the behaviour act.
+  \item Measure your own battery and heat curves; they set the rules for match day.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item With warn $65$, critical $75$, margin $3$: what are the levels for $70,76,73,72,64,62$?
+  \item Write \verb!combine(results)! that takes \verb!(name, value, level)! triples and returns the worst level and the list of messages of all non-\emph{ok} entries.
+  \item The battery curve shows $100\%$ at the start and the warning ($20\%$) after $38$ minutes of walking. A half lasts $10$ minutes plus breaks. Write a rule for when to swap.
+  \item Why should the health monitor run in cognition and not in motion?
+  \item The disk is $32$\,GB with $12$\,GB free. With $225$\,MB of logs per robot per game (Chapter~\ref{k:log}) and $5$ games per day, after how many days is the disk full? What should the program do when free space drops below $2$\,GB?
+\end{enumerate}

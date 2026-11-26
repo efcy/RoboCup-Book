@@ -1,0 +1,24 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item With $0$ failures in $n=20$ runs, the failure rate is below about $3/20=15\%$ with $95\%$ confidence. For less than $1\%$: $3/n<0.01$, so $n>300$ runs without failure.
+  \item First try ends at $6$\,s; if it fails, the second starts after $8$\,s and ends at $6+8+6=20$\,s. So two tries fit: $P=0.9+0.1\cdot0.9=0.99$.
+  \item
+\begin{verbatim}
+def next_state(state, cmd, upright, fallen, done, t_in_state):
+    if fallen and state != "getup":
+        return "fallen"
+    if state == "walk" and cmd == "kick":
+        return "kick"
+    if state == "kick" and done:
+        return "walk"
+    if state == "fallen" and t_in_state > 1.0:   # lying still
+        return "getup"
+    if state == "getup":
+        if upright and done:
+            return "walk"
+        if t_in_state > 8.0:                      # failed try
+            return "fallen"
+    return state
+\end{verbatim}
+  \item The kick may end earlier or later than planned (the ball, a push, a slow motor), and switching to walking in the middle of the swing makes the robot fall. Combine the timer with the robot's state: foot back on the ground (contact or joint angles), trunk upright, velocities small.
+  \item Alternate A and B (ABAB\dots, not $10\times$A then $10\times$B, because the battery and motor temperatures change over time), same ball position marked on the floor, the same number of kicks (for example $20$ each), measure distance and direction of each, and count falls; compare the means \emph{and} the spread.
+\end{enumerate}

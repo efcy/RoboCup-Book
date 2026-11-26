@@ -1,0 +1,104 @@
+\bookchapter{Behaviour: game states, roles and set plays}\label{k:beh}
+
+This is where everything comes together. The behaviour reads the game state, the ball and the robot's pose from the blackboard and decides what the robot does now: stand, walk somewhere, kick. The first version is a single striker that walks to the ball and kicks it, and that obeys the GameController: \textbf{milestone one}. The second version adds roles, team communication, the goalkeeper and set plays: the way to \textbf{milestone two}.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item GameController input (Chapter~\ref{k:gc}), the ball model (Chapter~\ref{k:percep}; or the fake ball), the robot pose (Chapter~\ref{k:loc}; for milestone one the robot may simply assume it faces the opponent goal), walking and kicking (Chapters~\ref{k:walk} and~\ref{k:train}).
+  \item Background: \rtr{Game flow as a state machine}, \rtr{Team play under the rules}, \rtr{The Humanoid Soccer League}.
+\end{itemize}
+\end{needbox}
+
+\section*{Version 1: the striker}
+\begin{verbatim}
+import math
+
+def walk_to(x, y, now, v=0.3, turn_gain=1.5):
+    """Walk towards a point given in the robot frame."""
+    angle = math.atan2(y, x)
+    if abs(angle) > 0.5:                        # face it first
+        return MotionCommand("walk", vyaw=turn_gain * angle, t=now)
+    return MotionCommand("walk", vx=v * min(1.0, math.hypot(x, y)),
+                         vyaw=turn_gain * angle, t=now)
+
+def striker(game, ball, me, now, kick_dist=0.25):
+    """game: GameState, ball: BallModel or None, me: our player index."""
+    if game.state in ("initial", "set", "finished"):
+        return MotionCommand("stand", t=now)
+    if game.teams[0]["penalty"][me] != 0:
+        return MotionCommand("stand", t=now)
+    if game.state == "ready":
+        return MotionCommand("stand", t=now)  # walk to kick-off pose: below
+    if ball is None or ball.age > 3.0:
+        return MotionCommand("walk", vyaw=0.6, t=now)   # turn and search
+    if math.hypot(ball.x, ball.y) < kick_dist and abs(ball.y) < 0.08:
+        return MotionCommand("kick", t=now)
+    return walk_to(ball.x - 0.15, ball.y, now)   # stop just behind it
+\end{verbatim}
+(\texttt{teams[0]} stands for ``our team'': use the index from Chapter~\ref{k:gc}.) I tested the function with hand-made inputs while \emph{playing}: no ball gives \emph{turn and search} ($v_{\text{yaw}}=0.6$); a ball at $(2,1.5)$ gives a turn on the spot ($v_{\text{yaw}}=1.02$; the point just behind the ball is $39^\circ$ to the left); a ball at $(2,0.2)$ gives forward $0.3$\,m/s with a small correction ($0.16$\,rad/s); a ball at $(0.2,0.03)$ gives \emph{kick}; a ball last seen $5$\,s ago gives \emph{search}. That covers the decisions, not the soccer: try it in the fake, then on the field.
+
+The striker wraps this function in a module: it requires \texttt{GameState}, \texttt{OurTeam}, \texttt{BallModel}, \texttt{FrameInfo} and provides \texttt{MotionCommand}. Note \texttt{now} comes from \texttt{FrameInfo}, not from the clock (Chapter~\ref{k:log}).
+
+\section*{The state machine around it}
+The game states of the GameController decide \emph{whether} the robot may play; the behaviour adds its own states for \emph{how}:
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[initial] Stand still (the rules forbid moving).
+  \item[ready] Walk to the kick-off position of this robot (from \texttt{config/team.toml}, different for the kicking and the defending team) before the time of \emph{ready} runs out.
+  \item[set] Stand still; the referee may move the robot.
+  \item[playing] Play: the role decides what to do. After a kick-off by the other team, wait until the ball has moved or the time from the rules has passed\guess.
+  \item[penalised] Stand still; when the penalty ends, the robot is placed at the side line: reset the localisation to those poses (Chapter~\ref{k:loc}).
+  \item[finished] Stand still, then sit or go to damping safely.
+\end{description}
+And two rules from \rtr{Team play under the rules} that the behaviour must respect: no \emph{ball holding}, and no \emph{local game stuck}: a striker that has stood next to the ball without kicking for about $6$\,s must kick it anyway, towards the opponent's goal.
+
+\section*{Version 2: roles and team communication}
+With more than one robot, robots must agree who goes for the ball. The rule of the concepts book: the robot nearest to the ball is the \textbf{striker}, with \textbf{hysteresis}, so the role does not flip with every noisy measurement; the others are \textbf{supporters} (stand at a useful place near the ball) or \textbf{defenders}, and one robot is the \textbf{goalkeeper}. For that each robot must know the others' positions and ball distances: a \textbf{team message}, sent by UDP to the teammates a few times per second. The GameController counts the team's messages against a \emph{message budget} (\rtr{The GameController protocol}); the behaviour must read the remaining budget and send less when it runs low\guess. Send the team messages with the same protobuf tools as the debug stream, with a separate, small message.
+
+\section*{Set plays and penalty kicks}
+Free kicks, corner kicks, goal kicks and throw-ins are announced in the GameController's \texttt{set\_play} field with the kicking team. The defending team's robots must keep a distance from the ball; the kicking team's striker may take the kick. The penalty shoot-out has its own positions and roles (striker and goalkeeper). Each set play becomes a small behaviour; write one test per set play with a recorded GameController packet (Chapter~\ref{k:gc}) and the fake robot.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: striker against the fake}
+Fake robot, fake ball, real GameController on the laptop. Click through a game: the robot stands in \emph{initial} and \emph{set}, walks to the ball and kicks in \emph{playing}, stands when penalised.
+\end{stepbox}
+\begin{stepbox}{Step 2: milestone one on the field}
+The same on the real robot, with the real ball: in \emph{playing}, the robot finds the ball, walks to it and kicks it (or walks through it, Chapter~\ref{k:walk}). Record the logs; they are your first replay tests.
+\end{stepbox}
+\begin{stepbox}{Step 3: ready and the kick-off positions}
+Walk to the configured position in \emph{ready}, using the localisation.
+\end{stepbox}
+\begin{stepbox}{Step 4: roles}
+Team messages, role assignment with hysteresis, goalkeeper. Test with three fake robots on one laptop (three processes with different robot configurations).
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item \textbf{Milestone one:} with the GameController in \emph{playing}, the robot scores into an empty goal from the centre circle within $2$ minutes, in $3$ of $5$ tries, and obeys \emph{set}, penalties and \emph{finished} every time.
+  \item Milestone two (later): three robots play a $10$-minute test game against a fake opponent without a rule violation in the GameController's log.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[The robot circles around the ball] The turn gain is too high or the ball's position lags; lower the gain near the ball, and check the image-to-joint time stamps.
+  \item[Two robots are both striker] They do not hear each other (check the team messages in robotcontrol), or they use different data or rules for the decision.
+  \item[It moves in \emph{set}] Our team index or penalty is read from the wrong team block. Log the parsed \texttt{GameState}.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item Behaviour = game-state machine (from the GameController) + role behaviour; it produces one \texttt{MotionCommand} per cycle.
+  \item Milestone one is a striker that obeys the GameController and scores into an empty goal.
+  \item Roles need team messages and hysteresis; set plays and penalties each get their own small behaviour and test.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item For a ball at $(1.0,-0.6)$ in the robot frame, what does \verb!walk_to! return (with the defaults)? And for $(1.0,-0.3)$?
+  \item The striker stops $0.15$\,m behind the ball and kicks when the ball is closer than $0.25$\,m and within $\pm8$\,cm sideways. Draw the region in which it kicks. What happens if the walk overshoots by $0.1$\,m?
+  \item Add the ``local game stuck'' timer: if the robot has been within $0.5$\,m of the ball for $6$\,s without a kick, return \emph{kick}. Which state must the module keep, and which representation gives it the time?
+  \item With hysteresis $h=0.3$\,m, robot $1$ (the striker) is $1.4$\,m from the ball and robot $2$ is $1.2$\,m. Who is striker? And at $1.0$\,m?
+  \item The team has a budget of $1200$ messages for a game of $2\times10$ minutes plus overtime reserve. How many messages per second can each of $5$ robots send if $20\%$ are kept in reserve?
+\end{enumerate}

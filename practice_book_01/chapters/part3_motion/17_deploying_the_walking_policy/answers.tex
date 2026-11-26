@@ -1,0 +1,7 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $3+3+3+22+22+22=75$; with the height scan $75+187=262$.
+  \item Indices $0$--$2$ gyro, $3$--$5$ gravity, $6$--$8$ command, $9$--$30$ joint positions. Index $9$ is the first joint position: the joint order is wrong, or the default pose was not subtracted (or subtracted in another order).
+  \item $0.05\cdot50=2.5$\,rad/s, about $143^\circ$ per second. That is fine for walking but too slow for a fast kick, whose swing joints may need several times that. The kick needs its own (larger) limits, chosen consciously.
+  \item A robot that holds its pose falls like a stiff plank and lands on one point with all its energy; the motors fight the impact, which stresses the gears. A limp robot folds, spreads the impact, and the motors are not driven against the floor. (Some teams instead move into a protective pose first; that is a motion to train, not a default.)
+  \item $15$\,ms is three quarters of a $20$\,ms step: the policy reacts to a state that is older than it learned to expect, which acts like a slower, less stable feedback loop. Train with a random delay (for example $0$ to $20$\,ms) in the simulation, so the policy learns to cope with it.
+\end{enumerate}

@@ -1,0 +1,114 @@
+\bookchapter{Unboxing, safety and first connection}\label{k:box}
+
+This is the first chapter with the real robot. At the end of it you will have read the joint angles and the IMU of the K1 from your laptop, and you will know how to switch the robot on, hold it, and switch it off safely. Milestone: both.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The K1, its charger, its remote controller and the documents in the box.
+  \item A \textbf{gantry} or a hook with a rope and harness to hang the robot (a strong camera tripod is \emph{not} enough), and a soft floor mat.
+  \item The laptop of Chapter~\ref{k:ws}, an Ethernet cable (and a USB-Ethernet adapter if the laptop has no port).
+  \item Background: \rtr{Remote Work with SSH}, \rtr{Networking from the Command Line}, \rtr{Power and Safety}.
+\end{itemize}
+\end{needbox}
+
+\begin{safetybox}[Safety rules for every session]
+\begin{enumerate}[nosep]
+  \item \textbf{Two people}, always: one operates, one stands next to the robot with a hand on the harness or the emergency stop.
+  \item The first run of \emph{any} new program happens with the robot \textbf{hanging}, feet a few centimetres above the floor.
+  \item Know the \textbf{emergency stop} before you power on: which button on the remote or on the robot puts the motors into damping (limp)\guess, and test it at the start of each session.
+  \item Hands away from knees, hips and elbows while the motors are powered: they pinch.
+  \item A robot that falls is \emph{not} caught with the hands at the last moment; let it fall on the mat. A falling $20$\,kg robot can break a wrist.
+  \item Never charge an unattended battery, and never charge a battery that is swollen, hot or was dropped.
+\end{enumerate}
+\end{safetybox}
+
+\begin{guessbox}
+The K1 facts in this chapter come from public material and from the concepts book, not from a K1 on the desk: about $0.95$\,m tall and $19.5$\,kg\guess, $22$ joints (two in the head, four in each arm, six in each leg), an IMU in the trunk, a camera in the head, an NVIDIA Jetson computer inside\guess, a battery in the back\guess. The user name \texttt{robot} and host name \texttt{k1-brain} are the examples of the concepts book; use what your robot's manual says.
+\end{guessbox}
+
+\section*{Steps}
+\begin{stepbox}{Step 1: check the box}
+Compare the contents with the packing list. Take photos of the robot from four sides before you change anything: you will want them for the inspection at the tournament and for the jersey design (Chapter~\ref{k:jersey}). Write the serial number into the team's robot list.
+\end{stepbox}
+
+\begin{stepbox}{Step 2: charge and hang}
+Charge the battery with the original charger until the charger says it is full. Meanwhile put the harness on the robot (around the trunk, not the neck) and hang it so that the feet are about $3$\,cm above the mat.
+\end{stepbox}
+
+\begin{stepbox}{Step 3: power on and the modes}
+Switch on as described in the manual. The K1 has \emph{modes}\guess: in \textbf{damping} the motors only resist motion softly (the robot is limp, the safe state); in \textbf{prepare} it moves into a standing pose and holds it; in \textbf{walking} the built-in controller balances and follows velocity commands; in \textbf{custom} your own program commands the joints. Use the remote to go to \emph{prepare} while the robot is hanging, then back to \emph{damping}. Then test the emergency stop.
+\end{stepbox}
+
+\begin{stepbox}{Step 4: network}
+Connect the laptop with the cable. Find the address of the robot in the manual\guess, then give your laptop an address in the same network, for example
+\begin{verbatim}
+sudo ip addr add 192.168.10.50/24 dev enx001122334455
+ping -c 3 192.168.10.102          # the robot's address (example)
+\end{verbatim}
+(\texttt{enx\dots} is the name of the USB adapter; \verb!ip -br link! lists them.) For permanent settings use the network manager of Ubuntu. Later the robots will be on the field Wi-Fi with fixed addresses from the team configuration (Chapter~\ref{k:repo}).
+\end{stepbox}
+
+\begin{stepbox}{Step 5: SSH with a short name}
+Add to \verb!~/.ssh/config! on the laptop:
+\begin{verbatim}
+Host k1
+    HostName 192.168.10.102
+    User robot
+\end{verbatim}
+Then \verb!ssh-copy-id k1! once, and from now on \verb!ssh k1! logs in without a password.
+\end{stepbox}
+
+\begin{stepbox}{Step 6: what is running on the robot}
+On the robot:
+\begin{verbatim}
+uname -a; cat /etc/os-release | head -2
+nproc; free -h; df -h /
+systemctl list-units --type=service --state=running | grep -i booster
+ros2 topic list
+\end{verbatim}
+Write down: the Ubuntu version, the ROS~2 distribution (\verb!echo $ROS_DISTRO!), the services of Booster that are running, and the list of topics. These notes become the team's page ``what is on our robot'', and Chapter~\ref{k:ros} uses the topic list.
+\end{stepbox}
+
+\begin{stepbox}{Step 7: read joints and IMU}
+Pick the topic that carries the low-level state (its name contains \texttt{low\_state} or similar\guess) and print one message:
+\begin{verbatim}
+ros2 topic info -v /low_state     # message type, publishers
+ros2 topic hz   /low_state        # how often it arrives
+ros2 topic echo --once /low_state
+\end{verbatim}
+Move one arm of the hanging, damped robot slowly by hand and print again.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item The emergency stop puts the robot into damping, every time you test it.
+  \item \verb!ssh k1! works without a password.
+  \item In the printed message you find $22$ joint positions in radians; the one of the arm you moved has changed by roughly the angle you moved it. The IMU part shows an acceleration of about $9.8$\,m/s$^2$ pointing along the vertical axis of the trunk, and angular velocities close to zero.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[\texttt{ping} fails] Wrong interface, or both computers are not in the same subnet: compare the first three numbers of the addresses for a \texttt{/24} network. \verb!ip -br addr! shows your addresses.
+  \item[\texttt{ros2: command not found} over SSH] The ROS environment is loaded in the robot's \verb!.bashrc! only for interactive shells, or not at all; run \verb!source /opt/ros/$ROS_DISTRO/setup.bash! (the distribution name is in \verb!/opt/ros!).
+  \item[\texttt{ros2 topic list} is empty] The DDS domain differs (\verb!echo $ROS_DOMAIN_ID!), or the Booster service that publishes the state is not running.
+  \item[The robot does not react to the remote] It may be paired with another remote, or in a mode that ignores it; follow the manual.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item Two people, a hanging robot, and a tested emergency stop, every session.
+  \item Damping is the safe state. Know the modes of the robot before you program it.
+  \item Write down what is on the robot (OS, ROS distribution, services, topics). The rest of the book relies on that list.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item The trunk of a standing robot is about $0.5$\,m above the floor. Estimate the speed of the trunk when the robot falls flat, if it falls freely from that height. Why is ``catching'' it a bad idea?
+  \item The laptop has the address \texttt{192.168.10.50/24}, the robot \texttt{192.168.1.102/24}. Will \verb!ping! work? Explain with the subnet mask.
+  \item A battery is labelled $48$\,V$\,/\,5$\,Ah (example numbers). How much energy does it store in watt-hours? The robot uses on average $200$\,W while walking. How long does it walk?
+  \item The IMU of a hanging robot reports the acceleration $(0.0,\,0.0,\,9.8)$\,m/s$^2$. The robot is then tilted forward by $30^\circ$. What does the IMU report (approximately), if $x$ points forward and $z$ up in the trunk?
+  \item \verb!ros2 topic hz! reports $500$\,Hz for the low-level state. How many messages arrive during one cognition cycle at $20$\,Hz? What does this mean for a program that only reads ``the newest'' message?
+\end{enumerate}

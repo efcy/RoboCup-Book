@@ -1,0 +1,7 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item $H$ has $9$ entries but is only defined up to a scale factor, so $8$ unknowns. Each point pair gives $2$ equations ($u$ and $v$). Four pairs give $8$ equations (and no three of the points may lie on a line).
+  \item The bottom centre: $((800+860)/2,\,560)=(830,560)$.
+  \item $15$ detections per second: $0.3/15=0.02$\,m between detections. Robots and noise considered, a maximum matching distance of about $0.3$\,m (more than the motion plus the position noise of the detector, less than the distance between two robots that stand close) is a reasonable start; the ball moves much faster when kicked and needs a larger one.
+  \item When our robot is closest but lies fallen, or stands behind the ball facing the wrong way, or the ball is rolling fast towards the opponent's goal after their kick. Better: closest robot \emph{that is upright and moving towards the ball}, or ``the team that last touched the ball'', measured from the ball's changes of direction.
+  \item Whether those moments follow a penalty (reset to the wrong side line), a fall (odometry jump, get-up), a long time without seeing goal posts, or a goal seen as the wrong goal (the symmetry problem of Chapter~\ref{k:loc}): look at the particle spread, the posts seen, the game state and the motion state in those cycles.
+\end{enumerate}

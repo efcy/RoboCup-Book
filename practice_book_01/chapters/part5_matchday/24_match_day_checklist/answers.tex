@@ -1,0 +1,6 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item For example: ``robotcontrol shows every robot's health bar green''; ``every robot reports the tournament tag''; ``every robot reports the game state \emph{initial} from the GameController''.
+  \item Is it tested with the fake robot and a replay of a log from today? Is it committed and tagged? What is the risk if it is wrong, and do we have the previous stick ready? Does it fix a problem that actually cost us in the first half? If any answer is no, play the second half with the old code.
+  \item The robot never finds its team in the GameController's packets (Chapter~\ref{k:gc}, ``our team is never found''); depending on the code it stays in \emph{initial} for ever or uses no penalties; its status packets have the wrong team number, so the GameController does not show it as connected. The robot does not play, or plays without obeying the referee. The checklist's GameController line catches it.
+  \item One GameController watcher (calls out state changes and penalties), one robotcontrol watcher (health, localisation, ball), one robot handler (the only one who touches robots, as the referee allows), and one coach/note taker (writes the cycle numbers of interesting moments, handles batteries). Only the handler touches robots during the game.
+\end{enumerate}

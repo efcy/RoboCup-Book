@@ -1,0 +1,140 @@
+\bookchapter{From simulation to the real robot}\label{k:deploy}
+
+A policy that walks beautifully in mjlab falls over on the real robot more often than not, on its first try. Most of the time the reason is boring: the deployed program feeds the network a slightly different observation than the simulator did, or interprets its output differently. This chapter deploys the policy of Chapter~\ref{k:walk} with three defences: a \textbf{test} that compares the deployed observation with one recorded in simulation, a \textbf{safety layer} that limits what the policy can do, and a \textbf{test procedure} that goes from hanging to the floor step by step. Milestone: two.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The exported policy and its JSON description (Chapter~\ref{k:walk}, Step~B3), ONNX Runtime on the robot, the MuJoCo fake (Chapter~\ref{k:fake}, level~2).
+  \item Your SDK cheat sheet: the low-level command (custom mode), its fields and the rate it expects\guess.
+  \item Background: \rtr{Simulation and sim-to-real}, \rtr{Running Models on the Robot}, \rtr{PID control}, \rtr{Modern Robot Actuators}.
+\end{itemize}
+\end{needbox}
+
+\section*{The observation must match, exactly}
+In training, mjlab built the actor's observation from terms in a fixed order, each with a scale and possibly a clip. The deployed program must build \emph{the same vector}. A typical velocity-task actor observation for a $22$-joint robot, as an example of the structure (take the real one from your JSON file):
+\begin{verbatim}
+import numpy as np
+N = 22
+
+def build_observation(gyro, gravity, command, q, dq, last_action,
+                      q_default):
+    """Must match the order and scales of the training configuration."""
+    return np.concatenate([
+        gyro,                      # 3  angular velocity of the trunk
+        gravity,                   # 3  gravity in the trunk frame
+        command,                   # 3  vx, vy, vyaw
+        q - q_default,             # 22 joint positions, relative
+        dq,                        # 22 joint velocities
+        last_action,               # 22 the previous network output
+    ]).astype(np.float32)          # 75 numbers
+\end{verbatim}
+And the action goes back the same way it was defined in training: \texttt{target = q\_default + scale * action}, sent as a joint position target to motors with the \emph{same} stiffness and damping (PD gains) as in the simulator.
+
+Things that commonly go wrong: joint order (model vs.\ SDK vs.\ policy), a missing or extra scale factor, degrees vs.\ radians, the sign of the gravity vector, the \emph{last action} stored after clipping in one place and before in the other, a different control rate, different PD gains, and observation noise or delay that the simulation never had.
+
+\section*{The observation test}
+In the simulator (play mode), record for $200$ steps the raw state (joint positions and velocities in the model's order, IMU values, command) \emph{and} the observation vector that mjlab gave the policy. Save both as a NumPy file. Then a unit test runs your \verb!build_observation! on the recorded raw state and compares:
+\begin{verbatim}
+def test_observation_matches_simulation():
+    rec = np.load("tests/data/sim_obs.npz")
+    for k in range(len(rec["obs"])):
+        mine = build_observation(rec["gyro"][k], rec["gravity"][k],
+                                 rec["command"][k], rec["q"][k],
+                                 rec["dq"][k], rec["last_action"][k],
+                                 Q_DEFAULT)
+        np.testing.assert_allclose(mine, rec["obs"][k], atol=1e-5)
+\end{verbatim}
+This one test catches most of the list above. When it fails, the index of the first wrong element tells you which term is wrong.
+
+\section*{The safety layer}
+Between the policy and the motors sits a module that can only make commands \emph{more} conservative:
+\begin{verbatim}
+class SafetyLayer:
+    def __init__(self, q_min, q_max, max_step, max_temp=75.0):
+        self.q_min, self.q_max = q_min, q_max
+        self.max_step = max_step          # rad per motion cycle
+        self.max_temp = max_temp          # degrees Celsius
+        self.last = None
+
+    def fallen(self, gravity):
+        # gravity is (0, 0, -1) when upright; tilt over ~60 deg -> fallen
+        return gravity[2] > -0.5
+
+    def filter(self, targets, q, gravity, temps):
+        """Returns (targets, reason). targets is None -> go limp (damping)."""
+        if self.fallen(gravity):
+            return None, "fallen"
+        if np.max(temps) > self.max_temp:
+            return None, f"joint {int(np.argmax(temps))} too hot"
+        if self.last is None:
+            self.last = q.copy()
+        t = np.clip(targets, self.q_min, self.q_max)
+        t = np.clip(t, self.last - self.max_step, self.last + self.max_step)
+        self.last = t
+        return t, "ok"
+\end{verbatim}
+Joint limits come from the model with a margin; the step limit stops a single wild output from slamming a joint; a fall or an over-temperature switches to damping (limp), which is the safest way to land. I tested the class with made-up inputs: a target of $2.0$\,rad was limited to $0.05$ in the first step (step limit), a gravity of $(0.9,0,-0.3)$ gave \emph{fallen}, and a temperature of $80^\circ$C on the last joint gave \emph{joint 21 too hot}. The thresholds ($60^\circ$ tilt, $75^\circ$C) are starting values, not the K1's specifications\guess. The same layer also watches the command's time to live (Chapter~\ref{k:loops}) and the emergency stop. Its decision is a representation, \texttt{SafetyState}, so it is logged and shown in robotcontrol.
+
+\section*{The motion modules}
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.2mm]},md/.style={draw,thick,rounded corners=3pt,fill=blue!8,minimum width=2.0cm,minimum height=0.75cm,font=\scriptsize,align=center}]
+ \node[md] (in) at (0,0) {SensorInput};
+ \node[md] (ob) at (2.6,0) {Observation};
+ \node[md] (po) at (5.2,0) {Policy\\ (ONNX)};
+ \node[md] (sa) at (7.8,0) {SafetyLayer};
+ \node[md] (out) at (10.4,0) {LowCmdOutput};
+ \draw[->,thick] (in)--(ob); \draw[->,thick] (ob)--(po); \draw[->,thick] (po)--(sa); \draw[->,thick] (sa)--(out);
+\end{tikzpicture}
+\captionof{figure}{The motion loop with our own policy. \texttt{LowCmdOutput} replaces \texttt{SdkWalkOutput} of Chapter~\ref{k:walk}; the rest of the program does not change.}
+\end{center}
+
+\begin{guessbox}[Low-level commands]
+In the custom mode the SDK accepts, per joint, a target position, a target velocity, a feed-forward torque and the gains $k_p$, $k_d$\guess. The rate at which these must be sent, and whether Booster's firmware runs its own PD loop at a higher rate between your commands, decide whether the $50$\,Hz motion loop is enough or whether a faster inner loop is needed. Find out from the SDK documentation and examples before the first test, and write it on the cheat sheet. This was one of the open questions when the book was drafted.
+\end{guessbox}
+
+\section*{The test procedure}
+\begin{stepbox}{Step 1: replay in MuJoCo}
+Run the full motion loop (with \texttt{LowCmdOutput} replaced by the MuJoCo fake's input) and the observation test. The policy must walk in your MuJoCo fake as it does in mjlab's play mode. This tests your code, not the robot.
+\end{stepbox}
+\begin{stepbox}{Step 2: hanging, zero action}
+Robot hanging. Run the motion loop with the network output replaced by zeros: the robot should go to the default pose and hold it softly. Check the gains: does it feel as stiff as you expect?
+\end{stepbox}
+\begin{stepbox}{Step 3: hanging, policy}
+Command $0$, then small forward velocities. The legs should step in the air in a regular rhythm. Record the joint trajectories and compare their shape (amplitude, frequency) with the simulation.
+\end{stepbox}
+\begin{stepbox}{Step 4: on the floor, rope slack}
+Stand only, $30$\,s. Then $v_x=0.1$, then more. Two people, emergency stop in hand, mat around.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item The observation test passes.
+  \item On the floor, the robot walks $2$\,m forward and stops on command, three times in a row, and the safety layer has not triggered.
+  \item The logged step frequency on the robot is within $10\%$ of the simulation's.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[Violent shaking at the start] Gains or action scale differ from training, or a joint sign is inverted. Back to Step~2.
+  \item[Walks in the air, falls on the floor] Typical sim-to-real gap: friction, latency, mass. Check the loop timing (Chapter~\ref{k:loops}), then retrain with more randomisation of these quantities.
+  \item[The safety layer triggers \emph{fallen} while standing] Wrong gravity sign or axis: print the gravity vector of the standing robot.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item The deployed observation must equal the training observation: test it against a recording from the simulator.
+  \item A safety layer between policy and motors: joint and step limits, fall and temperature checks, command timeout, emergency stop.
+  \item Test in this order: MuJoCo fake, hanging with zero action, hanging with the policy, floor with rope.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Count the observation size for the example above and for the same task with a height scan of $11\times17$ points.
+  \item The test fails at index $9$. Which term is wrong (for the example order), and what is a likely cause?
+  \item With \verb!max_step = 0.05! rad at $50$\,Hz, what is the fastest a joint can move under the safety layer? Is that fast enough for a kick?
+  \item Why is damping (limp) safer than ``hold the current position'' when the robot falls?
+  \item The policy was trained with a delay of $0$ between measurement and action. On the robot the delay is $15$\,ms. Explain why this can matter at $50$\,Hz, and how the training could be changed.
+\end{enumerate}

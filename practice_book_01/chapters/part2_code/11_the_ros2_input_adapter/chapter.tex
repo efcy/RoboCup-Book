@@ -1,0 +1,128 @@
+\bookchapter{The ROS 2 input adapter}\label{k:ros}
+
+On the K1, Booster's services publish the robot's state on ROS~2 topics (Chapter~\ref{k:box}). Our program uses ROS~2 for exactly one thing: to \emph{receive} these sensor data. A small \textbf{input adapter} subscribes to the topics in its own thread, keeps the newest values in a buffer, and hands them to the \texttt{SensorInput} module of Chapter~\ref{k:fake}. Nothing else in the code imports \texttt{rclpy}; that is what lets the same code run with the fake robot. Milestone: one.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The robot with SSH, your notes on topics and message types (Chapter~\ref{k:box}, Step~6), the joint table (Chapter~\ref{k:model}).
+  \item Background: \rtr{ROS 2 Concepts}, \rtr{Writing Your Own Nodes}, \rtr{Logging, Replay and Visualisation}.
+\end{itemize}
+\end{needbox}
+
+\begin{guessbox}
+Topic names (\texttt{/low\_state}, \texttt{/camera/\dots}), message packages (\texttt{booster\_interface}) and field names (\texttt{imu\_state.gyro}, \texttt{motor\_state\_serial[i].q}) below are placeholders\guess. Take the real ones from \verb!ros2 topic info -v! and \verb!ros2 interface show <type>! on your robot. The code in this chapter could not be run without the robot's message packages; it is the structure that matters.
+\end{guessbox}
+
+\section*{Design}
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.2mm]},bx/.style={draw,thick,rounded corners=3pt,minimum width=2.7cm,minimum height=0.85cm,font=\scriptsize,align=center}]
+ \node[bx,fill=gray!12] (ros) at (0,0) {ROS 2 topics\\ (Booster services)};
+ \node[bx,fill=orange!12] (th) at (3.6,0) {adapter thread\\ \texttt{rclpy} callbacks};
+ \node[bx,fill=yellow!20] (buf) at (7.0,0) {\texttt{LatestBuffer}\\ (with a lock)};
+ \node[bx,fill=blue!8] (cog) at (10.4,0.7) {cognition loop};
+ \node[bx,fill=blue!8] (mot) at (10.4,-0.7) {motion loop};
+ \draw[->,thick] (ros)--(th); \draw[->,thick] (th)--node[above,font=\scriptsize]{write}(buf); \draw[->,thick] (buf)--(cog); \draw[->,thick] (buf)--(mot);
+\end{tikzpicture}
+\captionof{figure}{The ROS boundary. Callbacks only convert and store; they never run robot logic. Both loops read the newest values.}
+\end{center}
+
+Rules for the adapter:
+\begin{enumerate}[nosep]
+  \item \textbf{Convert at the border.} ROS messages are turned into our own dataclasses (with NumPy arrays and SI units) inside the callback. No ROS type leaves the adapter.
+  \item \textbf{Reorder at the border.} The joint order of the robot's message may differ from the model's order. Map by name, once, and check it with a test.
+  \item \textbf{Keep only the newest, with a time stamp.} The state arrives much faster than cognition runs (Chapter~\ref{k:box}, Problem~2.5). The buffer stores the newest message and the time it arrived; a reader can see how old it is.
+  \item \textbf{Quality of service:} \emph{best effort} and \emph{keep last 1} for high-rate sensor data. An old state is worthless, so it must not be queued or re-sent.
+\end{enumerate}
+
+\section*{The code}
+\begin{verbatim}
+import threading, time
+import numpy as np
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+from booster_interface.msg import LowState          # placeholder [?]
+
+class LatestBuffer:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._value, self._t = None, 0.0
+    def put(self, value):
+        with self._lock:
+            self._value, self._t = value, time.monotonic()
+    def get(self):
+        with self._lock:
+            return self._value, self._t
+
+class RosInput(Node):
+    def __init__(self, joint_map):
+        super().__init__("k1code_input")
+        self.joint_map = np.asarray(joint_map)   # model index -> msg index
+        self.state = LatestBuffer()
+        qos = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
+                         history=HistoryPolicy.KEEP_LAST, depth=1)
+        self.create_subscription(LowState, "/low_state", self.on_state, qos)
+
+    def on_state(self, msg):
+        motors = msg.motor_state_serial                  # placeholder [?]
+        q = np.array([m.q for m in motors])[self.joint_map]
+        dq = np.array([m.dq for m in motors])[self.joint_map]
+        temp = np.array([m.temperature for m in motors])[self.joint_map]
+        self.state.put(SensorFrame(
+            t=time.monotonic(), q=q, dq=dq, temperature=temp,
+            gyro=np.array(msg.imu_state.gyro),
+            gravity=gravity_from_rpy(msg.imu_state.rpy)))
+
+def start_ros_input(joint_map):
+    rclpy.init()
+    node = RosInput(joint_map)
+    threading.Thread(target=rclpy.spin, args=(node,), daemon=True).start()
+    return node
+\end{verbatim}
+\verb!gravity_from_rpy! turns the roll and pitch angles of the IMU into the direction of gravity in the trunk's frame (the yaw does not matter); it is the \emph{projected gravity} that the walking policy uses (\rtr{Velocity tracking and reward design}). Write it with the rotation matrices of \rtr{Rotation and translation matrices}, and test it: upright gives $(0,0,-1)$.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: record a bag}
+On the robot, while someone moves the hanging robot's limbs by hand (damping): \verb!ros2 bag record -o test_state /low_state! for $20$\,s. Copy it to the laptop. Now you have test data without the robot.
+\end{stepbox}
+\begin{stepbox}{Step 2: the joint map}
+From the message order (documentation or \texttt{ros2 interface show}) and the model's order (\texttt{docs/k1\_joints.txt}), build \texttt{joint\_map} by name. Test: every index appears once; moving the left knee by hand changes the entry called \texttt{left\_knee} in our arrays.
+\end{stepbox}
+\begin{stepbox}{Step 3: the adapter}
+Write \texttt{adapters/ros\_input.py} as above, and an \texttt{RosIO} class that combines it with the SDK output (Chapter~\ref{k:walk}) into the \texttt{RobotIO} interface.
+\end{stepbox}
+\begin{stepbox}{Step 4: measure}
+On the robot, run the program with the real adapter and log, once per second: the number of messages received, and the age of the newest one when cognition reads it.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item The message rate matches \verb!ros2 topic hz!. The age of the newest state at reading time is below one period of the topic.
+  \item Moving the left knee by hand changes \texttt{left\_knee} and nothing else; the projected gravity is about $(0,0,-1)$ for the hanging robot.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[No messages, but \texttt{ros2 topic echo} works] QoS mismatch: a reliable subscriber does not get data from a best-effort publisher. \verb!ros2 topic info -v! shows the publisher's QoS.
+  \item[\texttt{ModuleNotFoundError: booster\_interface}] The Booster message package is not sourced in the environment of the service; the systemd unit needs the ROS environment (an \texttt{EnvironmentFile} or a wrapper script that sources \texttt{setup.bash}).
+  \item[The virtual environment cannot see \texttt{rclpy}] \texttt{rclpy} comes from the system's ROS installation, not from PyPI. Create the virtual environment with \verb!--system-site-packages!, and use the same Python version as the robot's ROS.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item ROS~2 only at the input border, in its own thread; convert and reorder in the callback; store the newest value with a time stamp.
+  \item Best effort, keep last 1 for high-rate sensor data.
+  \item A recorded bag is test data for the adapter.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Write \verb!gravity_from_rpy(rpy)! and test it for upright, $30^\circ$ forward pitch and $90^\circ$ roll.
+  \item The message lists joints in the order \texttt{[head\_yaw, head\_pitch, l\_sh\_pitch, \dots]} and the model in another order. Write \verb!make_joint_map(msg_names, model_names)! that returns the index array, and raises an error if a name is missing.
+  \item Why must the callback not run the behaviour or call the SDK?
+  \item A callback takes $3$\,ms and the topic runs at $500$\,Hz. What fraction of one CPU core does the adapter use? What happens if the callback takes $3$\,ms at $500$\,Hz \emph{and} the GIL is busy in another thread?
+  \item Explain the difference between ``the message is old'' and ``the robot's sensor value is old''. Which one can the adapter measure?
+\end{enumerate}

@@ -1,0 +1,135 @@
+\bookchapter{Two loops: cognition and motion}\label{k:loops}
+
+A robot thinks slowly and moves quickly. Finding the ball in a camera image, updating the position on the field and choosing a role may take tens of milliseconds and need not happen more than $20$ times per second. The walking policy, however, must get a new observation and produce new joint targets at a fixed, higher rate (for example $50$\,Hz), every time, on time; a late step is a stumble. So the program has two loops in two threads: \textbf{cognition} and \textbf{motion}. This chapter builds them, connects them through one small locked object, and \emph{measures} how well Python keeps the motion loop on time. Milestone: one.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The framework (Chapter~\ref{k:bb}) and the fake robot (Chapter~\ref{k:fake}). Later the robot itself, to repeat the measurement there.
+  \item Background: \rtr{Python in Robot Programs: Loops, Time and Concurrency}, \rtr{Threads and Channels}, \rtr{System Load and Performance}.
+\end{itemize}
+\end{needbox}
+
+\section*{What the two threads share}
+As little as possible. Each loop has its \emph{own} blackboard and its own modules. They share exactly two things, each behind a lock:
+\begin{enumerate}[nosep]
+  \item the \textbf{sensor buffer} of the input adapter (Chapter~\ref{k:ros}), which both read;
+  \item the \textbf{command slot}: cognition (and later robotcontrol) writes the newest motion command, motion reads it.
+\end{enumerate}
+\begin{verbatim}
+import threading
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class MotionCommand:
+    kind: str            # "stand", "walk" or "kick"
+    vx: float = 0.0      # m/s, forward
+    vy: float = 0.0      # m/s, to the left
+    vyaw: float = 0.0    # rad/s, counter-clockwise
+    t: float = 0.0       # time.monotonic() when it was made
+    ttl: float = 0.5     # seconds it stays valid
+    source: str = "cognition"
+    priority: int = 0    # robotcontrol uses 10
+
+STAND = MotionCommand("stand", source="default", priority=-1)
+
+class CommandSlot:
+    """The only place where cognition and motion share commands."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._latest = {}            # source -> newest command
+
+    def put(self, cmd):
+        with self._lock:
+            self._latest[cmd.source] = cmd
+
+    def take(self, now):
+        with self._lock:
+            alive = [c for c in self._latest.values() if now - c.t <= c.ttl]
+        return max(alive, key=lambda c: c.priority, default=STAND)
+\end{verbatim}
+Three rules are built into this small class. Every command has a \textbf{time stamp and a time to live}: if cognition hangs, its command expires after $0.5$\,s and motion falls back to \emph{stand}. Every command has a \textbf{source and a priority}: robotcontrol can override cognition (Chapter~\ref{k:cmd}), and when robotcontrol goes silent, its command expires and cognition is in charge again. And the command is \textbf{frozen}: nobody can change it after it was put into the slot.
+
+\section*{The loops}
+\begin{verbatim}
+def motion_loop(io, slot, modules, hz=50):
+    period, bb = 1.0 / hz, Blackboard()
+    order = execution_order(modules)
+    next_t = time.monotonic() + period
+    while True:
+        time.sleep(max(0.0, next_t - time.monotonic()))
+        now = time.monotonic()
+        bb.set(slot.take(now))          # the command for this step
+        bb.set(io.read())               # newest sensors
+        run_cycle(order, bb)            # policy, safety, output
+        next_t += period                # fixed grid, no drift
+\end{verbatim}
+The cognition loop looks the same at $20$\,Hz and ends with \verb!slot.put(bb.get(MotionCommand))!. Note \verb!next_t += period!: the loop runs on a fixed time grid. Sleeping ``one period after the end of the work'' instead would make the loop slower than intended by the duration of the work.
+
+\section*{Measuring the jitter}
+How late does the motion loop wake up when cognition is busy? I ran this experiment on a laptop (4 cores, Python 3.13, \emph{not} on a K1): motion at $50$\,Hz for $10$\,s, measuring how many milliseconds after its planned time each step starts; cognition at $20$\,Hz doing a pure-Python loop of $n$ multiplications as ``work''.
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\hline
+cognition work & median late & $99\%$ late & max late\\
+\hline
+none & $0.12$\,ms & $0.20$\,ms & $0.65$\,ms\\
+$n=300\,000$ ($17$\,ms per cycle) & $0.11$\,ms & $5.27$\,ms & $5.35$\,ms\\
+$n=2\,000\,000$ ($111$\,ms, always busy) & $5.21$\,ms & $5.52$\,ms & $9.22$\,ms\\
+same, switch interval $1$\,ms & $1.20$\,ms & $1.38$\,ms & $1.75$\,ms\\
+\hline
+\end{tabular}
+\end{center}
+The $5$\,ms are not an accident. Python lets only one thread run Python code at a time (the \textbf{GIL}), and a thread that computes in pure Python gives the GIL away only every \emph{switch interval}, by default $5$\,ms. When the motion thread wakes up, it may wait up to that long. \verb!sys.setswitchinterval(0.001)! shortens the wait (last row), at the price of more switching. Libraries like NumPy and ONNX Runtime release the GIL while they compute, so heavy work in them hurts much less than the same work in a Python loop.
+
+At $50$\,Hz a step is $20$\,ms, so $5$\,ms late is a quarter of a step: usually acceptable for a learned walking policy, but measure it on the robot, with the real cognition, and keep the measurement as a permanent part of the health data (Chapter~\ref{k:health}).
+
+\begin{aibox}[The next step: processes]
+If the jitter on the robot is too large, run motion in a separate \emph{process} (\texttt{multiprocessing}), which has its own GIL, and exchange the command and the sensor data through \texttt{multiprocessing.shared\_memory} or a pipe. The interface stays the same (\texttt{put} and \texttt{take}), which is why the book insists on one small handoff. Other sources of jitter remain: the garbage collector (\verb!gc.freeze()! after start-up helps), other programs on the robot, and the CPU's power saving.
+\end{aibox}
+
+\section*{Steps}
+\begin{stepbox}{Step 1: the slot and the loops}
+\texttt{commands.py} with \texttt{MotionCommand}, \texttt{STAND} and \texttt{CommandSlot}; \texttt{main.py} starts cognition in a thread and runs motion in the main thread (so Ctrl+C stops it cleanly).
+\end{stepbox}
+\begin{stepbox}{Step 2: timing statistics}
+In both loops, measure ``late'' and ``work duration'' every cycle, and once per second put a \texttt{LoopTiming} representation (median, $99\%$, maximum, number of overruns) on the blackboard.
+\end{stepbox}
+\begin{stepbox}{Step 3: tests for the slot}
+Expired commands are ignored; higher priority wins; with nothing valid, \texttt{STAND} is returned.
+\end{stepbox}
+\begin{stepbox}{Step 4: measure on the robot}
+Repeat the table above on the K1, with the real cognition modules you have. Write the numbers into \texttt{docs/timing.md}.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item With the fake robot, killing the cognition thread makes motion switch to \emph{stand} within $0.5$\,s.
+  \item The motion loop's $99\%$ lateness on the robot is known and written down.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[The loop slowly drifts] You sleep ``period minus work'' computed with \verb!time.time()!, or you add the period to \emph{now}. Use \verb!time.monotonic()! and a fixed grid.
+  \item[After a long pause the loop races] When the loop was blocked for several periods, \verb!next_t! lies in the past and the loop runs several steps without sleeping. Detect it (\verb!now - next_t > period!), count an overrun, and reset \verb!next_t = now + period!.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item Two loops with their own blackboards; they share only the sensor buffer and the command slot.
+  \item Every command has a time to live and a priority; without a valid command, motion stands.
+  \item Measure the timing, on the robot, always. Pure-Python work in another thread can delay motion by the switch interval ($5$\,ms by default).
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Motion runs at $50$\,Hz and cognition at $20$\,Hz. How many motion steps use the same command on average? What is the oldest a valid cognition command can be when motion uses it, if cognition runs on time?
+  \item Write the test \verb!test_ttl_expires! for \texttt{CommandSlot}, using fixed numbers for \texttt{now} instead of the real clock.
+  \item A loop sleeps with \verb!time.sleep(period - work)! and the work takes $3$\,ms, the sleep overshoots by $0.2$\,ms on average. How many cycles per second does a ``$50$\,Hz'' loop run? Compare with the fixed grid.
+  \item In the experiment, why is the median lateness with $n=300\,000$ almost the same as without work, while the $99\%$ value is $5$\,ms?
+  \item Suggest a way to make the robot stop moving if the \emph{motion} thread itself hangs. (Who watches the watcher?)
+\end{enumerate}

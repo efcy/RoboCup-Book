@@ -1,0 +1,125 @@
+\bookchapter{Listening to the GameController}\label{k:gc}
+
+In a game the robots get their orders from the referee through the \textbf{GameController}: a program on the referee's laptop that broadcasts the game state twice per second. A robot that ignores it is a robot that walks during \emph{set}, plays while penalised, and gets taken off the field. Each robot must also send a status packet back. \rtr{The GameController protocol} explains the protocol and shows a parser in Rust; this chapter writes the same in Python, wires it into the blackboard, and tests it against the real GameController. Milestone: one.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The loops and the debug tool (Chapters~\ref{k:loops} and~\ref{k:rc}). The official GameController for the HSL, running on the laptop.
+  \item Background: \rtr{The GameController protocol}, \rtr{Game flow as a state machine}, \rtr{UDP Networking}.
+\end{itemize}
+\end{needbox}
+
+\section*{Parsing with \texttt{struct}}
+The control message has $158$ bytes: an $18$-byte header and two $70$-byte team blocks; the status message has $32$ bytes (layouts in the concepts book, protocol version $20$ and $4$). Python's \texttt{struct} module turns such layouts into one line each: \texttt{<} means little-endian with no padding, \texttt{B} a byte, \texttt{H}/\texttt{h} an unsigned/signed $16$-bit number, \texttt{f} a $32$-bit float, \texttt{4s} four raw bytes.
+\begin{verbatim}
+import struct
+from dataclasses import dataclass
+
+CONTROL = struct.Struct("<4s10B2h")     # 18-byte header
+TEAM = struct.Struct("<6B2H60B")        # 70-byte team block
+RETURN = struct.Struct("<4s4B3ff2f")    # 32-byte status message
+STATES = ["initial", "ready", "set", "playing", "finished"]
+
+@dataclass
+class GameState:
+    packet: int
+    state: str
+    stopped: bool
+    set_play: int
+    first_half: bool
+    kicking_team: int
+    secs_remaining: int
+    secondary_time: int
+    teams: list          # two dicts: number, score, goalkeeper, penalties
+
+def parse_control(buf: bytes) -> GameState:
+    if len(buf) != CONTROL.size + 2 * TEAM.size:
+        raise ValueError(f"length {len(buf)}")
+    (hdr, version, packet, _players, _comp, stopped, _phase, state,
+     set_play, first_half, kicking, secs, secondary) = CONTROL.unpack_from(buf)
+    if hdr != b"RGme":
+        raise ValueError("bad header")
+    if version != 20:
+        raise ValueError(f"version {version}")
+    teams = []
+    for k in range(2):
+        f = TEAM.unpack_from(buf, CONTROL.size + k * TEAM.size)
+        teams.append({"number": f[0], "goalkeeper": f[3], "score": f[4],
+                      "budget": f[7], "penalty": list(f[8::3]),
+                      "secs_left": list(f[9::3])})
+    return GameState(packet, STATES[state], stopped == 1, set_play,
+                     first_half == 1, kicking, secs, secondary, teams)
+
+def encode_return(player, team, fallen, pose, ball_age, ball):
+    """pose = (x mm, y mm, theta rad), ball = (x mm, y mm) robot-relative."""
+    return RETURN.pack(b"RGrt", 4, player, team, int(fallen),
+                       *pose, ball_age, *ball)
+\end{verbatim}
+\verb!f[8::3]! picks every third value starting at the first player's penalty byte: the $20$ players' penalties; \verb!f[9::3]! their remaining penalty seconds. The struct sizes are checked by Python: \texttt{CONTROL.size} is $18$, \texttt{TEAM.size} $70$, \texttt{RETURN.size} $32$.
+
+I tested the parser with a packet built by \texttt{struct} (state \emph{playing}, $540$\,s remaining, our player $3$ penalised for $30$\,s, budget $1200$): all fields came out as built; a packet one byte short was rejected with \emph{length 157}, and one with a wrong header with \emph{bad header}. The return packet was $32$ bytes and starts with \texttt{RGrt}, version $4$, player $3$, team $12$. This test used packets built from the layout in the book, not packets from the real GameController; Step~3 closes that gap.
+
+\section*{Into the blackboard}
+A listener thread receives the broadcast on port $3838$ and keeps the newest valid \texttt{GameState} (with its arrival time) in a \texttt{LatestBuffer} (Chapter~\ref{k:ros}). The packet also tells the robot the address of the GameController (the sender of the broadcast); the status packet goes back there, unicast to port $3939$, once per second. In cognition, a module \texttt{GameControllerInput} provides \texttt{GameState} and \texttt{OurTeam} (which of the two team blocks is ours, by team number from \texttt{config/team.toml}, and our penalty).
+\begin{verbatim}
+def listen(buffer, port=3838):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("", port))
+    while True:
+        data, addr = sock.recvfrom(1024)
+        try:
+            buffer.put((parse_control(data), addr[0]))
+        except ValueError as e:
+            log.warning("bad GameController packet: %s", e)
+\end{verbatim}
+
+\section*{No GameController?}
+In the lab there is often no GameController running. The robot must then behave sensibly: start in \emph{initial} (standing still), and accept a game state from robotcontrol instead (an extra \texttt{Request} type). When the GameController's packets stop during a game (Wi-Fi), the robot keeps the last state and does not invent a new one. Write down for your team what the current rules require here\guess.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: the parser and tests}
+\texttt{gamecontroller.py} as above, with the tests described.
+\end{stepbox}
+\begin{stepbox}{Step 2: listener, sender, module}
+The thread, the status sender at $1$\,Hz (player number and team from the configuration; pose and ball from the blackboard; \emph{fallen} from Chapter~\ref{k:deploy}), and the \texttt{GameControllerInput} module.
+\end{stepbox}
+\begin{stepbox}{Step 3: against the real GameController}
+Start the official GameController on the laptop with your team number, run the robot code with the fake robot on the same laptop, and click through \emph{ready}, \emph{set}, \emph{playing}, a penalty, a goal. Record the packets once with \verb!tcpdump -i any -w gc.pcap udp port 3838! and add a few of them as test files.
+\end{stepbox}
+\begin{stepbox}{Step 4: show it}
+Add the game state, our penalty, the score and the time to robotcontrol's view.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item robotcontrol shows every state change within one second of the click.
+  \item The GameController's window shows your robot as connected (it receives the status packets).
+  \item The parser tests pass with packets recorded from the real GameController.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[No packets] Broadcasts do not cross routers, and some Wi-Fi networks block them. Test on one laptop first; then check with \verb!tcpdump!.
+  \item[\emph{version} errors] The GameController in use speaks another version than the one in the book. Update the layout from its header file.
+  \item[Our team is never found] The team number in \texttt{config/team.toml} differs from the one chosen in the GameController.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item \texttt{struct} formats express the packet layouts in one line; check length, header and version before trusting a packet.
+  \item Listener in a thread, newest valid state in a buffer, a module puts it on the blackboard; status back once per second.
+  \item Test with packets from the real GameController.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Compute the size of \verb!"<6B2H60B"! by hand. What would the size be without the \texttt{<} (native alignment), and why does that matter?
+  \item Write \verb!our_team(state, team_number)! that returns the index ($0$ or $1$) of our team block, or raises an error.
+  \item Player $3$ is penalised. Which index in \texttt{teams[k]["penalty"]} holds his or her penalty, and why?
+  \item The status packet wants the ball in millimetres relative to the robot. Our \texttt{BallModel} has metres. Write the call to \verb!encode_return! for a ball at $(1.2, -0.3)$\,m seen $0.4$\,s ago and a pose of $(-2.5,1.0)$\,m, $0.3$\,rad.
+  \item The packet number is one byte. After how many seconds does it wrap around at $2$ packets per second? How do you detect a lost packet across the wrap?
+\end{enumerate}

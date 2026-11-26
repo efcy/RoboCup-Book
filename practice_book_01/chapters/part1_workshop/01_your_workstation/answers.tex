@@ -1,0 +1,7 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item A list of names installs the newest versions on the day you install. A lock file fixes the exact version (and a hash) of every package, including the packages that your packages need. Example: the laptop was set up in March with NumPy 2.2, the robot in June gets NumPy 2.4, a function changes its default, and a test passes on the laptop but the robot behaves differently. With the lock file both computers install the same version.
+  \item Steps per second: $4096\cdot50\cdot10=2\,048\,000$. Time: $200\,000\,000/2\,048\,000\approx98$\,s, under two minutes. (Real runs are slower because the learning step of PPO also takes time; the order of magnitude is right.)
+  \item Another program still holds GPU memory, for example a crashed training run or a Jupyter kernel. \verb!nvidia-smi! itself lists the processes with their PID at the bottom; \verb!ps -fp <PID>! shows what they are, and \verb!kill <PID>! ends one.
+  \item \verb!git pull --ff-only! and \verb!git describe --tags!.
+  \item ROS~2 is used only on the robot, as the source of sensor data. The laptop talks to the robot through the debug connection of the book (protobuf over TCP), so it does not need ROS~2 and avoids version problems between different ROS distributions.
+\end{enumerate}
