@@ -1,0 +1,145 @@
+\bookchapter{Game flow as a state machine}\label{ch:rc2}
+
+\section*{Explanation}
+A game of the Humanoid Soccer League is not one long activity but a sequence of \emph{phases} with different rules. In one phase the robots walk to their kick-off positions, in the next they must stand perfectly still, in the third they play. A robot that moves in the wrong phase is penalised. The structure is a \textbf{finite state machine}, the same idea that you met in Part~\ref{part:rust} as an \verb!enum!, and the \textbf{GameController} is the machine that tells every robot in which state the game currently is (Chapter~\ref{ch:rc3}).
+
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.2mm]},st/.style={draw,thick,rounded corners=3pt,minimum width=2.1cm,minimum height=0.9cm,font=\small,fill=blue!8}]
+ \node[st] (ini) at (0,0) {initial};
+ \node[st] (rdy) at (3.3,0) {ready};
+ \node[st] (set) at (6.6,0) {set};
+ \node[st,fill=green!15] (pl) at (9.9,0) {playing};
+ \node[st,fill=gray!20] (fin) at (9.9,-2.2) {finished};
+ \draw[->,thick] (ini)--(rdy) node[midway,above,font=\scriptsize]{referee};
+ \draw[->,thick] (rdy)--(set) node[midway,above,font=\scriptsize]{45\,s};
+ \draw[->,thick] (set)--(pl) node[midway,above,font=\scriptsize]{whistle};
+ \node[font=\scriptsize,align=center] at (8.25,-0.62) {GC after 10\,s};
+ \draw[->,thick] (pl)--(fin) node[midway,right,font=\scriptsize]{end of half};
+ \draw[->,thick,red!70!black] (pl.north) to[out=110,in=70,looseness=0.9] node[above,font=\scriptsize,pos=0.5]{goal $\Rightarrow$ ready} (rdy.north);
+ \draw[->,thick] (fin.west) to[out=180,in=-90] node[below left,font=\scriptsize,pos=0.4]{half time $\Rightarrow$ initial} (ini.south);
+\end{tikzpicture}
+\captionof{figure}{The five game states of the GameController. After a goal the game returns to \emph{ready} (the teams walk to their kick-off positions); at the end of the first half it goes through \emph{finished} and the half-time break back to \emph{initial}.}\label{fig:rcstates}
+\end{center}
+
+\section*{The five states}
+\begin{description}[leftmargin=2.2cm,style=nextline]
+ \item[initial] Before the game and in the half-time break. The robots stand; the team may start and prepare its software.
+ \item[ready] The robots walk to their \textbf{kick-off positions}: for a kick-off the players of the team that does not kick off must be in their own half and outside the centre circle, the kicking team in its own half or in the circle. In the draft rules this takes at most $45$\,s. When the time is over the game goes on to \emph{set}, whether the robots are in place or not; a robot that is not in a legal position is penalised for \emph{illegal positioning}.
+ \item[set] The robots \textbf{stand still}. The referee whistles when everything is ready. A robot that moves in this state is penalised (\emph{motion in set}, a short penalty of $15$\,s).
+ \item[playing] The game is on. A half lasts $10$ minutes.
+ \item[finished] The half is over. The half-time break is at least $10$ minutes.
+\end{description}
+The GameController sends \emph{playing} not at the moment of the whistle but \textbf{$10$\,s later}. A robot that waits for the message plays $10$ seconds late; a robot that hears the whistle starts earlier, with the risk of a false detection and a penalty for \emph{motion in set}. The rules do this on purpose: it rewards teams that implement \textbf{whistle detection} (a task for the microphones and for the signal processing of Chapter~\ref{ch:py10}).
+
+Besides these states the GameController has a flag \textbf{stopped}. When the referee stops play (a robot is hurt, a handler needs to go to the field) all robots stop and behave like in \emph{set}: they may not get up, but the game clock keeps running. Robots must also assume a safe pose when the stop is announced (Chapter~\ref{ch:rc1}).
+
+\section*{Set plays}
+Not every restart is a kick-off. The GameController tells the robots the current \textbf{set play} and which team has the right to the kick:
+
+\begin{center}
+\small
+\begin{tabular}{p{3.2cm}p{4.6cm}p{5cm}}
+\hline
+set play & when & time to take it\\
+\hline
+kick-off & start of a half, after a goal & ready $45$\,s, ball free after $10$\,s or the first kick\\
+direct free kick & pushing, playing with hands, and others & $45$\,s\\
+indirect free kick & kick-in violations and others & $45$\,s\\
+penalty kick & foul in the penalty area & ready $45$\,s, $60$\,s to shoot\\
+throw-in (kick-in) & the ball leaves the field at the side & $45$\,s\\
+goal kick, corner kick & the ball leaves the field at the end & $45$\,s\\
+\hline
+\end{tabular}
+\end{center}
+(The times are those that the GameController uses for the mid division; the rulebook decides.) Two details of the kick-off matter for the behaviour: a goal cannot be scored directly from the kick-off, and a \textbf{second touch} by another robot is needed when at least three robots are on the field. For a free kick the opponent has to keep a distance from the ball (the radius of the centre circle). A team that has a free kick but does not take it in time loses it, and the opponent gets a free kick that can score directly.
+
+\section*{Penalties}
+A robot that breaks the rules is \textbf{penalised}: it is taken from the field by its handler, waits for a time, and is placed back at the edge of the field. During this time the team plays with fewer robots. The GameController holds a table of penalties; each has a number that the robots also receive in the message:
+
+\begin{center}
+\small
+\begin{tabular}{rll}
+\hline
+no. & penalty & remark (draft rules)\\
+\hline
+1 & illegal positioning & after \emph{ready}\\
+2 & motion in set & robot stays; $15$\,s\\
+3 & motion in stop & incremental\\
+4 & local game stuck & the robot nearest to a stuck ball\\
+5 & incapable robot & lying or inactive for too long\\
+6 & pick-up & robot is requested for pick-up\\
+7 & ball holding & ball held longer than $5$\,s ($10$\,s goalkeeper)\\
+8 & leaving the field & \\
+9 & playing with arms/hands & goalkeeper may in the penalty area\\
+10 & pushing & destabilising, or longer than $5$\,s\\
+11, 12 & cautioned, sent off & yellow and red card\\
+\hline
+\end{tabular}
+\end{center}
+A standard removal takes $45$\,s, and every further offence of the same team makes it $10$\,s longer; \emph{incremental} penalties in the table of the GameController behave in this way. Two penalties deserve attention because they depend on the \textbf{software}, not on the hardware:
+\begin{itemize}[nosep]
+ \item \textbf{Incapable robot}: a robot that lies and does not try to get up within $20$\,s, or that is inactive for $10$\,s, is removed. A good get-up behaviour (Chapter~\ref{ch:rc4}) and a robust fall detection are therefore game rules in disguise.
+ \item \textbf{Local game stuck}: if the ball has not moved for $10$\,s although robots stand near it, the nearest robot is removed. A robot that stands \emph{next to the ball and does not kick} is a liability.
+\end{itemize}
+
+\begin{example}
+A team of five plays with the foul rule of $45$\,s and gets three penalties in the half. The first costs $45$\,s of one robot, the second $55$\,s, the third $65$\,s. The sum is $165$ robot-seconds, out of $5\times600=3000$ robot-seconds in the half: $5.5\%$ of the work of the team. Worse than the number is the timing: a goalkeeper that is removed in a bad moment can decide a game.
+\end{example}
+
+\section*{The state machine in Rust}
+The robot does not have to know the whole rulebook. It needs a function that maps what the GameController says to what the robot does. This is the \emph{mode} of the robot; the program below was compiled and run with the timeline of the answers.
+
+\begin{verbatim}
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum State { Initial, Ready, Set, Playing, Finished }
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Mode { Stand, GoToPosition, Hold, Play, Safe, Wait }
+
+/// What the robot should do, given what the GameController says
+/// (and whether *we* heard the whistle while in Set).
+fn mode(state: State, stopped: bool, penalty: u8, whistle: bool) -> Mode {
+    if penalty != 0 {
+        return Mode::Wait;          // removed or about to return
+    }
+    if stopped {
+        return Mode::Safe;          // like Set: no getting up
+    }
+    match state {
+        State::Initial | State::Finished => Mode::Stand,
+        State::Ready => Mode::GoToPosition,
+        State::Set if whistle => Mode::Play,   // do not wait the 10 s
+        State::Set => Mode::Hold,
+        State::Playing => Mode::Play,
+    }
+}
+\end{verbatim}
+
+Three properties make this a good design. First, the function is \textbf{pure}: the same inputs always give the same mode, so you can test it without a robot. Second, the order of the checks is a \textbf{priority}: a penalty beats a stop, and a stop beats the state. Third, the \verb!match! has no wildcard arm, so when a new state is added the compiler lists all the places that need an update (Chapter~\ref{ch:rust4} on enums).
+
+\begin{aibox}[State machines and learned policies]
+The neural policies of Part~\ref{part:rl} and of the practical RL chapters at the end of this book control the \emph{legs}. The mode machine of this chapter decides \emph{which} policy runs: stand, walk to a position, play, get up. In most competition systems the learned part is low level and this small, readable machine is on top.
+\end{aibox}
+
+\begin{keyidea}[Summary]
+\begin{itemize}[nosep]
+ \item A game has five states (initial, ready, set, playing, finished), a \emph{stopped} flag, and a set play with a team that is allowed to take it.
+ \item The GameController delays \emph{playing} by $10$\,s after the whistle; hearing the whistle gives an advantage and a risk.
+ \item Penalties are part of the game; the ones that software can prevent are \emph{incapable robot}, \emph{local game stuck} and \emph{motion in set}.
+ \item Map the messages to the behaviour with a pure function and test it.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item List the five game states and say for each whether the robots may move.
+  \item During \emph{ready} the team has $45$\,s. A robot starts $9$\,m from its kick-off position and walks at $0.3$\,m/s. Does it arrive in time? With which speed could it just do it?
+  \item Why does the GameController send \emph{playing} $10$\,s after the whistle? What does a team gain by detecting the whistle itself?
+  \item A whistle detector is right $97\%$ of the time when there is a whistle and fires wrongly once per hour of match noise. Estimate the number of false alarms in the 20 playing minutes and discuss whether it is worth using it if a false alarm in \emph{set} costs a $15$\,s penalty.
+  \item The robot is penalised for \emph{incapable robot}. Name three causes in software or hardware and a counter-measure for each.
+  \item Extend \verb!mode! with a state \verb!Timeout! in which the robots stand (as in \emph{initial}), and with a priority: a goalkeeper that is penalised for illegal positioning is \emph{not} allowed to walk to its position again until unpenalised. Which new function arguments do you need?
+  \item Three penalties of $45$\,s, $55$\,s and $65$\,s: compute the lost robot-seconds if the penalties of the team are numbered in the order they happen and each further penalty is $10$\,s longer. How many seconds more does a fourth penalty cost than the first?
+  \item Explain the difference between \emph{stopped} and the state \emph{set}. What stays the same and what is different for the robot?
+  \item A free kick has $45$\,s. A team plans to make a pass to a teammate first. The teammate is $2.5$\,m away and the pass needs $6$\,s to prepare. Make a time plan; where is the largest risk?
+  \item[\textbf{\thechapter.10}$\star$] Write a Rust program with a function \verb!timeline(events)! where an event is $(t,\text{state},\text{stopped},\text{penalty},\text{whistle})$, which returns a list of $(t,\text{mode})$ \emph{only when the mode changes}. Add tests for: the whistle in set, a stop during playing, and a penalty that begins during \emph{ready}. Check that your result for the timeline of the chapter equals the output printed in the answers.
+\end{enumerate}

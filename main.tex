@@ -23,7 +23,7 @@
 
 This book takes you from the first graph you ever drew to a neural network that learns by itself, and shows on the way why robots, and in particular soccer-playing robots as in the RoboCup competition, need exactly this mathematics.
 
-\textbf{Structure.} The book has twelve parts. Each chapter has a short explanation, worked examples, figures and (in the written chapters) practice problems. Chapters that are marked \emph{Planned content} are not written yet.
+\textbf{Structure.} The book has eleven parts. Each chapter has a short explanation, worked examples, figures and (in the written chapters) practice problems.
 \begin{enumerate}[nosep,label=\textbf{Part~\Roman*:},leftmargin=4.2em]
   \item \textbf{Mathematical Foundations:} functions, geometry, vectors and matrices, calculus, a tiny neural network, probability.
   \item \textbf{Linux:} the operating system of the robot and of your laptop.
@@ -33,11 +33,12 @@ This book takes you from the first graph you ever drew to a neural network that 
   \item \textbf{Artificial Intelligence:} tasks, data, vision models and YOLO, language models.
   \item \textbf{Reinforcement Learning.}
   \item \textbf{Rust Programming.}
-  \item \textbf{Motions for the Booster K1:} simulation, training and deployment.
   \item \textbf{Control, State Estimation and Perception:} balance, filters, localisation.
-  \item \textbf{RoboCup:} rules, team play, engineering practice and reliability.
-  \item \textbf{Bonus: Video Analysis.}
+  \item \textbf{RoboCup:} the Humanoid Soccer League, the GameController, team play and tournament preparation.
+  \item \textbf{Practical Reinforcement Learning with mjlab:} your first environment, velocity tracking, imitation (BeyondMimic and AMP) and a plan for a kick.
 \end{enumerate}
+
+The Booster K1 itself is the subject of a separate, practical follow-along book.
 
 \textbf{Boxes.} A \emph{Key idea} box (blue) summarises the most important rule of a section. A \emph{Link to AI and robotics} box (green) shows where the topic is used later in the book.
 
@@ -186,24 +187,18 @@ This book takes you from the first graph you ever drew to a neural network that 
 
 % =====================================================================
 \part{RoboCup}\label{part:robocup}
-\includeplanned{part10_robocup/01_robocup_leagues_rules_and_game_flow}
-\includeplanned{part10_robocup/02_behaviour_and_team_play}
-\includeplanned{part10_robocup/03_engineering_practice}
-\includeplanned{part10_robocup/04_real_time_and_reliability}
-\includeplanned{part10_robocup/05_preparing_for_a_tournament}
+\includechapter{part10_robocup/01_the_humanoid_soccer_league}
+\includechapter{part10_robocup/02_game_flow_as_a_state_machine}
+\includechapter{part10_robocup/03_the_gamecontroller_protocol}
+\includechapter{part10_robocup/04_team_play_under_the_rules}
+\includechapter{part10_robocup/05_preparing_for_a_tournament}
 
 % =====================================================================
-\part{Motions for the Booster K1}\label{part:k1}
-\includeplanned{part11_booster_k1/01_simulators_and_your_first_simulation}
-\includeplanned{part11_booster_k1/02_the_booster_k1}
-\includeplanned{part11_booster_k1/03_kinematics_of_the_k1}
-\includeplanned{part11_booster_k1/04_standing_balance_and_walking}
-\includeplanned{part11_booster_k1/05_training_motions_in_simulation}
-\includeplanned{part11_booster_k1/06_from_simulation_to_the_real_k1}
-
-% =====================================================================
-\part{Bonus: Video Analysis}\label{part:bonus}
-\includeplanned{part12_bonus_video_analysis/01_analysing_match_video}
+\part{Practical Reinforcement Learning with mjlab}\label{part:mjlab}
+\includechapter{part11_mjlab/01_your_first_mjlab_environment}
+\includechapter{part11_mjlab/02_velocity_tracking_and_reward_design}
+\includechapter{part11_mjlab/03_imitating_motions_beyondmimic_and_amp}
+\includechapter{part11_mjlab/04_training_a_kick}
 
 \ifdefstring{\answermode}{back}{%
   \backmatter

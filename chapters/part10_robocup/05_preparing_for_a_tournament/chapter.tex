@@ -1,8 +1,95 @@
 \bookchapter{Preparing for a tournament}\label{ch:rc5}
-\begin{keyidea}[Planned content]
-This chapter is not written yet. It will cover:
+
+\section*{Explanation}
+A robot that walks beautifully in the lab can still lose at a tournament in the first minute: the wireless network is crowded, the GameController version is different, a jersey is the wrong colour, nobody remembered to charge the spare battery. This chapter is a \textbf{preparation guide} for the HSL, based on the rules of the draft (and always to be checked against the current rulebook). It has three parts: what happens \emph{before} the game, what the \emph{people} on the field do, and how to \emph{test} everything that depends on the rules.
+
+\section*{Before the game}
+\begin{description}[leftmargin=0.6cm]
+ \item[Robot inspection.] Every robot that a team wants to use has to be brought to the organisers for inspection before it may play. Height and mass are measured with the robot standing upright with fully extended knees; the sensors and special modifications are compared with the rules. Pre-approved standard platforms (for example the Booster K1) need not be measured, but they \emph{must} be brought, to check that they are unmodified and that the \textbf{emergency stop} works. A robot that is modified later has to be \emph{reinspected}. A robot without a valid inspection does not play.
+ \item[Referees.] Each team must provide at least one person who knows the rulebook, to referee games and to help at the inspection. The schedule says in which games your team has to provide referees.
+ \item[Network.] The wireless network of a field is provided by the organisers: an access point that must be used by all communication, a range of IP addresses for each team (announced at the site), and no other equipment on $2.4$ or $5$\,GHz close to the field (no phones, no Bluetooth). Direct robot-to-robot connections (ad-hoc mode) and unicast between robots are forbidden. Debug information may go to \emph{one} computer of the team on the \emph{wired} network, one UDP packet per second and robot.
+ \item[GameController.] The robot software must answer the GameController (Chapter~\ref{ch:rc3}). Find out the version of the GameController before the competition and test with it.
+ \item[Forfeit.] A team that does not show up, or announces less than two hours before the game that it will not play, forfeits the game: the opponent plays against an empty field, and the own goals of the forfeiting team are not counted. A team may forfeit at any stoppage of play, but may not take the decision back. A forfeit is recorded as a qualification penalty.
+ \item[Code release.] After the competition teams are \emph{strongly encouraged} to release their code (best: the full code of the last game), with a licence that other participants can use. The announcement goes to the league mailing list by a date given in the rules.
+\end{description}
+
+\section*{The people on the field}
+In a game with robots there are also people, and the rules say exactly what they may do:
 \begin{itemize}[nosep]
-  \item Team organisation
-  \item Match day
+ \item The \textbf{team captain} is the only person who talks to the referees and represents the team in the \textbf{pre-game meeting}, where the coin toss decides who kicks off and which side each team defends.
+ \item One or two \textbf{robot handlers} are the \emph{only} people who touch the robots. They wear a sign of identification (an armband), stay in a marked area and enter the field only with the permission of the head referee, to remove a penalised robot or to put it back. They must not hold up a robot that is falling.
+ \item The \textbf{GameController operator} (the ``contact'') sits in the \textbf{technical area} at the centre of the field, with the home team to the right and the away team to the left, and presses what the referee decides (Chapter~\ref{ch:rc3}). Teams give the operator information, for example that a robot has been put back.
+ \item A \textbf{remote emergency button} may be worn or kept in a marked place; it may only be used on the command of the referee or in a dangerous situation.
+\end{itemize}
+\textbf{Manual interaction with a robot is forbidden} during the game: you may not send commands, restart a program or press a button on a robot except to serve a penalty. In the state \emph{initial} the robots are placed by the handlers and may move their heads and run calibration routines, but may not walk. This has a consequence for software: \textbf{everything that must be done to a robot during a game has to be done by the robot}: re-localise after a penalty, get up after a fall, join the game again.
+
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.2mm]},x=1cm]
+ \draw[thick,->] (0,0)--(12.4,0) node[right,font=\scriptsize]{time};
+ \foreach \x/\tm/\lb in {0.8/{$-2$\,h}/{forfeit\\ deadline},3/{$-20$\,min}/{pre-game\\ meeting},5.2/{0}/{\emph{initial}\\ robots placed},7.4/{$+45$\,s}/{\emph{ready}\\ walk to position},9.6/{}/{\emph{set}\\ stand still},11.6/{}/{whistle\\ \emph{playing}}}{
+  \draw[thick] (\x,-0.12)--(\x,0.12);
+  \node[font=\scriptsize,above,align=center] at (\x,0.2) {\lb};
+  \node[font=\scriptsize,below] at (\x,-0.15) {\tm};
+ }
+\end{tikzpicture}
+\captionof{figure}{The way to a game. The time of the pre-game meeting is only an example; the schedule of the event decides.}
+\end{center}
+
+\section*{A rule-based test plan}
+Every rule that the software has to obey should have a \emph{test}. Make a table with three columns: the rule, the module, and the test. A part of such a table:
+
+\begin{center}
+\small
+\begin{tabular}{p{4.2cm}p{3.2cm}p{5.3cm}}
+\hline
+rule & module & test\\
+\hline
+stop on the GameController command & behaviour, safety & GameController test: press \emph{Stop}, the robot assumes a safe pose in under $1$\,s\\
+no motion in \emph{set} & mode machine & stand-still test with the delayed \emph{playing}; whistle detector played from a loudspeaker\\
+get up within $20$\,s & get-up behaviour & push the robot over $50$ times; no more than $3$ attempts; measure the time\\
+message budget & communication & run a $20$-minute simulated game and read the budget from the GameController\\
+no leaving the field & localisation, walking & robot walks along the border; stays inside\\
+emergency stop & hardware & press the button at full speed (before every game)\\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{example}
+Test ``get up within $20$\,s'' (the rule \emph{incapable robot}). The team lets the robot fall $50$ times: $40$ times forward, $10$ times backward, and measures the time until it stands. Result (an invented example for the table): $47$ successes with a median of $6$\,s and a worst case of $14$\,s, and $3$ failures in which the robot lay on its arm. The worst case is inside the limit, but the failures are \emph{not} acceptable: three attempts with failures give a penalty of $45$\,s, and the team has a $6\%$ chance for this at every fall. The fix (a roll before the push-up) is worth more than any improvement of the walk.
+\end{example}
+
+\section*{What a bad day looks like}
+Experienced teams know a few classic problems, and each has a protection:
+\begin{itemize}[nosep]
+ \item \textbf{Everything runs on the wireless network and the network is overloaded.} Keep the robot working without network (the walking, the vision, the localisation do not need it) and make the messages \emph{optional}.
+ \item \textbf{A different lighting.} Collect training images in the hall on the day before the competition and keep a procedure to retrain or recalibrate (Chapter~\ref{ch:ai4}).
+ \item \textbf{A battery dies.} Count the time of each battery and swap before it is empty; during a penalty the robot may be handed to the team for maintenance, but the timer of the penalty does not run during maintenance.
+ \item \textbf{A change one hour before the game.} Freeze the software before the tournament. Every change since the last test is a risk that the rules table above has not covered.
+ \item \textbf{No logs.} Record the control messages, your status, the decisions of the behaviour and the sensor values, and use the log tool of the GameController to analyse the team communication afterwards.
+\end{itemize}
+
+\begin{aibox}[Rules and learning]
+When a controller is trained with reinforcement learning (Part~\ref{part:mjlab}), the competition rules enter twice: in the \emph{task} (the robot must get up; it must not push; it must not stand with a wide stance for more than $10$\,s) and in the \emph{hardware limits} (maximum torques and speeds that the handlers can handle). Add the rules to your rewards and terminations; a policy that does not know the rules will break them.
+\end{aibox}
+
+\begin{keyidea}[Summary]
+\begin{itemize}[nosep]
+ \item Before the game: inspection (with the emergency stop), a network configuration that follows the rules, a tested GameController connection, referees for the other games.
+ \item During the game only the handlers touch the robots, and nobody may interact with a robot manually: everything must be autonomous.
+ \item Turn every rule into a test; the rules table is the best test list that you can have.
 \end{itemize}
 \end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item Make a checklist of ten items for the day before the first game (hardware, network, software, people). Which of them can be tested in the lab and which only on the field?
+  \item A team announces $1$ hour and $50$ minutes before its game that it cannot play. Which rule applies? Does the team still have a game?
+  \item A robot is penalised and the handler takes it to the team for repair. The penalty time is $45$\,s and the repair takes $30$\,s. When can the robot return?
+  \item A robot has fallen at the start of a game and does not get up. Using the draft rules of Chapter~\ref{ch:rc2}, compute: time before the penalty (inactive limit $10$\,s, get-up limit $20$\,s), and how many robot-seconds the team loses if the robot is removed for $45$\,s and returns.
+  \item Write down which information a robot needs from the GameController to behave correctly after being put back after a penalty. Which of it must be \emph{re-estimated} by the robot itself?
+  \item How would you test that your robot stops within $1$\,s after the \emph{Stop} command (the stop button in the GameController)? Which timestamps would you record?
+  \item The debug channel is limited to one packet per second and robot. A robot would like to send a $30$\,kB image every $5$\,s. Is this allowed? What would you do to get more data out of a game?
+  \item List five \emph{hardware} items and five \emph{software} items for an equipment case that go to a competition.
+  \item Convert the rule ``a robot that has fallen must try to get up within $20$\,s'' into a software requirement and a test with a pass criterion.
+  \item[\textbf{\thechapter.10}$\star$] Write a Rust or Python program that reads a log of control messages (you generate it: one message per $0.5$\,s with the state, the stopped flag and the budget of your team) and reports: time spent in each state, number of stops, and the lowest budget. Test it with a generated log of a $20$-minute game in which the budget decreases at $1.6$\,messages per robot per second for $5$ robots.
+\end{enumerate}

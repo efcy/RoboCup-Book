@@ -1,0 +1,36 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Team: $6+2+2+60=70$ bytes; message: $4+1+10+2+2=18$ for the header plus $2\cdot70=140$, in total $158$. If one side inserts padding bytes for alignment and the other does not, every field after the first padding is read from the wrong place. In C the padding depends on the compiler; here the layout was checked with \verb!sizeof! and \verb!offsetof!.
+  \item The state is the 11th byte of the header, offset $10$ (header 0--3, version 4, packet number 5, players per team 6, competition type 7, stopped 8, game phase 9, state 10). The message budget of team 1: the team starts at $18+70=88$, the budget is at offset $8$ in the team: $96$ and $97$.
+  \item $0.1^{4}=10^{-4}$ for four packets in a row ($2$\,s at $2$\,Hz); about one in ten thousand. The risk is small, but over a game of $20$ minutes (2400 packets) it is expected about once in four games. The \emph{stopped} state is sent at once and with an increased rate ($5$\,Hz) to make this less likely.
+  \item A Python program; it prints \verb!3 431 11650 (10, 33, 1)! for the test message: state $3$ (playing), $431$\,s, the budget $11\,650$, and penalty $10$ (pushing) with $33$\,s left and one caution. The format strings are \verb!"<4s10Bhh"! (18 bytes) and \verb!"<6BHH60B"! (70 bytes); the sizes were checked with \verb!struct.calcsize!.
+\begin{verbatim}
+import struct
+HEAD = struct.Struct("<4s10Bhh")
+TEAM = struct.Struct("<6BHH60B")
+
+def parse(buf):
+    assert len(buf) == 158 and buf[:4] == b"RGme"
+    h = HEAD.unpack_from(buf, 0)
+    teams = []
+    for i in range(2):
+        t = TEAM.unpack_from(buf, 18 + 70 * i)
+        teams.append({"score": t[4], "budget": t[7],
+                      "players": [t[8+3*k: 11+3*k]
+                                  for k in range(20)]})
+    return {"state": h[7], "secs": h[11], "teams": teams}
+\end{verbatim}
+  \item The communication module (a task of its own that does not depend on the walking). If the robot does not know where it is, it still has to send the packet (otherwise it counts as not responding); send the best guess and a state that says ``not localised'' in the team message, but \emph{not} a wrong pose that looks certain.
+  \item (a) The GameController software has been updated and uses a new version; (b) the packet comes from another GameController (a different league) in the same network; (c) an old robot program or a test tool sends it. The robot should \textbf{not} act on a packet with an unknown version (it could mean wrong offsets) but keep the last valid state, log the event, and in the worst case use the physical stop.
+  \item For example $(0,0)$ and the age $-1$, together with a flag in the age. The age is better than a time stamp because the robots have no common clock; the age needs no synchronisation, whereas a time stamp from another robot cannot be compared with one's own time.
+  \item A broadcast is sent to everyone in the subnet: the sender does not need to know who is listening and a new robot receives it at once. On a congested wireless network broadcasts are sent at a low rate without acknowledgement, can be lost, and the load grows with every sender (also with the debug packets of other teams on the same network).
+  \item Sketch: send in a loop \verb+for i in 0..10 { if i != 4 { tx.send_to(&pkt(i), addr)?; } }+, and the receiver keeps \verb!last! and computes \verb+missing = cur.wrapping_sub(last).wrapping_sub(1)+ (type \verb+u8+); it prints the numbers between. With the wrap-around, \texttt{255} followed by \texttt{0} is a step of $1$, not $-255$.
+  \item
+\begin{verbatim}
+fn budget_left(c: &Control, team: u8) -> Option<u16> {
+    c.teams.iter()
+        .find(|t| t.number == team)
+        .map(|t| t.message_budget)
+}
+\end{verbatim}
+  The program keeps \verb!last: Option<u8>! and the check \verb!c.packet_number.wrapping_sub(last) > 1! detects lost packets; the warning is printed when \verb!budget_left! is below $1000$. (This solution is a sketch; only the parser of the chapter was run.)
+\end{enumerate}

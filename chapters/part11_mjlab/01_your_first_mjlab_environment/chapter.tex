@@ -1,0 +1,158 @@
+\bookchapter{Your first mjlab environment}\label{ch:mj1}
+
+\section*{Explanation}
+Part~\ref{part:rl} explained reinforcement learning with pencil, paper and small programs. To train a humanoid with it you need two more things: a \textbf{fast simulator} that runs thousands of robots at the same time, and a \textbf{framework} that turns ``I want the robot to walk at a given speed'' into observations, rewards and resets without writing everything again for each robot. This part of the book is about one such framework, \textbf{mjlab}, and about the tasks that people have built with it for the humanoid robots of the Booster company (the \texttt{booster-mjlab} project).
+
+\begin{keyidea}[What was run and what was not]
+mjlab needs a Linux computer with an NVIDIA graphics card for training. The computer on which this book was written had no such card and no network access for installing packages. Therefore: \textbf{I read the source code and the documentation} of mjlab and booster-mjlab (cloned from GitHub) and describe what they contain, with the numbers from their configuration files, but \textbf{I did not run mjlab, did not train any policy with it and show no result of the real framework}. What I did run are small programs in plain NumPy that have the \emph{same structure} (many environments in parallel, observation, reward, termination, reset) and that are labelled as toys. Commands in this part are quoted from the documentation; try them on your machine and check the current documentation.
+\end{keyidea}
+
+\section*{What mjlab is}
+mjlab is an open-source framework for robot learning. According to its documentation it combines two things: the \textbf{manager-based} way of building environments that is known from Isaac Lab (small, reusable building blocks for observations, rewards, events and commands), and \textbf{MuJoCo Warp}, a version of the MuJoCo physics engine that runs on the GPU. Everything that the policy sees is a PyTorch tensor, and the physical models are ordinary MuJoCo XML files; MJCF models, for example those of the MuJoCo Menagerie, work without conversion. The documented system requirements are: for training \textbf{Linux with an NVIDIA GPU} (a recent driver; there is an extra for older drivers); for evaluation Linux, macOS or Windows with WSL; Python $3.11$ or newer. The recommended way to install is the package manager \texttt{uv}; the quickest test is the demo command of the documentation, \verb!uvx --from mjlab --refresh demo!.
+
+Why use many robots at once? In Chapter~\ref{ch:rl4} you saw that PPO needs a lot of experience: millions of steps. If one simulated robot gives $1000$ steps per second, a million steps take $17$ minutes; if $4096$ robots are simulated in parallel on one GPU, the same amount of experience is collected in a fraction of a second. All the data are \textbf{batched}: every tensor has the shape \verb![num_envs, ...]!, and every function you write for an observation or a reward takes and returns a tensor with this first dimension.
+
+\begin{center}
+\begin{tikzpicture}[>={Stealth[length=2.2mm]},bx/.style={draw,thick,rounded corners=3pt,minimum width=2.4cm,minimum height=0.85cm,font=\scriptsize,align=center}]
+ \node[bx,fill=blue!10] (pol) at (0,0) {policy\\ (neural network)};
+ \node[bx,fill=orange!15] (act) at (3.3,0) {action manager\\ (joint targets)};
+ \node[bx,fill=gray!15] (sim) at (6.6,0) {physics\\ $\times$ decimation};
+ \node[bx,fill=green!12] (obs) at (9.9,0) {observation\\ manager};
+ \node[bx,fill=yellow!20] (rew) at (9.9,-1.5) {reward and\\ termination managers};
+ \node[bx,fill=red!10] (evt) at (6.6,-1.5) {event manager\\ (reset, push, \dots)};
+ \draw[->,thick] (pol)--(act); \draw[->,thick] (act)--(sim); \draw[->,thick] (sim)--(obs); \draw[->,thick] (sim.south east)--(rew.north west);
+ \draw[->,thick] (rew)--(evt); \draw[->,thick] (evt.north)--(sim.south);
+ \draw[->,thick] (obs.north) to[out=110,in=70,looseness=0.7] (pol.north);
+ \node[font=\scriptsize,align=center] at (3.3,-1.5) {commands, curriculum\\ (what to do, how hard)};
+\end{tikzpicture}
+\captionof{figure}{One step of a manager-based environment. The policy gives an action, the action manager turns it into targets for the actuators, the physics runs several small steps (decimation), and the managers compute observation, reward and termination. The event manager resets the environments that are finished and applies the randomisation.}
+\end{center}
+
+\section*{The building blocks}
+A task in mjlab is a \textbf{configuration} (a Python dataclass), not a long program. It lists:
+\begin{description}[leftmargin=0.6cm]
+ \item[Scene and entities.] The robot (an \emph{entity}, made from a MuJoCo XML, with actuators and an initial pose), the terrain, optional objects (a ball!), and sensors (contact sensors, ray casts for the height of the terrain).
+ \item[Observations.] Groups of terms. Each term is a function that reads the simulation and returns a tensor; the manager concatenates the terms of a group. Terms can have noise. The usual groups are \texttt{actor} and \texttt{critic}: the critic is only needed during training, and may therefore see things the real robot cannot measure (\textbf{asymmetric actor-critic}).
+ \item[Actions.] How the output of the network acts on the robot: a joint-position target relative to the default pose, scaled; or an effort (force) for a simple system like the cartpole.
+ \item[Rewards.] Terms with weights; the manager returns the weighted sum.
+ \item[Terminations.] Conditions that end an episode: the robot fell (a failure) or the time is over (a \emph{time-out}).
+ \item[Events.] Things that happen at \texttt{startup} (randomise friction and masses once), at \texttt{reset} (random initial state) or at an \texttt{interval} (push the robot).
+ \item[Commands.] Targets that are drawn at random and held for a while, for example a desired walking velocity (Chapter~\ref{ch:mj2}).
+ \item[Curriculum.] A rule that changes the difficulty during training.
+\end{description}
+In the physics configuration two numbers are very important: the \textbf{timestep} of the simulation and the \textbf{decimation}, which says how many physics steps are made for one policy step. A timestep of $0.01$\,s with a decimation of $5$ means that the policy acts every $0.05$\,s, that is at $20$\,Hz.
+
+\section*{The cartpole, step by step}
+The official tutorial builds a cartpole in two files: a MuJoCo XML and one Python module. A cart slides along a rail and carries a pole on a hinge; the agent pushes the cart and must swing the pole up and balance it. The ingredients in the tutorial are:
+\begin{itemize}[nosep]
+ \item \textbf{Model.} Two bodies, two joints and one motor. The cart joint is limited to $\pm1.8$\,m; the motor has gear ratio $10$ and the control range $[-1,1]$, so the largest force is $10$\,N. The control range is \texttt{ctrllimited}, so the actions of the network are clamped safely.
+ \item \textbf{Observations.} Cart position ($1$ number), pole angle as \textbf{cosine and sine} ($2$), cart velocity ($1$) and pole velocity ($1$). Why cos and sin? The hinge is unlimited and its angle keeps growing when the pole spins; cosine and sine give the same output for the same physical angle, however many times it has turned.
+ \item \textbf{Action.} One number, the force on the cart.
+ \item \textbf{Reward.} A product of four factors in $[0,1]$: \emph{upright} $\tfrac{\cos\theta+1}{2}$, \emph{centred}, \emph{small control} and \emph{small velocity}. A product is high only if all four are satisfied together, so the agent cannot trade one for another.
+ \item \textbf{Termination.} Only a time limit, marked as a time-out so that the algorithm knows it is a truncation and not a failure (the value function is bootstrapped past it; Chapter~\ref{ch:rl4}).
+ \item \textbf{Events.} At reset the joint positions and velocities are shifted by small random offsets.
+ \item \textbf{Simulation.} Timestep $0.01$\,s, decimation $5$ ($20$\,Hz), and contact computation switched off, because nothing collides.
+\end{itemize}
+A task is then registered under a name together with its RL configuration (the network sizes and the PPO hyperparameters; for the cartpole two layers of $64$ units are enough), and trained and played by name:
+\begin{verbatim}
+uv run train Mjlab-Cartpole-Swingup --env.scene.num-envs 4096
+uv run play  Mjlab-Cartpole-Swingup --checkpoint-file latest
+\end{verbatim}
+Every field of the configuration can be overridden on the command line, for example \verb!--agent.algorithm.learning-rate 3e-4!. The reinforcement learning algorithm behind \verb!train! is PPO from the library RSL-RL, and the logs go to Weights \& Biases if you use it.
+
+\begin{aibox}[Config files and not code]
+The pattern of mjlab is worth remembering: a task is a \emph{description}. The same environment configuration function is called with \verb!play=True! for the evaluation (no noise, no random pushes, one robot, an infinitely long episode) and without it for the training. The factory functions in booster-mjlab do the same thing for a K1 or a T1: they take a base configuration and replace what is robot-specific (the joint names, the action scales, the body names for the feet).
+\end{aibox}
+
+\section*{A toy with the same structure}
+To see the structure at work without a GPU, here is a cart-pole in plain NumPy. It is \textbf{not mjlab}: the physics are the textbook equations of the cart-pole, the policy is \emph{linear} ($u=K\cdot s$ with four numbers) and the learning algorithm is a simple \emph{evolution strategy} (an average over random perturbations of the four numbers), not PPO. But the things to notice are the same: $4096$ environments in one array, a reward that is a product of factors, a termination that stops the reward, a decimation of $5$, and the small random initial state.
+
+\begin{verbatim}
+import numpy as np
+
+rng = np.random.default_rng(0)
+G, MC, MP, L = 9.81, 1.0, 0.1, 0.5      # gravity, masses, pole length
+DT, DEC = 0.01, 5                       # physics step, decimation
+
+def step(s, u):
+    """s: [num_envs, 4] = (x, xdot, theta, thetadot), theta=0 upright."""
+    x, xd, th, thd = s.T
+    for _ in range(DEC):
+        f = 10.0 * np.clip(u, -1, 1)
+        c, sn = np.cos(th), np.sin(th)
+        tmp = (f + MP * L * thd**2 * sn) / (MC + MP)
+        thdd = (G * sn - c * tmp) / (L * (4/3 - MP * c**2 / (MC + MP)))
+        xdd = tmp - MP * L * thdd * c / (MC + MP)
+        x += DT * xd; xd += DT * xdd
+        th += DT * thd; thd += DT * thdd
+    return np.stack([x, xd, th, thd], 1)
+
+def reward(s, u):
+    x, _, th, _ = s.T
+    upright = (np.cos(th) + 1) / 2
+    centred = np.exp(-x**2)
+    small_u = (4 + np.exp(-(np.clip(u, -1, 1) / 0.5)**2)) / 5
+    return upright * centred * small_u
+
+def rollout(K, n_steps=200):
+    """One linear policy u = K.s per environment; returns the returns."""
+    n = K.shape[0]
+    s = np.stack([rng.uniform(-.1, .1, n), rng.uniform(-.01, .01, n),
+                  rng.uniform(-.1, .1, n), rng.uniform(-.01, .01, n)], 1)
+    ret, alive = np.zeros(n), np.ones(n, bool)
+    for _ in range(n_steps):
+        u = np.einsum('ij,ij->i', K, s)
+        s = step(s, u)
+        alive &= (np.abs(s[:, 0]) < 1.8) & (np.abs(s[:, 2]) < 0.8)
+        ret += reward(s, u) * alive
+    return ret
+
+K, sigma, lr = np.zeros(4), 1.0, 0.5
+for it in range(61):
+    eps = rng.standard_normal((4096, 4))        # 4096 perturbed policies
+    R = rollout(K + sigma * eps)                # 4096 environments at once
+    adv = (R - R.mean()) / (R.std() + 1e-8)
+    K = K + lr * sigma * (adv[:, None] * eps).mean(0)
+    if it % 20 == 0:
+        print(it, round(R.mean(), 1), K.round(2))
+print("mean policy:", rollout(np.tile(K, (1000, 1))).mean().round(1))
+\end{verbatim}
+
+I ran this program on a CPU (the numbers in the next paragraph are the printed values). In iteration $0$ the mean return of the perturbed policies is $18.7$ (of at most $200$, one per step); the mean policy $K$ has the return $199.3$ at the end ($1000$ new random starts). The perturbed policies are worse than the mean ($157.5$ at iteration $60$) because $\sigma=1$ is a large noise; this is the normal picture of a search with noise.
+
+\begin{center}
+\begin{tikzpicture}
+\begin{axis}[width=0.85\linewidth,height=5.5cm,xlabel={iteration},ylabel={return (max 200)},xmin=0,xmax=60,ymin=0,ymax=210,grid=both,legend style={font=\scriptsize,at={(0.97,0.05)},anchor=south east}]
+ \addplot[blue,very thick] table[x=it,y=pert] {chapters/part11_mjlab/01_your_first_mjlab_environment/cp_curve.dat};
+ \addplot[red,very thick] table[x=it,y=mean] {chapters/part11_mjlab/01_your_first_mjlab_environment/cp_curve.dat};
+ \legend{mean of the 4096 perturbed policies,mean policy $K$ (1024 new starts)}
+\end{axis}
+\end{tikzpicture}
+\captionof{figure}{Learning curve of the NumPy toy (one run, seed $0$). The mean policy balances the pole in most of the starts from iteration $8$ (return above $150$), is above $190$ from iteration $11$ and above $198$ from iteration $23$. The whole run of $61$ iterations with $4096$ environments and $200$ steps took about $15$ seconds on one CPU core, about $3.3$ million policy steps per second.}
+\end{center}
+
+The toy shows what \emph{vectorised} means: one call of \verb!step! advances $4096$ carts. On a GPU, mjlab does the same for thousands of humanoids, each with dozens of joints and contacts; the structure of the code does not change.
+
+\begin{keyidea}[Summary]
+\begin{itemize}[nosep]
+ \item mjlab = MuJoCo Warp (GPU physics) + a manager-based environment design + PyTorch tensors. Training needs a Linux machine with an NVIDIA GPU.
+ \item A task is a configuration of scene, observations (actor and critic), actions, rewards, terminations, events, commands and curriculum, plus a registration with PPO settings.
+ \item Everything is batched: tensors have the shape [number of environments, \dots].
+ \item Decimation links the physics step to the control frequency: $0.01$\,s $\times 5$ gives $20$\,Hz.
+ \item In this book the framework itself was read, not run; the toy of this chapter was run.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item The physics timestep is $0.005$\,s and the decimation is $4$. What is the control frequency? Which values would give $50$\,Hz with a timestep of $0.004$\,s?
+  \item The cartpole motor has gear $10$ and control range $[-1,1]$. What force does an action of $0.3$ give, and what does an action of $-4$ give? Why is the clamp safe for exploration?
+  \item The reward of the cartpole is the product of the factors $0.9$, $0.8$, $0.95$ and $0.99$. Compute it. If the first factor drops to $0.1$, what is the reward? Compare with the \emph{sum} of the factors divided by four and say what this tells you about a product reward.
+  \item The pole angle $\theta=\pi+0.1$ and $\theta=-\pi+0.1$ are the same physical angle. Compute $(\cos\theta,\sin\theta)$ for both and for $\theta=\pi+0.1+2\pi$. Why would the raw angle be a bad observation for the policy?
+  \item An episode is $10$\,s long at $20$\,Hz. How many steps is that? A training run uses $4096$ environments and $24$ steps per iteration per environment: how many samples are collected per iteration, and after how many iterations has every environment completed a whole number of episodes (the first time)?
+  \item Explain the difference between a \emph{time-out} and a \emph{failure} termination for the value function. What would go wrong if a time-out were treated as a failure?
+  \item Why is the critic allowed to have more observations than the actor? Name two things that are good for the critic to see and that a real K1 cannot measure well.
+  \item In the toy, change the reward to $\text{upright}$ only (remove the other two factors) and describe what you expect the best policy to do with the cart. Then try it and report the result (write what you observed, not what you expected).
+  \item Write the NumPy toy so that the initial angle is uniform in $\pm0.5$\,rad instead of $\pm0.1$ (and keep the termination). Does the linear policy still work? Report the final mean return and the fraction of starts that terminate early.
+  \item[\textbf{\thechapter.10}$\star$] Add \textbf{observation noise} to the toy (uniform $\pm0.05$ on every observation; the policy sees noisy values, the reward uses the true state) and a \textbf{push}: every $100$ steps the cart velocity is changed by a random value in $\pm0.5$\,m/s. Train again and compare the mean return of the final policy with and without the noise. This is the same idea as the noise and the random pushes in the mjlab tasks of the next chapters.
+\end{enumerate}

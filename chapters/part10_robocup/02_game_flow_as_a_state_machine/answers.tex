@@ -1,0 +1,35 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Initial: they stand and the team can prepare (before the game, walking is not needed). Ready: they move to the kick-off positions. Set: they must stand still. Playing: they play. Finished: they stand (the half is over).
+  \item $9/0.3=30$\,s, which is less than $45$\,s: yes, with $15$\,s to spare. To need the whole $45$\,s the speed would be $9/45=0.2$\,m/s. In practice some seconds go to turning and to the localisation, so a margin is needed.
+  \item So that a team that waits for the message does not get the same start as a team that hears the whistle. The team that hears it gets up to $10$\,s of play with the ball before the opponent starts. (The rule makes the whistle part of the game.)
+  \item $20$ minutes is $1/3$ of an hour, so $0.33$ false alarms are expected per game and the chance of at least one is about $28\%$ ($1-e^{-1/3}$). The gain is up to $10$\,s of play at every kick-off (about $3$--$6$ kick-offs); the loss is a $15$\,s penalty for one robot with probability $0.28$ per game. A detector that needs the sound \emph{and} that waits for the confirmation of one more frame is a good compromise. The numbers are the example of the problem, not measurements.
+  \item Three of many: (a) the robot falls on the arm and the get-up motion fails $\Rightarrow$ a second get-up strategy (roll over, other arm) and a retry counter; (b) the fall detection is too slow and the robot lies for more than $10$\,s without ``trying'' $\Rightarrow$ the state \emph{falling} starts the get-up at once; (c) the motors overheat and refuse to move $\Rightarrow$ monitor the temperature and reduce the load before it happens.
+  \item A new argument is needed for the timeout (\verb!timeout: bool!), and the penalty \emph{type} (not only $\ne0$), because the rule depends on which penalty is active. The order of the checks is then: timeout $\to$ penalty $\to$ stopped $\to$ state. A robot with a penalty is already in \verb!Wait!, so the special rule only decides whether to start walking \emph{after} the penalty ends; a good example that a rule can be implemented by the \emph{order} of the checks.
+  \item $45+55+65=165$\,s (the times in the problem). A fourth penalty costs $75$\,s, which is $30$\,s more than the first.
+  \item Same: the robots stand still, may not get up, and the clock of the game goes on (in \emph{stopped}) or is prepared (in \emph{set}). Different: \emph{stopped} can occur in any state and returns to the previous state when play resumes, with the game clock running; \emph{set} is a state of its own that ends with the whistle and leads to \emph{playing}.
+  \item A plan: $0$--$6$\,s prepare the pass, $6$--$10$\,s kick, $10$--$13$\,s the ball rolls $2.5$\,m at about $1$\,m/s (it is $2.5$\,s), and the teammate has to receive. This leaves about $30$\,s of reserve. The largest risk is that the ball does not go where planned and the robots lose the time; so the plan should have a fallback (take a direct shot or clear the ball) that starts at, say, $30$\,s.
+  \item
+\begin{verbatim}
+type Event = (u32, State, bool, u8, bool);
+
+fn changes(events: &[Event]) -> Vec<(u32, Mode)> {
+    let mut out: Vec<(u32, Mode)> = Vec::new();
+    for &(t, st, stopped, pen, wh) in events {
+        let m = mode(st, stopped, pen, wh);
+        if out.last().map(|&(_, last)| last) != Some(m) {
+            out.push((t, m));
+        }
+    }
+    out
+}
+
+#[test]
+fn whistle_in_set() {
+    let ev = [(0, State::Set, false, 0, false),
+              (4, State::Set, false, 0, true)];
+    assert_eq!(changes(&ev),
+               vec![(0, Mode::Hold), (4, Mode::Play)]);
+}
+\end{verbatim}
+  The function keeps the list of changes and appends only if the mode differs from the last entry. The tests for a stop during playing (\texttt{Play, Safe, Play}) and for a penalty in \emph{ready} (\texttt{GoToPosition, Wait}) are written in the same way. The program with the three tests was compiled and run: the three tests pass and the timeline of the chapter prints the eight lines \texttt{Stand, GoToPosition, Hold, Play, Safe, Play, Wait, Stand} at $0, 5, 50, 60, 90, 95, 120, 400$\,s.
+\end{enumerate}

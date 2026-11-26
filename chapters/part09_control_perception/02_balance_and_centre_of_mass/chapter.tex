@@ -141,7 +141,7 @@ v 0.20  xi 0.0452  Step(0.04966760050843041)\\
 v 0.30  xi 0.0677  Step(0.0745014007626456)
 \end{tabular}
 \end{center}
-The push of $0.20$\,m/s could still be absorbed by the ankles (Figure above, $\xi=4.5$\,cm$<5$\,cm), but with the margin of $80\%$ the program already prepares a step: a controller must not plan with the last millimetre of the foot, because the model is not exact and the real sole is not rigid. How far to step, and with which foot, is the subject of the walking chapter of the K1 part (Chapter~\ref{ch:k13}).
+The push of $0.20$\,m/s could still be absorbed by the ankles (Figure above, $\xi=4.5$\,cm$<5$\,cm), but with the margin of $80\%$ the program already prepares a step: a controller must not plan with the last millimetre of the foot, because the model is not exact and the real sole is not rigid. How far to step, and with which foot, is the subject of Chapter~\ref{ch:mj2} (a walking policy learns it from experience) and of the walking chapter of the follow-along K1 book.
 
 \begin{keyidea}[What the model leaves out]
 The inverted pendulum has no legs with mass, no swinging arms and no trunk that can turn. A real robot can also change its balance by moving the arms and bending the trunk (it stores \emph{angular momentum}), by pushing against a second contact (a hand on the wall) or by a controlled fall into a roll. The model is a first guide: the numbers $T_c$ and $\xi$ say how much time and how much room you have.

@@ -79,7 +79,7 @@ Behaviour in a long run & errors appear at run time & many errors found by the c
 Deploying to the robot & Python + packages & one file\\
 \end{tabular}
 \end{center}
-Our team therefore uses both: Python for training, data analysis and video analysis (Part~\ref{part:bonus}), Rust for the program that runs on the robot and for the tools that connect to it. Very often a feature is first tried in Python and then rewritten in Rust once it is clear what it should do.
+Our team therefore uses both: Python for training, data analysis and video analysis (a bonus chapter of the follow-along K1 book), Rust for the program that runs on the robot and for the tools that connect to it. Very often a feature is first tried in Python and then rewritten in Rust once it is clear what it should do.
 
 \section*{The system that we are going to build}
 The Rust chapters of this book lead to the following picture, the same one the team uses.
@@ -114,5 +114,5 @@ The error messages of the Rust compiler are famously good: they point at the exa
   \item Say for each task which language you would choose and why: (a) plotting the learning curve of a network, (b) the program that reads the IMU and sends motor commands $200$ times per second, (c) a one-time script that renames $500$ video files, (d) the debug client that shows live data from the robot on a student laptop.
   \item ``If it compiles, it works.'' Give an example of a mistake that the Rust compiler \emph{cannot} find. What do you need besides the compiler to find it?
   \item What is cross-compilation and why is it useful if the robot's computer is slower than your laptop and has a different kind of processor?
-  \item[\textbf{\thechapter.10}$\star$] A colleague proposes to rewrite the whole video-analysis project (Part~\ref{part:bonus}) in Rust ``because it is faster''. Write down the arguments for and against in five sentences, using the table of this chapter, and give your recommendation. Which measurement would you make first?
+  \item[\textbf{\thechapter.10}$\star$] A colleague proposes to rewrite the whole video-analysis project of the follow-along K1 book in Rust ``because it is faster''. Write down the arguments for and against in five sentences, using the table of this chapter, and give your recommendation. Which measurement would you make first?
 \end{enumerate}

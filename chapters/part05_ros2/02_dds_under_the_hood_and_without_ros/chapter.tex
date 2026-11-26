@@ -14,8 +14,8 @@ When two ROS~2 nodes find each other and exchange messages, ROS~2 itself does ve
  \node[blk,fill=gray!15] (net) at (0,-0.9) {RTPS over UDP or shared memory $\cdot$ IP $\cdot$ Ethernet/WiFi};
  \draw[<->,thick] (app)--(rcl); \draw[<->,thick] (rcl)--(rclc); \draw[<->,thick] (rclc)--(rmw);
  \draw[<->,thick] (rmw)--(dds); \draw[<->,thick] (dds)--(net);
- \draw[decorate,decoration={brace,amplitude=5pt}] (4.35,4.0) -- (4.35,0.5) node[midway,right=7pt,font=\scriptsize,align=left]{ROS 2\\ part};
- \draw[decorate,decoration={brace,amplitude=5pt}] (4.35,0.4) -- (4.35,-1.3) node[midway,right=7pt,font=\scriptsize,align=left]{DDS\\ standard};
+ \draw[decorate,decoration={brace,amplitude=5pt,mirror}] (4.35,4.0) -- (4.35,0.5) node[midway,right=7pt,font=\scriptsize,align=left]{ROS 2\\ part};
+ \draw[decorate,decoration={brace,amplitude=5pt,mirror}] (4.35,0.4) -- (4.35,-1.3) node[midway,right=7pt,font=\scriptsize,align=left]{DDS\\ standard};
 \end{tikzpicture}
 \captionof{figure}{The layers between your node and the network. You can exchange the middleware below the \texttt{rmw} line without changing a line of your own code.}\label{fig:ros2_stack}
 \end{center}

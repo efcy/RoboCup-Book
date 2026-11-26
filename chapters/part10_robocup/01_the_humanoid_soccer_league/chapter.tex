@@ -1,0 +1,136 @@
+\bookchapter{The Humanoid Soccer League}\label{ch:rc1}
+
+\section*{Explanation}
+Everything in the previous parts, the mathematics, the networks, the controllers, the Rust code, has to meet one more thing before it plays a match: a \textbf{rulebook}. The rules decide what the robot is allowed to sense, how it may communicate, what counts as a foul and how big the field is. A team that does not know them loses goals to penalties that have nothing to do with the quality of its walking.
+
+This part is about the \textbf{Humanoid Soccer League} (HSL) of RoboCup. It is a new league that has grown out of three older ones: the Standard Platform League (SPL, the NAO robots), and the Humanoid KidSize and AdultSize leagues. Its rules are developed in an open repository (\texttt{RoboCup-HumanoidSoccerLeague/HSL-Rules}), and the official software that runs a game, the \textbf{GameController}, is open as well (Chapter~\ref{ch:rc3}).
+
+\begin{keyidea}[Read this first: the rules are a draft]
+When this chapter was written, the repository of the rules said that the ruleset is \emph{under development} and not yet normative; the version in it is the draft for the year 2027. All numbers in this part (field sizes, times, limits) are taken from that draft. They will change from year to year. \textbf{Before a tournament always read the current rulebook}; use this chapter to understand \emph{why} the rules look as they do and how a robot has to be built around them.
+\end{keyidea}
+
+\section*{Three divisions}
+The league is divided by the size of the robots, because a small robot needs a small field. A robot is measured by its height $H_{\mathrm{top}}$ (the top of the robot standing upright) and its mass:
+
+\begin{center}
+\small
+\begin{tabular}{lccll}
+\hline
+division & height & mass & field (m) & example platforms\\
+\hline
+small & $\le110$\,cm & $\le15$\,kg & $9\times6$ & NAO, OP3, Hightorque Pi+\\
+mid & $\le125$\,cm & $\le25$\,kg & $14\times9$ & \textbf{Booster K1}, Hightorque Hi\\
+large & any & (see the rulebook) & $22\times14$ & Unitree, Booster T1, Alice 4\\
+\hline
+\end{tabular}
+\end{center}
+
+The Booster K1 of the practical book belongs to the \emph{mid} division, so the numbers in this part use the mid division unless another is named. Each division has two levels, \textbf{Foundation} and \textbf{Advanced}. They differ in the number of players on the field: the small division plays $4$ against $4$ (Foundation) or $7$ against $7$ (Advanced), the mid division $3$ against $3$ or $5$ against $5$, the large division $3$ against $3$ or $5$ against $5$. In the mid division the quarter-finals and later rounds are played as Advanced.
+
+\begin{aibox}[Why a size limit and not a type of robot?]
+The rules do not say ``you must use a NAO''. They say how \emph{human-like} a robot must be: the leg length must be between $0.35$ and $0.7$ of the height, the arm span between $0.8$ and $1.2$ of the height, the head height between $0.1$ and $0.3$ of the height. This keeps the robots comparable, and it keeps a team from winning with a robot that is only a very fast wheeled machine. Several commercial platforms are pre-approved (for example the NAO V5/V6, the Booster T1 and K1, and robots of Fourier and Unitree).
+\end{aibox}
+
+\section*{The field}
+The field is a rectangle of turf with white lines. Figure~\ref{fig:rcfield} shows the mid division. All the dimensions come from one table of the rules; the other divisions use the same drawing with other numbers.
+
+\begin{center}
+\begin{tikzpicture}[scale=0.72,>={Stealth[length=2mm]}]
+ \fill[green!35!black!15] (-8.5,-5.5) rectangle (8.5,5.5);
+ \draw[dashed,gray] (-8.5,-5.5) rectangle (8.5,5.5);
+ \draw[thick,white!20!black] (-7,-4.5) rectangle (7,4.5);
+ \draw[thick,white!20!black] (0,-4.5)--(0,4.5);
+ \draw[thick,white!20!black] (0,0) circle (1.5);
+ \fill (0,0) circle (0.06);
+ \foreach \s in {-1,1}{
+  \draw[thick,white!20!black] (\s*7,-2)--(\s*6,-2)--(\s*6,2)--(\s*7,2);
+  \draw[thick,white!20!black] (\s*7,-3)--(\s*4,-3)--(\s*4,3)--(\s*7,3);
+  \fill (\s*5,0) circle (0.06);
+  \draw[very thick,blue!60!black] (\s*7,-1.25)--(\s*7.35,-1.25)--(\s*7.35,1.25)--(\s*7,1.25);
+ }
+ % dimensions of the whole field
+ \draw[<->] (-7,-5.0)--(7,-5.0) node[midway,below,font=\scriptsize]{14\,m};
+ \draw[<->] (8.0,-4.5)--(8.0,4.5) node[midway,left,font=\scriptsize,fill=green!35!black!15,inner sep=1pt]{9\,m};
+ % details of the right half
+ \draw[<->] (5,-0.7)--(7,-0.7) node[midway,below,font=\scriptsize]{2\,m};
+ \draw[<->] (4,-3.5)--(7,-3.5) node[midway,below,font=\scriptsize]{3\,m};
+ \draw[<->] (6,3.5)--(7,3.5) node[midway,above,font=\scriptsize]{1\,m};
+ % circle
+ \draw[<->] (-1.5,0.0)--(1.5,0.0);
+ \node[font=\scriptsize,above] at (0.75,0.0) {$\varnothing$ 3\,m};
+ % labels with leader lines above the field
+ \draw[gray] (-6.5,6.4)--(-6.5,1.0); \node[font=\scriptsize,above] at (-6.5,6.4) {goal area $1\times4$\,m};
+ \draw[gray] (-4.2,5.7)--(-4.2,3.0); \node[font=\scriptsize,anchor=south west] at (-4.4,5.7) {penalty area $3\times6$\,m};
+ \node[font=\scriptsize,gray,align=center] at (-7.8,-3.3) {border\\strip\\$\ge1$\,m};
+\end{tikzpicture}
+\captionof{figure}{The field of the mid division (dimensions of the draft rules). The penalty area is $3\times6$\,m, the goal area $1\times4$\,m inside it, the penalty mark is $2$\,m from the goal line, the centre circle has a diameter of $3$\,m. Around the field there is a border strip of at least $1$\,m. The goals are $2.4$ to $2.6$\,m wide (drawn $2.5$\,m).}\label{fig:rcfield}
+\end{center}
+
+The table of the three divisions (all lengths in metres):
+
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\hline
+ & small & mid & large\\
+\hline
+field length $\times$ width & $9\times6$ & $14\times9$ & $22\times14$\\
+goal area (depth $\times$ width) & $1\times3$ & $1\times4$ & $1\times5$\\
+penalty area (depth $\times$ width) & $2\times4$ & $3\times6$ & $3.5\times7$\\
+penalty mark from the goal line & $1.5$ & $2.0$ & $2.5$\\
+centre circle diameter & $1.5$ & $3.0$ & $4.0$\\
+ball & FIFA mini & FIFA size 3 (or 4) & FIFA size 5\\
+\hline
+\end{tabular}
+\end{center}
+
+The lines are $5$\,cm wide for the small and mid fields and $12$\,cm for the large field. The turf is $20$ to $30$\,mm high (small: $8$ to $12$\,mm), the light must be at least $300$\,lux (preferred $400$\,lux) and predominantly white. Why does this matter to a programmer? Because the perception pipeline of Chapter~\ref{ch:ctl6} and the localisation of Chapter~\ref{ch:ctl5} are \emph{tuned to these numbers}: the field model of the particle filter is exactly this drawing.
+
+\begin{example}
+A robot in the mid division stands on the penalty mark and shoots at the goal. The distance to the goal line is $2.0$\,m, so a ball that crosses the line at the speed of $1.5$\,m/s is in the goal after about $1.3$\,s. Suppose the goalkeeper stands on the goal line (it may not dive during a penalty kick) and (an assumption for this example) needs $1.0$\,s to fall to one side: a shot at $1.5$\,m/s into a corner leaves very little time. The mid division is \emph{small enough} that shots from distance are a real weapon, and large enough that a robot has to walk $14$\,m to get from goal to goal: at $0.5$\,m/s that is $28$ seconds.
+\end{example}
+
+\section*{What the robot may sense}
+The rules prefer \textbf{human-like sensing}. In short:
+\begin{itemize}[nosep]
+ \item \textbf{Cameras} in the head; an RGB or stereo camera is human-like. The horizontal angle of view is limited to $180^{\circ}$ and the vertical to $140^{\circ}$ for an RGB camera (the total field of view of all cameras, also while the head moves, is limited as well).
+ \item \textbf{Depth cameras} based on active infrared or time of flight are \emph{discouraged}; passive depth (stereo) is encouraged.
+ \item \textbf{IMU, joint encoders, current, temperature and force sensors} are allowed. A \textbf{compass is not allowed} (an IMU with a compass must not use it); this is why the localisation in Chapter~\ref{ch:ctl5} must find its orientation from the field lines.
+ \item \textbf{Microphones} in the head (for the whistle of the referee), \textbf{touch sensors} anywhere on the body, and at most $4$ one-dimensional distance sensors for the very near range (discouraged).
+\end{itemize}
+Forbidden are \textbf{any remote processing or control}: no teleoperation, no external computer that thinks, no external sensor. Robots may communicate only with each other, with the referees and with the GameController.
+
+\begin{keyidea}[Everything must run on the robot]
+The robot is \emph{autonomous}: the vision network of Chapter~\ref{ch:ai4}, the localisation, the behaviour and the walking all run on the computer that is inside the robot. This is the reason why you care about the number of operations of a network and about the real-time behaviour of your Rust program: there is no larger computer to help during the game.
+\end{keyidea}
+
+\section*{Safety and fair play}
+Every robot has to be \textbf{physically stoppable} by its handler at any moment: a handle on the back, a button or an emergency switch. Before a game the referees ask the team to demonstrate this. A remote emergency button is allowed, but it must be connected to \emph{one} robot and do nothing else. And there is a second stop: when the GameController sends the command to stop, the robot must assume a safe pose by itself (Chapter~\ref{ch:rc2}).
+
+Robots wear \textbf{jersey shirts} in the colour of their team with a unique number between $1$ and $20$. The robot body itself must be mostly neutral (black, grey, white, silver) and non-reflective, so that nothing on a robot is mistaken for a ball or a field line. This is a rule that a detector network learns to rely on.
+
+\begin{aibox}[Rules as design requirements]
+Read a rulebook the way you read a specification. ``No remote sensing'' $\Rightarrow$ the whole stack on board. ``No compass'' $\Rightarrow$ line-based orientation. ``Safe pose on command'' $\Rightarrow$ a safety state in the behaviour that can always be entered. ``Neutral body colours'' $\Rightarrow$ fewer false detections. A good team keeps a list of such rules and the module that is responsible for each.
+\end{aibox}
+
+\begin{keyidea}[Summary]
+\begin{itemize}[nosep]
+ \item The HSL has three divisions by robot size (small, mid, large) with fields of $9\times6$, $14\times9$ and $22\times14$\,m. The K1 plays in the mid division.
+ \item The rules prefer human-like sensing, forbid compasses and any off-board processing and require a physical emergency stop.
+ \item The numbers of this chapter are from a \emph{draft}; the current rulebook decides.
+\end{itemize}
+\end{keyidea}
+
+\section*{Practice problems}
+\begin{enumerate}[label=\textbf{\thechapter.\arabic*}]
+  \item In which division would a robot of $118$\,cm height and $21$\,kg play? Which field and which ball does it use?
+  \item A robot is $120$\,cm tall. What leg length, arm span and head height do the shape rules allow for it?
+  \item How large is the area of the field (without border strip) and of a penalty area in each of the three divisions? What fraction of the field is the penalty area?
+  \item A robot walks at $0.4$\,m/s. How long does it need from one goal line to the other in the small and in the mid division?
+  \item The vision system must find the ball $6$\,m away in the mid division (ball size 3, diameter about $0.2$\,m; use $0.20$\,m). How many pixels wide is the ball for a camera with $f=640$ pixels? (Use the pinhole model of Chapter~\ref{ch:ctl6}.)
+  \item List five rules of this chapter and for each name the part of the robot software that it influences.
+  \item A team wants to use a magnetometer (compass) to know the heading of the robot. Why is this not allowed to be \emph{used}, and what do you use instead?
+  \item Why does the rulebook discourage active depth cameras but encourage stereo cameras? Give one technical and one competition-related reason.
+  \item The border strip is at least $1$\,m. Why must a team be able to deal with a robot that is \emph{outside} the lines, and which of your modules needs to know?
+  \item[\textbf{\thechapter.10}$\star$] Write a small Python (or Rust) program that holds the field table of the three divisions and answers: given a position $(x,y)$ in metres with the origin in the centre, is it inside the field, in the penalty area of which side, in the goal area, or in the centre circle? Test it on at least eight points in each division.
+\end{enumerate}

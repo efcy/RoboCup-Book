@@ -1,0 +1,32 @@
+\begin{enumerate}[label=\textbf{\ansnum.\arabic*}]
+  \item Mid division (height $\le125$\,cm, mass $\le25$\,kg): field $14\times9$\,m, ball FIFA size 3 (or 4).
+  \item Leg length $0.35\ldots0.7\cdot120=42\ldots84$\,cm, arm span $0.8\ldots1.2\cdot120=96\ldots144$\,cm, head height $0.1\ldots0.3\cdot120=12\ldots36$\,cm.
+  \item Field: $54$, $126$, $308$\,m$^2$. Penalty area: $8$, $18$, $24.5$\,m$^2$. Fractions: $8/54=14.8\%$, $18/126=14.3\%$, $24.5/308=8.0\%$. (Per side; two penalty areas.)
+  \item Small: $9/0.4=22.5$\,s; mid: $14/0.4=35$\,s (measured between the goal lines).
+  \item $640\cdot0.20/6=21.3$ pixels (about $21$). A detector has to work with objects of 20 pixels.
+  \item Examples: no off-board processing (whole stack on the robot); no compass (localisation); safe pose on the stop command (behaviour/safety state); jersey and neutral body colours (detector training data); limited field of view (head control); message budget (Chapter~\ref{ch:rc4}).
+  \item The table of the rules only says that magnetic measurement sensors are not allowed (the league wants human-like sensing). A practical reason is that a compass is disturbed by the metal and the electrical devices around the field. Use the IMU for pitch and roll (Chapter~\ref{ch:ctl4}) and the \emph{field lines, goals and the opponents' and teammates' messages} for the yaw (Chapter~\ref{ch:ctl5}).
+  \item Technical: active infrared or time-of-flight sensors disturb each other when many robots are on a field and fail in sunlight. Competition: the league wants human-like vision, where the intelligence is in the image processing; passive stereo is closer to that. (The rule text itself only states that active sensors are discouraged and may be prohibited.)
+  \item A robot that is pushed out, or walks out, is penalised (leaving the field), and its behaviour has to bring it back or let it stand still. The localisation (field model with border), the behaviour (``go back'' state) and the perception (the lines are not visible outside) all need to know.
+  \item
+\begin{verbatim}
+FIELDS = {"small": (9.0, 6.0, 1.0, 3.0, 2.0, 4.0, 1.5),
+          "mid":   (14.0, 9.0, 1.0, 4.0, 3.0, 6.0, 3.0),
+          "large": (22.0, 14.0, 1.0, 5.0, 3.5, 7.0, 4.0)}
+
+def where(div, x, y):
+    L, W, gd, gw, pd, pw, cc = FIELDS[div]
+    if abs(x) > L/2 or abs(y) > W/2:
+        return "outside"
+    if x*x + y*y <= (cc/2)**2:
+        return "centre circle"
+    side = "left" if x < 0 else "right"
+    d = L/2 - abs(x)
+    if d <= gd and abs(y) <= gw/2:
+        return "goal area " + side
+    if d <= pd and abs(y) <= pw/2:
+        return "penalty area " + side
+    return "field"
+\end{verbatim}
+  Test points for the mid division: $(0,0)$ centre circle; $(6.5,0)$ goal area right; $(5,2)$ penalty area right; $(-4.5,1)$ penalty area left; $(3,3)$ field; $(7.2,0)$ outside; $(0,4.6)$ outside; $(-6.9,1.9)$ goal area left.
+\end{enumerate}
