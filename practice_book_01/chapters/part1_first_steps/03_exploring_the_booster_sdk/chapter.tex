@@ -40,6 +40,8 @@ Write down the classes for: the channel set-up, the high-level (locomotion) clie
 \end{stepbox}
 
 \begin{stepbox}{Step 2: change modes from a program}
+The K1 has \emph{modes}\guess: in \textbf{damping} the motors only resist motion softly (the robot is limp, the safe state); in \textbf{prepare} it moves into a standing pose and holds it; in \textbf{walking} the built-in controller balances and follows velocity commands; in \textbf{custom} your own program commands the joints.
+
 With the robot hanging and a person at the emergency stop:
 \begin{verbatim}
 import time

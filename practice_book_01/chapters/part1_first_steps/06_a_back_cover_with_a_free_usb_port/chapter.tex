@@ -1,0 +1,65 @@
+\bookchapter{A back cover with a free USB port}\label{k:cover}
+
+We deploy code to the robot the way Berlin United does: copy the code onto a USB stick, plug the stick into the robot, done (Chapter~\ref{k:repo}). No network and no laptop are needed, which is exactly what you want in the hectic minutes before a match. On the K1 the default back cover hides the USB port. The team Ruhrbot Devils designed a replacement rear cover with an opening for the port and shared it on MakerWorld. This chapter prints and fits it, and checks that the robot sees a stick. Milestone: one (needed for USB deployment).
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The model \emph{Booster K1 Rear Cover} by Ruhrbot Devils from MakerWorld:\\ \url{https://makerworld.com/en/models/2512402-booster-k1-rear-cover}
+  \item A 3D printer, a screwdriver that fits the cover's screws, a tray for the screws.
+  \item A USB stick. Background: \rtr{Devices, udev Rules and Audio}.
+\end{itemize}
+\end{needbox}
+
+\begin{center}
+\IfFileExists{images/k1/rear_cover.jpg}{%
+  \includegraphics[width=0.6\linewidth]{k1/rear_cover.jpg}%
+}{%
+  \fbox{\parbox[c][5cm][c]{0.6\linewidth}{\centering\small Image of the rear cover:\\ \texttt{images/k1/rear\_cover.jpg}}}%
+}
+\captionof{figure}{The replacement rear cover for the Booster K1 with an opening for the USB port. Model and image: Ruhrbot Devils, ``Booster K1 Rear Cover'', MakerWorld, \url{https://makerworld.com/en/models/2512402-booster-k1-rear-cover}.}
+\end{center}
+
+\section*{Steps}
+\begin{stepbox}{Step 1: get the model}
+Download the model from the MakerWorld page above. Keep the link in \texttt{docs/hardware.md} of the code repository, so the next team member finds the same version.
+\end{stepbox}
+
+\begin{stepbox}{Step 2: print it}
+3D print the model.
+\end{stepbox}
+
+\begin{stepbox}{Step 3: swap the covers}
+Robot off. Remove the screws of the original back cover into a tray and take the cover off. If a cable is attached to the cover, note how it is plugged before you unplug it. Fit the new cover and tighten the screws only until they hold: printed plastic strips easily. Keep the original cover in the team box.
+\end{stepbox}
+
+\begin{stepbox}{Step 4: does the robot see the stick?}
+Give the stick the label \texttt{K1DEPLOY} on the laptop (for a FAT stick: \verb!sudo fatlabel /dev/sdX1 K1DEPLOY!; \verb!lsblk! shows which \texttt{sdX} it is). Switch the robot on, log in with \verb!ssh k1!, and watch the kernel events while you plug the stick into the robot:
+\begin{verbatim}
+udevadm monitor --udev --subsystem-match=block
+\end{verbatim}
+Stop it with Ctrl+C and list the block devices:
+\begin{verbatim}
+lsblk -o NAME,LABEL,SIZE,MOUNTPOINT
+\end{verbatim}
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item The cover sits flush and all screws hold.
+  \item \texttt{udevadm monitor} prints \texttt{add} events when the stick is plugged in, and \texttt{lsblk} shows a device with the label \texttt{K1DEPLOY}.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[No events] Try another stick, and compare with \verb!sudo dmesg -w!, which shows the kernel's messages when a USB device appears. If nothing appears there either, check that the cable behind the cover is connected.
+  \item[The label is missing] The label belongs to the partition (\texttt{sdX1}), not to the whole stick (\texttt{sdX}). Set it on the partition.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item The Ruhrbot Devils rear cover frees the USB port, so code can be deployed with a stick (Chapter~\ref{k:repo}).
+  \item The deploy stick has the label \texttt{K1DEPLOY}; the robot must see it in \texttt{lsblk}.
+\end{itemize}
+\end{keyidea}
