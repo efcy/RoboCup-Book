@@ -18,7 +18,7 @@ This is the practical companion of \emph{Road to RoboCup}. That book explains th
 
 \textbf{Structure.} Every chapter has the same shape: \emph{what you need}, numbered \emph{steps}, a \emph{check} that tells you whether the step worked, \emph{if it does not work} (typical errors), and \emph{what to remember}. There are no exercises: the checks tell you whether you are on track, and the robot itself is the test. When you want to understand \emph{why} a step works, read the matching chapter of \emph{Road to RoboCup}.
 \begin{enumerate}[nosep,label=\textbf{Part~\Roman*:},leftmargin=4.2em]
-  \item \textbf{Workshop:} your workstation, the robot, the SDK, the model, and three hardware jobs (power supply, back cover, jerseys). The hardware chapters do not depend on the code; a group that is not programming this week can do them.
+  \item \textbf{First steps:} your workstation, the robot, the SDK, the model, and three hardware jobs (power supply, back cover, jerseys). The hardware chapters do not depend on the code; a group that is not programming this week can do them.
   \item \textbf{Robot code foundations:} the repository and deployment, the blackboard, a fake robot, ROS~2 input, two loops, the debug tool \emph{robotcontrol}, logging and replay, the GameController.
   \item \textbf{Motion:} walking, deploying a learned policy safely, driving the robot from robotcontrol, your own motions.
   \item \textbf{Playing soccer:} perception, localisation, behaviour.
@@ -36,18 +36,18 @@ This is the practical companion of \emph{Road to RoboCup}. That book explains th
 
 \textbf{Decisions taken in this draft.} Four choices still have to be confirmed by the team; the book uses these defaults: (1) the robot code runs on the K1's own computer, robotcontrol on a laptop; (2) milestone one walks with Booster's built-in walking controller through the SDK, so the low-level command rate of the SDK does not matter yet; (3) milestone one comes before the full team; (4) the code repository is called \coderepo{} with one tag per chapter.
 
-\textbf{Safety first.} A humanoid robot falls, pinches fingers and has strong motors. Read the safety rules of Chapter~\ref{k:box} before you switch on anything, and the safety box of Chapter~\ref{k:power} before you build anything that touches power.
+\textbf{Safety first.} A humanoid robot falls, pinches fingers and has strong motors. Run every new program first with the robot hanging and someone at the emergency stop, and read the safety box of Chapter~\ref{k:power} before you build anything that touches power.
 
 \mainmatter
 
-\part{Workshop}\label{kpart:workshop}
-\includeplanned{part1_workshop/01_your_workstation}
-\includeplanned{part1_workshop/02_unboxing_and_first_connection}
-\includeplanned{part1_workshop/03_exploring_the_booster_sdk}
-\includeplanned{part1_workshop/04_the_k1_model_and_kinematics}
-\includeplanned{part1_workshop/05_an_external_power_supply}
-\includeplanned{part1_workshop/06_a_back_cover_with_a_free_usb_port}
-\includeplanned{part1_workshop/07_jerseys_and_markings}
+\part{First Steps}\label{kpart:first}
+\includeplanned{part1_first_steps/01_your_workstation}
+\includeplanned{part1_first_steps/02_first_connection}
+\includeplanned{part1_first_steps/03_exploring_the_booster_sdk}
+\includeplanned{part1_first_steps/04_the_k1_model_and_kinematics}
+\includeplanned{part1_first_steps/05_an_external_power_supply}
+\includeplanned{part1_first_steps/06_a_back_cover_with_a_free_usb_port}
+\includeplanned{part1_first_steps/07_jerseys_and_markings}
 
 \part{Robot Code Foundations}\label{kpart:code}
 \includeplanned{part2_code/08_the_repository_and_k1setup}

@@ -1,0 +1,94 @@
+\bookchapter{First connection}\label{k:box}
+
+This is the first chapter with the real robot. You connect your laptop to the K1 with a cable, log in with SSH, and read the joint angles and the IMU. Milestone: both.
+
+\begin{needbox}
+\begin{itemize}[nosep]
+  \item The K1, charged and switched on as described in its manual.
+  \item The laptop of Chapter~\ref{k:ws}, an Ethernet cable (and a USB-Ethernet adapter if the laptop has no port).
+  \item Background: \rtr{Remote Work with SSH}, \rtr{Networking from the Command Line}.
+\end{itemize}
+\end{needbox}
+
+\section*{The network}
+The K1 has a \textbf{fixed address} on its Ethernet port: \texttt{192.168.10.10} with the netmask \texttt{255.255.255.0} (written \texttt{/24}). Your laptop must be in the same network: its address must start with \texttt{192.168.10.} and end with any number from $1$ to $254$ except $10$, which is the robot's. If several students connect laptops to robots in the same network (through a switch), each laptop needs its own number; agree on a list, for example \texttt{192.168.10.101} for the first student, \texttt{.102} for the second, and so on.
+
+\section*{Steps}
+\begin{stepbox}{Step 1: give the laptop an address}
+Plug in the cable and find the name of the laptop's Ethernet interface:
+\begin{verbatim}
+ip -br link
+\end{verbatim}
+It is the one that starts with \texttt{en} (for example \texttt{enp3s0}, or \texttt{enx001122334455} for a USB adapter). For a quick test, set the address by hand:
+\begin{verbatim}
+sudo ip addr add 192.168.10.101/24 dev enx001122334455
+\end{verbatim}
+This is gone after a reboot. To keep it, open Ubuntu's \emph{Settings}, \emph{Network}, the wired connection, tab \emph{IPv4}: method \emph{Manual}, address \texttt{192.168.10.101}, netmask \texttt{255.255.255.0}, no gateway. Or on the command line:
+\begin{verbatim}
+nmcli con add type ethernet ifname enx001122334455 con-name k1 \
+    ipv4.method manual ipv4.addresses 192.168.10.101/24
+nmcli con up k1
+\end{verbatim}
+\end{stepbox}
+
+\begin{stepbox}{Step 2: ping the robot}
+\begin{verbatim}
+ping -c 3 192.168.10.10
+\end{verbatim}
+\end{stepbox}
+
+\begin{stepbox}{Step 3: SSH with a short name}
+Add to \verb!~/.ssh/config! on the laptop (the user name is the one in the robot's manual\guess):
+\begin{verbatim}
+Host k1
+    HostName 192.168.10.10
+    User robot
+\end{verbatim}
+Then copy your key once with \verb!ssh-copy-id k1!. From now on \verb!ssh k1! logs in without a password, and \texttt{scp}, \texttt{rsync} and git understand the name \texttt{k1} too.
+\end{stepbox}
+
+\begin{stepbox}{Step 4: what is running on the robot}
+On the robot:
+\begin{verbatim}
+cat /etc/os-release | head -2
+echo $ROS_DISTRO
+nproc; free -h; df -h /
+systemctl list-units --type=service --state=running | grep -i booster
+ros2 topic list
+\end{verbatim}
+Write down the Ubuntu version, the ROS~2 distribution, the services of Booster that are running, and the list of topics, in \texttt{docs/robot.md} of the code repository. Chapter~\ref{k:ros} uses the topic list.
+\end{stepbox}
+
+\begin{stepbox}{Step 5: read joints and IMU}
+Pick the topic that carries the low-level state (its name contains \texttt{low\_state} or similar\guess) and print one message:
+\begin{verbatim}
+ros2 topic info -v /low_state     # message type, publishers
+ros2 topic hz   /low_state        # how often it arrives
+ros2 topic echo --once /low_state
+\end{verbatim}
+With the robot's motors in damping (limp), move one arm slowly by hand and print again.
+\end{stepbox}
+
+\begin{checkbox}
+\begin{itemize}[nosep]
+  \item \verb!ping 192.168.10.10! gets answers, and \verb!ssh k1! works without a password.
+  \item In the printed message you find $22$ joint positions in radians; the one of the arm you moved has changed by roughly the angle you moved it. The IMU part shows an acceleration of about $9.8$\,m/s$^2$ along the vertical axis of the trunk and angular velocities close to zero.
+\end{itemize}
+\end{checkbox}
+
+\begin{troublebox}
+\begin{description}[leftmargin=0.6cm,nosep]
+  \item[\texttt{ping} fails] Check with \verb!ip -br addr! that the address is on the right interface and starts with \texttt{192.168.10.}; check that the cable's link LED is on. Wi-Fi and Ethernet in the same \texttt{192.168.10.x} range at the same time confuse the laptop: switch the Wi-Fi off for the test.
+  \item[\texttt{Destination Host Unreachable} with two laptops] Two laptops use the same address. Give each its own number.
+  \item[\texttt{ros2: command not found} over SSH] The ROS environment is not loaded: \verb!source /opt/ros/$ROS_DISTRO/setup.bash! (the distribution name is in \verb!/opt/ros!).
+  \item[\texttt{ros2 topic list} is empty] The DDS domain differs (\verb!echo $ROS_DOMAIN_ID!), or the Booster service that publishes the state is not running.
+\end{description}
+\end{troublebox}
+
+\begin{keyidea}[What to remember]
+\begin{itemize}[nosep]
+  \item The K1 is at \texttt{192.168.10.10/24}; your laptop takes its own address in \texttt{192.168.10.x}.
+  \item \verb!ssh k1! with a key and an entry in \verb!~/.ssh/config!.
+  \item Write down what is on the robot (OS, ROS distribution, services, topics). The rest of the book relies on that list.
+\end{itemize}
+\end{keyidea}
